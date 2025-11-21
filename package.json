@@ -1,0 +1,40 @@
+{
+  "name": "focus-guard-chrome-plugin",
+  "displayName": "Focus Guard",
+  "version": "0.0.1",
+  "description": "A Chrome extension built with Plasmo, React, and Manifest V3",
+  "author": "Your Name",
+  "scripts": {
+    "dev": "plasmo dev",
+    "build": "plasmo build",
+    "package": "plasmo package"
+  },
+  "dependencies": {
+    "plasmo": "^0.89.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@plasmohq/prettier-plugin-sort-imports": "4.0.1",
+    "@types/chrome": "^0.0.268",
+    "@types/node": "^20.12.7",
+    "@types/react": "^18.2.79",
+    "@types/react-dom": "^18.2.25",
+    "prettier": "3.2.5",
+    "typescript": "^5.4.5"
+  },
+  "pnpm": {
+    "overrides": {
+      "sharp": "^0.33.5"
+    }
+  },
+  "manifest": {
+    "host_permissions": [
+      "https://*/*"
+    ],
+    "permissions": [
+      "storage",
+      "tabs"
+    ]
+  }
+}
