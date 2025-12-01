@@ -10,7 +10,8 @@ export const ModeSelector = ({ currentMode, onModeChange }: ModeSelectorProps) =
   const modes: Array<FocusGuardSettings["mode"]> = [
     "deep-work",
     "curated",
-    "intelligence"
+    "intelligence",
+    "video-analysis"
   ]
 
   return (

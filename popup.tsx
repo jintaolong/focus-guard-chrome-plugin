@@ -12,7 +12,12 @@ function IndexPopup() {
   const [account, setAccount] = useState<UserAccount | null>(null)
   const [settings, setSettings] = useState<FocusGuardSettings>({
     isEnabled: true,
-    mode: "curated"
+    mode: "curated",
+    videoAnalysis: {
+      showPreWatchPopover: true,
+      autoAnalyze: true,
+      botDetectionEnabled: true
+    }
   })
   const [isLoading, setIsLoading] = useState(true)
 
@@ -170,6 +175,126 @@ function IndexPopup() {
           currentMode={settings.mode}
           onModeChange={handleModeChange}
         />
+      )}
+
+      {/* Video Analysis Settings */}
+      {settings.isEnabled && settings.mode === "video-analysis" && (
+        <div
+          style={{
+            marginTop: "16px",
+            padding: "16px",
+            backgroundColor: "#f9fafb",
+            borderRadius: "10px",
+            border: "1px solid #e5e5e5"
+          }}>
+          <h3
+            style={{
+              fontSize: "13px",
+              fontWeight: "600",
+              color: "#1a1a1a",
+              marginBottom: "12px"
+            }}>
+            Analysis Preferences
+          </h3>
+          
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                cursor: "pointer"
+              }}>
+              <span style={{ fontSize: "13px", color: "#4b5563" }}>
+                Show pre-watch popover
+              </span>
+              <input
+                type="checkbox"
+                checked={settings.videoAnalysis?.showPreWatchPopover ?? true}
+                onChange={async (e) => {
+                  const newSettings = {
+                    ...settings,
+                    videoAnalysis: {
+                      ...settings.videoAnalysis!,
+                      showPreWatchPopover: e.target.checked
+                    }
+                  }
+                  setSettings(newSettings)
+                  await chrome.storage.sync.set({ settings: newSettings })
+                }}
+                style={{
+                  width: "16px",
+                  height: "16px",
+                  cursor: "pointer"
+                }}
+              />
+            </label>
+
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                cursor: "pointer"
+              }}>
+              <span style={{ fontSize: "13px", color: "#4b5563" }}>
+                Auto-analyze on page load
+              </span>
+              <input
+                type="checkbox"
+                checked={settings.videoAnalysis?.autoAnalyze ?? true}
+                onChange={async (e) => {
+                  const newSettings = {
+                    ...settings,
+                    videoAnalysis: {
+                      ...settings.videoAnalysis!,
+                      autoAnalyze: e.target.checked
+                    }
+                  }
+                  setSettings(newSettings)
+                  await chrome.storage.sync.set({ settings: newSettings })
+                }}
+                style={{
+                  width: "16px",
+                  height: "16px",
+                  cursor: "pointer"
+                }}
+              />
+            </label>
+
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                cursor: "pointer"
+              }}>
+              <span style={{ fontSize: "13px", color: "#4b5563" }}>
+                Filter bot comments
+              </span>
+              <input
+                type="checkbox"
+                checked={settings.videoAnalysis?.botDetectionEnabled ?? true}
+                onChange={async (e) => {
+                  const newSettings = {
+                    ...settings,
+                    videoAnalysis: {
+                      ...settings.videoAnalysis!,
+                      botDetectionEnabled: e.target.checked
+                    }
+                  }
+                  setSettings(newSettings)
+                  await chrome.storage.sync.set({ settings: newSettings })
+                }}
+                style={{
+                  width: "16px",
+                  height: "16px",
+                  cursor: "pointer"
+                }}
+              />
+            </label>
+          </div>
+        </div>
       )}
 
       {/* Footer */}

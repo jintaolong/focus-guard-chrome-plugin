@@ -1,10 +1,19 @@
 import type { PlasmoCSConfig } from "plasmo"
 import { useState, useEffect } from "react"
+import { createRoot } from "react-dom/client"
 
 import { ResultsList } from "~components/ResultsList"
 import { SearchInterface } from "~components/SearchInterface"
+import { StatusChip } from "~components/StatusChip"
+import { SidePanel } from "~components/SidePanel"
+import { PreWatchPopover } from "~components/PreWatchPopover"
 import { FocusGuardAPI } from "~lib/api"
 import type { VideoResult, UserStats } from "~types"
+import type {
+  VideoAnalysis,
+  VideoAnalysisStatus,
+  AnalysisHistoryItem
+} from "~types/analysis"
 
 // Configure to only run on YouTube
 export const config: PlasmoCSConfig = {
@@ -12,30 +21,73 @@ export const config: PlasmoCSConfig = {
   all_frames: false
 }
 
+// Helper to extract video ID from YouTube URL
+function getVideoIdFromUrl(url: string): string | null {
+  const urlParams = new URLSearchParams(new URL(url).search)
+  return urlParams.get("v")
+}
+
+// Helper to check if we're on a watch page
+function isWatchPage(): boolean {
+  return window.location.pathname === "/watch" && !!getVideoIdFromUrl(window.location.href)
+}
+
 const ContentScript = () => {
+  // Original feed replacement state
   const [results, setResults] = useState<VideoResult[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [userStats, setUserStats] = useState<UserStats | null>(null)
   const [isYouTubeHome, setIsYouTubeHome] = useState(false)
 
+  // FR-102 & FR-103: Watch page analysis state
+  const [currentVideoId, setCurrentVideoId] = useState<string | null>(null)
+  const [videoAnalysis, setVideoAnalysis] = useState<VideoAnalysis | null>(null)
+  const [analysisStatus, setAnalysisStatus] = useState<VideoAnalysisStatus | null>(null)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [isSidePanelOpen, setIsSidePanelOpen] = useState(false)
+  const [analysisHistory, setAnalysisHistory] = useState<AnalysisHistoryItem[]>([])
+  const [onWatchPage, setOnWatchPage] = useState(false)
+  const [showPreWatchPopover, setShowPreWatchPopover] = useState(false)
+  const [preWatchDismissed, setPreWatchDismissed] = useState(false)
+
   useEffect(() => {
-    // Check if we're on YouTube home page
-    const checkYouTubeHome = () => {
+    // Check if we're on YouTube home page or watch page
+    const checkPageType = () => {
       const isHome =
         window.location.pathname === "/" ||
         window.location.pathname === "/feed/subscriptions" ||
         window.location.pathname === "/feed/trending"
+      const isWatch = isWatchPage()
+
       setIsYouTubeHome(isHome)
+      setOnWatchPage(isWatch)
+
+      // FR-202: Auto-activate analysis on watch page
+      if (isWatch) {
+        const videoId = getVideoIdFromUrl(window.location.href)
+        if (videoId && videoId !== currentVideoId) {
+          setCurrentVideoId(videoId)
+          startVideoAnalysis(videoId)
+        }
+      } else {
+        setCurrentVideoId(null)
+        setVideoAnalysis(null)
+        setAnalysisStatus(null)
+        setIsSidePanelOpen(false)
+        setShowPreWatchPopover(false)
+        setPreWatchDismissed(false)
+      }
     }
 
-    checkYouTubeHome()
+    checkPageType()
 
     // Listen for URL changes (YouTube is a SPA)
-    const observer = new MutationObserver(checkYouTubeHome)
+    const observer = new MutationObserver(checkPageType)
     observer.observe(document.body, { childList: true, subtree: true })
 
-    // Load user stats
+    // Load user stats and history
     loadUserStats()
+    loadAnalysisHistory()
 
     return () => observer.disconnect()
   }, [])
@@ -101,6 +153,93 @@ const ContentScript = () => {
     }
   }
 
+  const loadAnalysisHistory = async () => {
+    try {
+      const response = await FocusGuardAPI.getAnalysisHistory()
+      setAnalysisHistory(response.history)
+    } catch (error) {
+      console.error("Failed to load analysis history:", error)
+      setAnalysisHistory([])
+    }
+  }
+
+  // FR-202: Start video analysis automatically on watch page
+  const startVideoAnalysis = async (videoId: string) => {
+    setIsAnalyzing(true)
+    setAnalysisStatus({
+      trustScore: 0,
+      clickbaitVerdict: "LEGIT",
+      isAnalyzing: true
+    })
+
+    try {
+      // Production code:
+      // const response = await FocusGuardAPI.analyzeVideo({ videoId })
+      // setVideoAnalysis(response.analysis)
+      // setAnalysisStatus({
+      //   trustScore: response.analysis.summary.trustScore,
+      //   clickbaitVerdict: response.analysis.summary.clickbaitVerdict.label,
+      //   isAnalyzing: false
+      // })
+      
+      // Development mock data:
+      const { getRandomMockAnalysis } = await import("~lib/mockData")
+      const mockAnalysis = getRandomMockAnalysis()
+      setVideoAnalysis(mockAnalysis)
+      setAnalysisStatus({
+        trustScore: mockAnalysis.trustScore.score,
+        clickbaitVerdict: mockAnalysis.clickbaitVerdict.verdict.toUpperCase(),
+        isAnalyzing: false
+      })
+      // FR-101: Show pre-watch popover after analysis completes
+      if (!preWatchDismissed) {
+        setShowPreWatchPopover(true)
+      }
+    } catch (error) {
+      console.error("Video analysis failed:", error)
+      // Use mock data for development
+      const { getRandomMockAnalysis } = await import("~lib/mockData")
+      const mockAnalysis = getRandomMockAnalysis()
+      setVideoAnalysis(mockAnalysis)
+      setAnalysisStatus({
+        trustScore: mockAnalysis.trustScore.score,
+        clickbaitVerdict: mockAnalysis.clickbaitVerdict.verdict.toUpperCase(),
+        isAnalyzing: false
+      })
+    } finally {
+      setIsAnalyzing(false)
+    }
+  }
+
+  const handleDownloadReport = async (format: "PDF" | "TXT") => {
+    if (!currentVideoId) return
+
+    try {
+      const blob = await FocusGuardAPI.downloadReport({
+        videoId: currentVideoId,
+        format
+      })
+
+      // Create download link
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `focus-guard-report-${currentVideoId}.${format.toLowerCase()}`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+    } catch (error) {
+      console.error("Failed to download report:", error)
+    }
+  }
+
+  const handleReAnalyze = async (videoId: string) => {
+    if (videoId === currentVideoId) {
+      startVideoAnalysis(videoId)
+    }
+  }
+
   const handleSearch = async (query: string) => {
     if (!userStats || userStats.searchesRemaining <= 0) return
 
@@ -148,40 +287,122 @@ const ContentScript = () => {
     }
   }
 
-  // Only render on YouTube home/feed pages
-  if (!isYouTubeHome) return null
+  // FR-102 & FR-103: Inject Status Chip and Side Panel on watch page
+  useEffect(() => {
+    if (onWatchPage && analysisStatus) {
+      injectWatchPageUI()
+    }
 
-  return (
-    <div
-      style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        width: "100%",
-        height: "100%",
-        backgroundColor: "white",
-        zIndex: 9999,
-        overflowY: "auto",
-        fontFamily:
-          '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-        animation: "fadeIn 0.4s ease-in"
-      }}>
-      <style>
-        {`
-          @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-          }
-        `}
-      </style>
-      <SearchInterface
-        onSearch={handleSearch}
-        isLoading={isLoading}
-        userStats={userStats}
+    return () => {
+      cleanupWatchPageUI()
+    }
+  }, [onWatchPage, analysisStatus, isSidePanelOpen])
+
+  const injectWatchPageUI = () => {
+    // FR-103: Inject Status Chip near video title
+    const titleElement = document.querySelector("#title h1.ytd-watch-metadata, #container h1.title")
+    if (titleElement && !document.getElementById("focus-guard-status-chip")) {
+      const chipContainer = document.createElement("div")
+      chipContainer.id = "focus-guard-status-chip"
+      chipContainer.style.display = "inline-block"
+      titleElement.parentElement?.appendChild(chipContainer)
+
+      const root = createRoot(chipContainer)
+      root.render(
+        <StatusChip
+          status={analysisStatus}
+          onViewReport={() => setIsSidePanelOpen(true)}
+        />
+      )
+    }
+  }
+
+  const cleanupWatchPageUI = () => {
+    const chipContainer = document.getElementById("focus-guard-status-chip")
+    if (chipContainer) {
+      chipContainer.remove()
+    }
+  }
+
+  // Render home/feed page overlay (original functionality)
+  if (isYouTubeHome) {
+    return (
+      <div
+        style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          width: "100%",
+          height: "100%",
+          backgroundColor: "white",
+          zIndex: 9999,
+          overflowY: "auto",
+          fontFamily:
+            '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+          animation: "fadeIn 0.4s ease-in"
+        }}>
+        <style>
+          {`
+            @keyframes fadeIn {
+              from { opacity: 0; }
+              to { opacity: 1; }
+            }
+          `}
+        </style>
+        <SearchInterface
+          onSearch={handleSearch}
+          isLoading={isLoading}
+          userStats={userStats}
+        />
+        <ResultsList results={results} isLoading={isLoading} />
+      </div>
+    )
+  }
+
+  // FR-102: Render Side Panel on watch page
+  if (onWatchPage) {
+    return (
+      <>
+        {/* FR-101: Pre-Watch Popover */}
+        {showPreWatchPopover && (
+          <PreWatchPopover
+            analysis={videoAnalysis}
+            isLoading={isAnalyzing}
+            onDismiss={() => {
+              setShowPreWatchPopover(false)
+              setPreWatchDismissed(true)
+            }}
+            onViewFullAnalysis={() => {
+              setShowPreWatchPopover(false)
+              setPreWatchDismissed(true)
+              setIsSidePanelOpen(true)
+            }}
+            onWatchAnyway={() => {
+              setShowPreWatchPopover(false)
+              setPreWatchDismissed(true)
+            }}
+          />
+        )}
+        
+        {/* FR-102: Side Panel */}
+        <SidePanel
+        analysis={videoAnalysis}
+        isLoading={isAnalyzing}
+        isOpen={isSidePanelOpen}
+        position="right"
+        history={analysisHistory}
+        onClose={() => setIsSidePanelOpen(false)}
+        onDownloadReport={handleDownloadReport}
+        onReAnalyze={handleReAnalyze}
+        onBotFilterChange={(enabled) => {
+          console.log("Bot filter changed:", enabled)
+        }}
       />
-      <ResultsList results={results} isLoading={isLoading} />
-    </div>
-  )
+      </>
+    )
+  }
+
+  return null
 }
 
 export default ContentScript

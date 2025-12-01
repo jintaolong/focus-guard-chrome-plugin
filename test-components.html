@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Focus Guard - Component Testing</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+        
+        .header h1 {
+            font-size: 48px;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+        }
+        
+        .header p {
+            font-size: 18px;
+            opacity: 0.9;
+        }
+        
+        .controls {
+            background: white;
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+        
+        .controls h2 {
+            font-size: 20px;
+            margin-bottom: 16px;
+            color: #1a1a1a;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            border: 2px solid #e5e5e5;
+            border-radius: 8px;
+            background: white;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn:hover {
+            border-color: #667eea;
+            background: #f0f4ff;
+            transform: translateY(-2px);
+        }
+        
+        .btn.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+        
+        .section {
+            background: white;
+            border-radius: 16px;
+            padding: 32px;
+            margin-bottom: 24px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+        
+        .section h2 {
+            font-size: 24px;
+            margin-bottom: 8px;
+            color: #1a1a1a;
+        }
+        
+        .section p {
+            color: #666;
+            margin-bottom: 24px;
+            font-size: 14px;
+        }
+        
+        .component-preview {
+            border: 2px dashed #e5e5e5;
+            border-radius: 12px;
+            padding: 24px;
+            background: #fafafa;
+            min-height: 100px;
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 24px;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            background: #667eea;
+            color: white;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-left: 8px;
+        }
+        
+        .info-box {
+            background: #f0f4ff;
+            border-left: 4px solid #667eea;
+            padding: 16px;
+            border-radius: 8px;
+            margin-top: 16px;
+            font-size: 14px;
+            color: #4338ca;
+        }
+        
+        #root {
+            /* React mount point */
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🛡️ Focus Guard</h1>
+            <p>Component Testing Environment</p>
+        </div>
+        
+        <div class="controls">
+            <h2>Mock Data Scenarios</h2>
+            <div class="button-group">
+                <button class="btn active" onclick="loadScenario('high')">
+                    <span>✅</span>
+                    <span>High Trust (85%)</span>
+                </button>
+                <button class="btn" onclick="loadScenario('medium')">
+                    <span>⚠️</span>
+                    <span>Medium Trust (55%)</span>
+                </button>
+                <button class="btn" onclick="loadScenario('low')">
+                    <span>🚨</span>
+                    <span>Low Trust (25%)</span>
+                </button>
+            </div>
+            <div class="info-box">
+                💡 <strong>Tip:</strong> Click the buttons above to switch between different trust score scenarios and see how the UI adapts with color coding.
+            </div>
+        </div>
+        
+        <!-- StatusChip Section -->
+        <div class="section">
+            <h2>
+                FR-103: Status Chip
+                <span class="badge">Complete</span>
+            </h2>
+            <p>Inline status display showing trust score and clickbait verdict</p>
+            <div class="component-preview" id="statusChip">
+                <!-- StatusChip will render here -->
+            </div>
+        </div>
+        
+        <!-- PreWatchPopover Section -->
+        <div class="section">
+            <h2>
+                FR-101: Pre-Watch Popover
+                <span class="badge">Complete</span>
+            </h2>
+            <p>Analysis preview shown before video playback</p>
+            <div style="text-align: center; padding: 40px 0;">
+                <button class="btn active" onclick="showPopover()" style="font-size: 16px; padding: 16px 32px;">
+                    <span>👁️</span>
+                    <span>Show Pre-Watch Popover</span>
+                </button>
+            </div>
+            <div id="popover">
+                <!-- Popover will render here -->
+            </div>
+        </div>
+        
+        <!-- Side Panel Tabs Section -->
+        <div class="section">
+            <h2>
+                FR-102: Side Panel Tabs
+                <span class="badge">Complete</span>
+            </h2>
+            <p>4-tab analysis interface: Summary, Insights, Content Gaps, Report</p>
+            
+            <div style="margin-bottom: 24px;">
+                <div class="button-group">
+                    <button class="btn active" onclick="showTab('summary')">
+                        <span>📊</span>
+                        <span>Summary Tab</span>
+                    </button>
+                    <button class="btn" onclick="showTab('insights')">
+                        <span>💬</span>
+                        <span>Viewer Insights</span>
+                    </button>
+                    <button class="btn" onclick="showTab('gaps')">
+                        <span>🔍</span>
+                        <span>Content Gaps</span>
+                    </button>
+                    <button class="btn" onclick="showTab('report')">
+                        <span>📄</span>
+                        <span>Report</span>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="component-preview" id="sidePanel">
+                <!-- Side panel tabs will render here -->
+            </div>
+        </div>
+        
+        <!-- Color System Section -->
+        <div class="section">
+            <h2>
+                FR-204: Color System
+                <span class="badge">Complete</span>
+            </h2>
+            <p>Traffic light color coding for trust levels and sentiment</p>
+            <div class="grid">
+                <div style="padding: 20px; background: #dcfce7; border-radius: 8px; border-left: 4px solid #22c55e;">
+                    <h3 style="color: #15803d; margin-bottom: 8px;">🟢 High Trust (70-100)</h3>
+                    <p style="color: #166534; margin: 0;">Reliable content with verified sources</p>
+                </div>
+                <div style="padding: 20px; background: #fef3c7; border-radius: 8px; border-left: 4px solid #f59e0b;">
+                    <h3 style="color: #b45309; margin-bottom: 8px;">🟡 Moderate Trust (40-69)</h3>
+                    <p style="color: #92400e; margin: 0;">Mixed credibility, requires caution</p>
+                </div>
+                <div style="padding: 20px; background: #fee2e2; border-radius: 8px; border-left: 4px solid #ef4444;">
+                    <h3 style="color: #b91c1c; margin-bottom: 8px;">🔴 Low Trust (0-39)</h3>
+                    <p style="color: #991b1b; margin: 0;">Questionable content, potential misinformation</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Mock Data -->
+    <script>
+        // Mock data based on lib/mockData.ts
+        const mockData = {
+            high: {
+                videoId: "dQw4w9WgXcQ",
+                videoTitle: "Understanding Climate Change: A Scientific Overview",
+                channelName: "Science Explained",
+                trustScore: {
+                    score: 85,
+                    level: "high",
+                    factors: [
+                        {
+                            name: "Source Credibility",
+                            score: 90,
+                            description: "Channel has verified scientific credentials"
+                        },
+                        {
+                            name: "Factual Accuracy",
+                            score: 88,
+                            description: "Claims supported by recent research"
+                        },
+                        {
+                            name: "Transparency",
+                            score: 80,
+                            description: "Sources clearly cited"
+                        }
+                    ]
+                },
+                clickbaitVerdict: {
+                    verdict: "not-clickbait",
+                    confidence: 92,
+                    reasoning: "Title accurately reflects content"
+                },
+                channelCredibility: {
+                    verifiedStatus: true,
+                    history: "Consistent track record of accurate content",
+                    bias: "Minimal - fact-based"
+                },
+                sentiment: {
+                    overall: "positive",
+                    distribution: { positive: 65, neutral: 30, negative: 5 }
+                },
+                viewerInsights: [
+                    {
+                        type: "actionable",
+                        statement: "Clear explanation of greenhouse gases",
+                        supportingComments: [
+                            { text: "Finally someone explains without bias", votes: 1240, timestamp: "2 days ago" }
+                        ]
+                    }
+                ],
+                contentGaps: {
+                    overallCoverage: 78,
+                    unansweredQuestions: [
+                        {
+                            category: "clarification",
+                            statement: "What about deforestation?",
+                            supportingComments: [
+                                { text: "Would love more on forest ecosystems", votes: 456, timestamp: "5 days ago" }
+                            ]
+                        }
+                    ],
+                    botDetectionEnabled: true
+                },
+                analysisMetadata: {
+                    analyzedAt: new Date().toISOString(),
+                    commentsSampled: 2500,
+                    botCommentsFiltered: 180
+                }
+            },
+            medium: {
+                videoId: "abc123xyz",
+                videoTitle: "Top 10 Stock Picks for 2024",
+                channelName: "InvestSmart Daily",
+                trustScore: {
+                    score: 55,
+                    level: "moderate",
+                    factors: [
+                        {
+                            name: "Source Credibility",
+                            score: 60,
+                            description: "Financial background but not licensed"
+                        },
+                        {
+                            name: "Factual Accuracy",
+                            score: 50,
+                            description: "Mix of data and opinions"
+                        }
+                    ]
+                },
+                clickbaitVerdict: {
+                    verdict: "moderate-clickbait",
+                    confidence: 78,
+                    reasoning: "Attention-grabbing language"
+                },
+                channelCredibility: {
+                    verifiedStatus: false,
+                    history: "Inconsistent prediction accuracy",
+                    bias: "Moderate - favors growth stocks"
+                },
+                sentiment: {
+                    overall: "neutral",
+                    distribution: { positive: 40, neutral: 35, negative: 25 }
+                },
+                viewerInsights: [
+                    {
+                        type: "warning",
+                        statement: "Discrepancies with current market data",
+                        supportingComments: [
+                            { text: "P/E ratios don't match Yahoo Finance", votes: 423, timestamp: "2 days ago" }
+                        ]
+                    }
+                ],
+                contentGaps: {
+                    overallCoverage: 55,
+                    unansweredQuestions: [
+                        {
+                            category: "concern",
+                            statement: "No discussion of downside risks",
+                            supportingComments: [
+                                { text: "Where's the risk management?", votes: 789, timestamp: "1 day ago" }
+                            ]
+                        }
+                    ],
+                    botDetectionEnabled: true
+                },
+                analysisMetadata: {
+                    analyzedAt: new Date().toISOString(),
+                    commentsSampled: 1800,
+                    botCommentsFiltered: 420
+                }
+            },
+            low: {
+                videoId: "xyz789def",
+                videoTitle: "SHOCKING TRUTH They Don't Want You to Know! 🚨",
+                channelName: "TruthSeeker3000",
+                trustScore: {
+                    score: 25,
+                    level: "low",
+                    factors: [
+                        {
+                            name: "Source Credibility",
+                            score: 15,
+                            description: "No verifiable credentials"
+                        },
+                        {
+                            name: "Factual Accuracy",
+                            score: 20,
+                            description: "Multiple claims contradict facts"
+                        }
+                    ]
+                },
+                clickbaitVerdict: {
+                    verdict: "highly-clickbait",
+                    confidence: 95,
+                    reasoning: "Sensational title with shock value"
+                },
+                channelCredibility: {
+                    verifiedStatus: false,
+                    history: "History of promoting conspiracy theories",
+                    bias: "Extreme - promotes fringe theories"
+                },
+                sentiment: {
+                    overall: "negative",
+                    distribution: { positive: 15, neutral: 25, negative: 60 }
+                },
+                viewerInsights: [
+                    {
+                        type: "warning",
+                        statement: "Fact-checkers have debunked these claims",
+                        supportingComments: [
+                            { text: "Snopes article shows this is misleading", votes: 2340, timestamp: "1 day ago" }
+                        ]
+                    }
+                ],
+                contentGaps: {
+                    overallCoverage: 20,
+                    unansweredQuestions: [
+                        {
+                            category: "concern",
+                            statement: "No peer-reviewed sources for medical claims",
+                            supportingComments: [
+                                { text: "Where are the studies?", votes: 3456, timestamp: "1 day ago" }
+                            ]
+                        }
+                    ],
+                    botDetectionEnabled: true
+                },
+                analysisMetadata: {
+                    analyzedAt: new Date().toISOString(),
+                    commentsSampled: 4500,
+                    botCommentsFiltered: 1200
+                }
+            }
+        };
+        
+        let currentScenario = 'high';
+        let currentTab = 'summary';
+        
+        // Color system from lib/colors.ts
+        const COLORS = {
+            green: {
+                primary: '#22c55e',
+                light: '#dcfce7',
+                dark: '#15803d',
+                text: '#166534'
+            },
+            yellow: {
+                primary: '#f59e0b',
+                light: '#fef3c7',
+                dark: '#b45309',
+                text: '#92400e'
+            },
+            red: {
+                primary: '#ef4444',
+                light: '#fee2e2',
+                dark: '#b91c1c',
+                text: '#991b1b'
+            },
+            neutral: {
+                primary: '#6b7280',
+                dark: '#374151'
+            },
+            ui: {
+                text: '#1a1a1a',
+                textSecondary: '#666',
+                border: '#e5e5e5',
+                surface: '#f9fafb',
+                hover: '#f3f4f6'
+            }
+        };
+        
+        function getTrustColor(score) {
+            if (score >= 70) return 'green';
+            if (score >= 40) return 'yellow';
+            return 'red';
+        }
+        
+        function getClickbaitColor(verdict) {
+            if (verdict === 'not-clickbait') return 'green';
+            if (verdict === 'moderate-clickbait') return 'yellow';
+            return 'red';
+        }
+        
+        function loadScenario(scenario) {
+            currentScenario = scenario;
+            
+            // Update button states
+            document.querySelectorAll('.controls .btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.closest('.btn').classList.add('active');
+            
+            // Re-render components
+            renderStatusChip();
+            renderSidePanel();
+        }
+        
+        function showTab(tab) {
+            currentTab = tab;
+            
+            // Update button states
+            document.querySelectorAll('.section:nth-of-type(3) .btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.closest('.btn').classList.add('active');
+            
+            renderSidePanel();
+        }
+        
+        function renderStatusChip() {
+            const data = mockData[currentScenario];
+            const trustColor = getTrustColor(data.trustScore.score);
+            const verdictColor = getClickbaitColor(data.clickbaitVerdict.verdict);
+            const colorSet = COLORS[trustColor];
+            const verdictColorSet = COLORS[verdictColor];
+            
+            const verdictLabels = {
+                'not-clickbait': 'LEGIT',
+                'moderate-clickbait': 'MODERATE CLICKBAIT',
+                'highly-clickbait': 'HIGHLY CLICKBAIT'
+            };
+            
+            const verdictIcons = {
+                'not-clickbait': '✅',
+                'moderate-clickbait': '⚠️',
+                'highly-clickbait': '🚨'
+            };
+            
+            document.getElementById('statusChip').innerHTML = `
+                <div style="display: inline-flex; align-items: center; gap: 12px; margin-left: 12px;">
+                    <div style="display: flex; align-items: center; gap: 6px; padding: 6px 12px; 
+                         background-color: ${colorSet.light}; border-radius: 8px; 
+                         border: 2px solid ${colorSet.primary};">
+                        <span style="font-size: 18px; font-weight: 700; color: ${colorSet.text};">
+                            ${data.trustScore.score}
+                        </span>
+                        <span style="font-size: 11px; font-weight: 600; color: ${colorSet.text}; opacity: 0.8;">
+                            TRUST
+                        </span>
+                    </div>
+                    
+                    <div style="display: flex; align-items: center; gap: 6px; padding: 6px 12px;
+                         background-color: ${verdictColorSet.light}; border-radius: 8px;
+                         border: 1px solid ${verdictColorSet.primary};">
+                        <span style="font-size: 16px;">${verdictIcons[data.clickbaitVerdict.verdict]}</span>
+                        <span style="font-size: 13px; font-weight: 700; color: ${verdictColorSet.text}; letter-spacing: 0.5px;">
+                            ${verdictLabels[data.clickbaitVerdict.verdict]}
+                        </span>
+                    </div>
+                    
+                    <button onclick="alert('Would open side panel')" style="display: flex; align-items: center; gap: 6px;
+                           padding: 6px 16px; background-color: ${COLORS.neutral.primary}; color: white;
+                           border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px;">
+                        <span>🛡️</span>
+                        <span>View Full Report</span>
+                    </button>
+                </div>
+            `;
+        }
+        
+        function showPopover() {
+            const data = mockData[currentScenario];
+            const trustColor = getTrustColor(data.trustScore.score);
+            const verdictColor = getClickbaitColor(data.clickbaitVerdict.verdict);
+            const colorSet = COLORS[trustColor];
+            const verdictColorSet = COLORS[verdictColor];
+            
+            const trustLabels = {
+                'high': 'Highly Reliable',
+                'moderate': 'Moderate Credibility',
+                'low': 'Low Credibility'
+            };
+            
+            const verdictLabels = {
+                'not-clickbait': 'LEGIT',
+                'moderate-clickbait': 'MODERATE CLICKBAIT',
+                'highly-clickbait': 'HIGHLY CLICKBAIT'
+            };
+            
+            const verdictIcons = {
+                'not-clickbait': '✅',
+                'moderate-clickbait': '⚠️',
+                'highly-clickbait': '🚨'
+            };
+            
+            document.getElementById('popover').innerHTML = `
+                <div style="position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 9999; 
+                     display: flex; align-items: center; justify-content: center;" onclick="this.remove()">
+                    <div style="width: min(480px, 90vw); max-height: 80vh; background: white; border-radius: 16px;
+                         box-shadow: 0 8px 32px rgba(0,0,0,0.24); overflow: hidden;" onclick="event.stopPropagation()">
+                        
+                        <!-- Header -->
+                        <div style="padding: 24px 24px 20px; border-bottom: 1px solid ${COLORS.ui.border};
+                             background: linear-gradient(135deg, ${colorSet.light} 0%, white 100%);">
+                            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                                <div style="width: 40px; height: 40px; background: ${colorSet.primary}; border-radius: 50%;
+                                     display: flex; align-items: center; justify-content: center; font-size: 20px;">
+                                    🛡️
+                                </div>
+                                <div style="flex: 1;">
+                                    <h2 style="margin: 0; font-size: 20px; font-weight: 700; color: ${COLORS.ui.text};">
+                                        Video Analysis Complete
+                                    </h2>
+                                    <p style="margin: 4px 0 0; font-size: 13px; color: ${COLORS.ui.textSecondary};">
+                                        Review key insights before watching
+                                    </p>
+                                </div>
+                                <button onclick="document.getElementById('popover').innerHTML = ''" 
+                                     style="width: 32px; height: 32px; border: none; background: transparent;
+                                     cursor: pointer; font-size: 20px; color: ${COLORS.ui.textSecondary};">
+                                    ✕
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Content -->
+                        <div style="padding: 24px; max-height: 400px; overflow-y: auto;">
+                            <!-- Trust Score -->
+                            <div style="margin-bottom: 20px;">
+                                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+                                    <div style="display: flex; align-items: center; gap: 8px; padding: 8px 16px;
+                                         background: ${colorSet.light}; border-radius: 8px;
+                                         border: 2px solid ${colorSet.primary};">
+                                        <span style="font-size: 24px; font-weight: 700; color: ${colorSet.text};">
+                                            ${data.trustScore.score}
+                                        </span>
+                                        <span style="font-size: 12px; font-weight: 600; color: ${colorSet.text};">
+                                            / 100
+                                        </span>
+                                    </div>
+                                    <div style="flex: 1;">
+                                        <div style="font-size: 14px; font-weight: 600; color: ${COLORS.ui.text};">
+                                            Trust Score
+                                        </div>
+                                        <div style="font-size: 12px; color: ${COLORS.ui.textSecondary};">
+                                            ${trustLabels[data.trustScore.level]}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Clickbait Verdict -->
+                            <div style="margin-bottom: 20px;">
+                                <div style="display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px;
+                                     background: ${verdictColorSet.light}; border-radius: 8px;
+                                     border: 1px solid ${verdictColorSet.primary};">
+                                    <span style="font-size: 16px;">${verdictIcons[data.clickbaitVerdict.verdict]}</span>
+                                    <span style="font-size: 13px; font-weight: 700; color: ${verdictColorSet.text};">
+                                        ${verdictLabels[data.clickbaitVerdict.verdict]}
+                                    </span>
+                                </div>
+                            </div>
+                            
+                            <!-- Key Insights -->
+                            <div style="margin-bottom: 20px;">
+                                <h4 style="margin: 0 0 12px; font-size: 14px; font-weight: 600; color: ${COLORS.ui.text};">
+                                    Key Insights
+                                </h4>
+                                ${data.viewerInsights.slice(0, 2).map(insight => {
+                                    const insightColor = insight.type === 'warning' ? 'red' : insight.type === 'caution' ? 'yellow' : 'green';
+                                    return `
+                                        <div style="padding: 12px; background: ${COLORS.ui.surface}; border-radius: 8px;
+                                             border-left: 3px solid ${COLORS[insightColor].primary}; margin-bottom: 8px;">
+                                            <div style="font-size: 13px; font-weight: 500; color: ${COLORS.ui.text}; line-height: 1.5;">
+                                                ${insight.statement}
+                                            </div>
+                                            ${insight.supportingComments.length > 0 ? `
+                                                <div style="margin-top: 6px; font-size: 12px; color: ${COLORS.ui.textSecondary};">
+                                                    ${insight.supportingComments[0].votes.toLocaleString()} upvotes
+                                                </div>
+                                            ` : ''}
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                            
+                            <!-- Sentiment -->
+                            <div style="margin-bottom: 20px;">
+                                <h4 style="margin: 0 0 12px; font-size: 14px; font-weight: 600; color: ${COLORS.ui.text};">
+                                    Viewer Sentiment
+                                </h4>
+                                <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                                    <div style="flex: ${data.sentiment.distribution.positive}; height: 8px; 
+                                         background: ${COLORS.green.primary}; border-radius: 4px;"></div>
+                                    <div style="flex: ${data.sentiment.distribution.neutral}; height: 8px;
+                                         background: ${COLORS.yellow.primary}; border-radius: 4px;"></div>
+                                    <div style="flex: ${data.sentiment.distribution.negative}; height: 8px;
+                                         background: ${COLORS.red.primary}; border-radius: 4px;"></div>
+                                </div>
+                                <div style="display: flex; gap: 16px; font-size: 12px;">
+                                    <span><span style="color: ${COLORS.green.primary};">●</span> ${data.sentiment.distribution.positive}% Positive</span>
+                                    <span><span style="color: ${COLORS.yellow.primary};">●</span> ${data.sentiment.distribution.neutral}% Neutral</span>
+                                    <span><span style="color: ${COLORS.red.primary};">●</span> ${data.sentiment.distribution.negative}% Negative</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Actions -->
+                        <div style="padding: 20px 24px; border-top: 1px solid ${COLORS.ui.border};
+                             display: flex; gap: 12px; background: ${COLORS.ui.surface};">
+                            <button onclick="alert('Opening full report...'); document.getElementById('popover').innerHTML = ''"
+                                 style="flex: 1; padding: 12px 24px; background: ${COLORS.neutral.primary}; color: white;
+                                 border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                                🛡️ View Full Report
+                            </button>
+                            <button onclick="document.getElementById('popover').innerHTML = ''"
+                                 style="flex: 1; padding: 12px 24px; background: white; color: ${COLORS.neutral.primary};
+                                 border: 2px solid ${COLORS.ui.border}; border-radius: 8px; font-size: 14px;
+                                 font-weight: 600; cursor: pointer;">
+                                Watch Anyway
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function renderSidePanel() {
+            const data = mockData[currentScenario];
+            const trustColor = getTrustColor(data.trustScore.score);
+            const colorSet = COLORS[trustColor];
+            
+            let content = '';
+            
+            if (currentTab === 'summary') {
+                content = `
+                    <h3 style="font-size: 18px; margin-bottom: 20px; color: ${COLORS.ui.text};">📊 Summary</h3>
+                    
+                    <!-- Trust Score -->
+                    <div style="margin-bottom: 24px;">
+                        <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px; color: ${COLORS.ui.text};">
+                            Trust Score
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 16px;">
+                            <div style="font-size: 48px; font-weight: 700; color: ${colorSet.text};">
+                                ${data.trustScore.score}
+                            </div>
+                            <div style="flex: 1;">
+                                <div style="height: 12px; background: ${COLORS.ui.border}; border-radius: 6px; overflow: hidden;">
+                                    <div style="height: 100%; width: ${data.trustScore.score}%; background: ${colorSet.primary};"></div>
+                                </div>
+                                <div style="font-size: 12px; color: ${COLORS.ui.textSecondary}; margin-top: 4px;">
+                                    ${data.trustScore.level === 'high' ? 'Highly Reliable' : 
+                                      data.trustScore.level === 'moderate' ? 'Moderate Credibility' : 'Low Credibility'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Clickbait Verdict -->
+                    <div style="margin-bottom: 24px; padding: 16px; background: ${COLORS.ui.surface}; border-radius: 8px;">
+                        <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px; color: ${COLORS.ui.text};">
+                            Clickbait Verdict
+                        </div>
+                        <div style="font-size: 16px; font-weight: 700; color: ${COLORS[getClickbaitColor(data.clickbaitVerdict.verdict)].text}; margin-bottom: 4px;">
+                            ${data.clickbaitVerdict.verdict.toUpperCase().replace('-', ' ')}
+                        </div>
+                        <div style="font-size: 13px; color: ${COLORS.ui.textSecondary};">
+                            ${data.clickbaitVerdict.reasoning}
+                        </div>
+                    </div>
+                    
+                    <!-- Trust Factors -->
+                    <div style="margin-bottom: 24px;">
+                        <div style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: ${COLORS.ui.text};">
+                            Trust Factors
+                        </div>
+                        ${data.trustScore.factors.map(factor => `
+                            <div style="margin-bottom: 12px; padding: 12px; background: ${COLORS.ui.surface}; border-radius: 8px;">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                    <span style="font-weight: 600; font-size: 13px; color: ${COLORS.ui.text};">
+                                        ${factor.name}
+                                    </span>
+                                    <span style="font-weight: 700; color: ${getTrustColor(factor.score) === 'green' ? COLORS.green.text : 
+                                                                            getTrustColor(factor.score) === 'yellow' ? COLORS.yellow.text : COLORS.red.text};">
+                                        ${factor.score}
+                                    </span>
+                                </div>
+                                <div style="font-size: 12px; color: ${COLORS.ui.textSecondary};">
+                                    ${factor.description}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    
+                    <!-- Channel Credibility -->
+                    <div style="padding: 16px; background: ${COLORS.ui.surface}; border-radius: 8px;">
+                        <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px; color: ${COLORS.ui.text};">
+                            Channel Credibility
+                        </div>
+                        <div style="font-size: 13px; color: ${COLORS.ui.textSecondary}; line-height: 1.6;">
+                            <p style="margin: 0 0 8px;"><strong>Verified:</strong> ${data.channelCredibility.verifiedStatus ? 'Yes ✓' : 'No'}</p>
+                            <p style="margin: 0 0 8px;"><strong>History:</strong> ${data.channelCredibility.history}</p>
+                            <p style="margin: 0;"><strong>Bias:</strong> ${data.channelCredibility.bias}</p>
+                        </div>
+                    </div>
+                `;
+            } else if (currentTab === 'insights') {
+                content = `
+                    <h3 style="font-size: 18px; margin-bottom: 20px; color: ${COLORS.ui.text};">💬 Viewer Insights</h3>
+                    
+                    <!-- Sentiment Distribution -->
+                    <div style="margin-bottom: 24px; padding: 16px; background: ${COLORS.ui.surface}; border-radius: 8px;">
+                        <div style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: ${COLORS.ui.text};">
+                            Sentiment Distribution
+                        </div>
+                        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                            <div style="flex: ${data.sentiment.distribution.positive}; height: 40px; background: ${COLORS.green.primary}; 
+                                 border-radius: 8px; display: flex; align-items: center; justify-content: center;
+                                 color: white; font-weight: 700; font-size: 14px;">
+                                ${data.sentiment.distribution.positive}%
+                            </div>
+                            <div style="flex: ${data.sentiment.distribution.neutral}; height: 40px; background: ${COLORS.yellow.primary};
+                                 border-radius: 8px; display: flex; align-items: center; justify-content: center;
+                                 color: white; font-weight: 700; font-size: 14px;">
+                                ${data.sentiment.distribution.neutral}%
+                            </div>
+                            <div style="flex: ${data.sentiment.distribution.negative}; height: 40px; background: ${COLORS.red.primary};
+                                 border-radius: 8px; display: flex; align-items: center; justify-content: center;
+                                 color: white; font-weight: 700; font-size: 14px;">
+                                ${data.sentiment.distribution.negative}%
+                            </div>
+                        </div>
+                        <div style="display: flex; justify-content: space-around; font-size: 12px; color: ${COLORS.ui.textSecondary};">
+                            <span>Positive</span>
+                            <span>Neutral</span>
+                            <span>Negative</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Actionable Insights -->
+                    <div style="margin-bottom: 24px;">
+                        <div style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: ${COLORS.ui.text};">
+                            Actionable Insights
+                        </div>
+                        ${data.viewerInsights.map(insight => {
+                            const insightColor = insight.type === 'warning' ? 'red' : insight.type === 'caution' ? 'yellow' : 'green';
+                            const insightColorSet = COLORS[insightColor];
+                            return `
+                                <div style="margin-bottom: 16px; border: 1px solid ${insightColorSet.light}; border-radius: 8px; overflow: hidden;">
+                                    <div style="padding: 16px; background: ${insightColorSet.light}; border-left: 4px solid ${insightColorSet.primary};">
+                                        <p style="margin: 0; font-size: 15px; font-weight: 600; color: ${insightColorSet.dark}; line-height: 1.5;">
+                                            ${insight.statement}
+                                        </p>
+                                    </div>
+                                    ${insight.supportingComments.map(comment => `
+                                        <div style="padding: 12px 16px; background: white; border-top: 1px solid ${COLORS.ui.border};">
+                                            <div style="font-size: 13px; color: ${COLORS.ui.text}; margin-bottom: 4px;">
+                                                "${comment.text}"
+                                            </div>
+                                            <div style="font-size: 11px; color: ${COLORS.ui.textSecondary};">
+                                                👍 ${comment.votes.toLocaleString()} • ${comment.timestamp}
+                                            </div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+            } else if (currentTab === 'gaps') {
+                content = `
+                    <h3 style="font-size: 18px; margin-bottom: 20px; color: ${COLORS.ui.text};">🔍 Content Gaps</h3>
+                    
+                    <!-- Coverage Score -->
+                    <div style="margin-bottom: 24px; padding: 16px; background: ${COLORS.ui.surface}; border-radius: 8px;">
+                        <div style="font-size: 14px; font-weight: 600; margin-bottom: 8px; color: ${COLORS.ui.text};">
+                            Gap Coverage Score
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 16px;">
+                            <div style="font-size: 36px; font-weight: 700; color: ${getTrustColor(data.contentGaps.overallCoverage) === 'green' ? COLORS.green.text :
+                                                                                     getTrustColor(data.contentGaps.overallCoverage) === 'yellow' ? COLORS.yellow.text : COLORS.red.text};">
+                                ${data.contentGaps.overallCoverage}%
+                            </div>
+                            <div style="flex: 1;">
+                                <div style="height: 8px; background: ${COLORS.ui.border}; border-radius: 4px; overflow: hidden;">
+                                    <div style="height: 100%; width: ${data.contentGaps.overallCoverage}%; 
+                                         background: ${getTrustColor(data.contentGaps.overallCoverage) === 'green' ? COLORS.green.primary :
+                                                       getTrustColor(data.contentGaps.overallCoverage) === 'yellow' ? COLORS.yellow.primary : COLORS.red.primary};"></div>
+                                </div>
+                                <div style="font-size: 12px; color: ${COLORS.ui.textSecondary}; margin-top: 4px;">
+                                    of viewer questions addressed
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Bot Detection Toggle -->
+                    <div style="margin-bottom: 24px; padding: 16px; background: ${COLORS.ui.surface}; border-radius: 8px;
+                         display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div style="font-size: 14px; font-weight: 600; color: ${COLORS.ui.text};">
+                                Bot Detection
+                            </div>
+                            <div style="font-size: 12px; color: ${COLORS.ui.textSecondary};">
+                                Filter out likely bot comments
+                            </div>
+                        </div>
+                        <label style="position: relative; display: inline-block; width: 44px; height: 24px;">
+                            <input type="checkbox" ${data.contentGaps.botDetectionEnabled ? 'checked' : ''} 
+                                   style="opacity: 0; width: 0; height: 0;">
+                            <span style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+                                 background: ${data.contentGaps.botDetectionEnabled ? COLORS.green.primary : COLORS.ui.border};
+                                 border-radius: 24px; transition: 0.3s;">
+                                <span style="position: absolute; content: ''; height: 18px; width: 18px; left: ${data.contentGaps.botDetectionEnabled ? '23px' : '3px'};
+                                     bottom: 3px; background: white; border-radius: 50%; transition: 0.3s;"></span>
+                            </span>
+                        </label>
+                    </div>
+                    
+                    <!-- Unanswered Questions -->
+                    <div style="margin-bottom: 24px;">
+                        <div style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: ${COLORS.ui.text};">
+                            Unanswered Questions
+                        </div>
+                        ${data.contentGaps.unansweredQuestions.map(question => `
+                            <div style="margin-bottom: 16px; border: 1px solid ${COLORS.ui.border}; border-radius: 8px; overflow: hidden;">
+                                <div style="padding: 16px; background: ${COLORS.yellow.light}; border-left: 4px solid ${COLORS.yellow.primary};">
+                                    <p style="margin: 0; font-size: 15px; font-weight: 600; color: ${COLORS.yellow.dark}; line-height: 1.5;">
+                                        ${question.statement}
+                                    </p>
+                                    <div style="margin-top: 6px; font-size: 11px; color: ${COLORS.yellow.dark}; opacity: 0.8; text-transform: uppercase;">
+                                        ${question.category}
+                                    </div>
+                                </div>
+                                ${question.supportingComments.map(comment => `
+                                    <div style="padding: 12px 16px; background: white; border-top: 1px solid ${COLORS.ui.border};">
+                                        <div style="font-size: 13px; color: ${COLORS.ui.text}; margin-bottom: 4px;">
+                                            "${comment.text}"
+                                        </div>
+                                        <div style="font-size: 11px; color: ${COLORS.ui.textSecondary};">
+                                            👍 ${comment.votes.toLocaleString()} • ${comment.timestamp}
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            } else if (currentTab === 'report') {
+                content = `
+                    <h3 style="font-size: 18px; margin-bottom: 20px; color: ${COLORS.ui.text};">📄 Report</h3>
+                    
+                    <!-- Download Options -->
+                    <div style="margin-bottom: 24px; padding: 20px; background: ${COLORS.ui.surface}; border-radius: 8px;">
+                        <div style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: ${COLORS.ui.text};">
+                            Download Analysis Report
+                        </div>
+                        <p style="font-size: 13px; color: ${COLORS.ui.textSecondary}; margin-bottom: 16px;">
+                            Save this analysis for future reference
+                        </p>
+                        <div style="display: flex; gap: 12px;">
+                            <button onclick="alert('Downloading PDF...')" style="flex: 1; padding: 12px; background: ${COLORS.neutral.primary};
+                                 color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                                📥 Download PDF
+                            </button>
+                            <button onclick="alert('Downloading JSON...')" style="flex: 1; padding: 12px; background: white;
+                                 color: ${COLORS.neutral.primary}; border: 2px solid ${COLORS.ui.border}; border-radius: 8px;
+                                 cursor: pointer; font-weight: 600;">
+                                📥 Download JSON
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Analysis Metadata -->
+                    <div style="margin-bottom: 24px; padding: 16px; background: ${COLORS.ui.surface}; border-radius: 8px;">
+                        <div style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: ${COLORS.ui.text};">
+                            Analysis Details
+                        </div>
+                        <div style="font-size: 13px; color: ${COLORS.ui.textSecondary}; line-height: 1.8;">
+                            <p style="margin: 0;"><strong>Analyzed:</strong> ${new Date(data.analysisMetadata.analyzedAt).toLocaleString()}</p>
+                            <p style="margin: 0;"><strong>Comments Sampled:</strong> ${data.analysisMetadata.commentsSampled.toLocaleString()}</p>
+                            <p style="margin: 0;"><strong>Bot Comments Filtered:</strong> ${data.analysisMetadata.botCommentsFiltered.toLocaleString()}</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Recent History -->
+                    <div>
+                        <div style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: ${COLORS.ui.text};">
+                            Recent Analysis History
+                        </div>
+                        <div style="font-size: 13px; color: ${COLORS.ui.textSecondary}; text-align: center; padding: 40px;">
+                            <div style="font-size: 48px; opacity: 0.2; margin-bottom: 8px;">📊</div>
+                            No previous analyses
+                        </div>
+                    </div>
+                `;
+            }
+            
+            document.getElementById('sidePanel').innerHTML = content;
+        }
+        
+        // Initial render
+        renderStatusChip();
+        renderSidePanel();
+    </script>
+</body>
+</html>
