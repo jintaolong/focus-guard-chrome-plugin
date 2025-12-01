@@ -5,13 +5,14 @@ import type { VideoAnalysis } from "~types/analysis"
 import { COLORS, getTrustScoreColor, getClickbaitVerdictColor } from "~lib/colors"
 
 interface SummaryTabProps {
-  analysis: VideoAnalysis
+  analysis?: VideoAnalysis | null
 }
 
 export const SummaryTab = ({ analysis }: SummaryTabProps) => {
-  const { summary } = analysis
-  const trustColor = getTrustScoreColor(summary.trustScore)
-  const verdictColor = getClickbaitVerdictColor(summary.clickbaitVerdict.label)
+  if (!analysis || !analysis.summary) return null
+  const summary = analysis.summary
+  const trustColor = getTrustScoreColor(summary.trustScore ?? 0)
+  const verdictColor = getClickbaitVerdictColor(summary.clickbaitVerdict?.label ?? "unknown")
 
   return (
     <div style={{ padding: "24px" }}>
@@ -26,7 +27,7 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
             margin: "0 0 24px 0",
             fontSize: "18px",
             fontWeight: "600",
-            color: COLORS.ui.text.primary
+            color: COLORS.ui.textPrimary
           }}>
           Trust Score
         </h3>
@@ -77,7 +78,7 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
               transform: "translateX(-50%)",
               fontSize: "13px",
               fontWeight: "500",
-              color: COLORS.ui.text.secondary
+              color: COLORS.ui.textSecondary
             }}>
             out of 10
           </div>
@@ -90,7 +91,7 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
             fontSize: "14px",
             color: COLORS.ui.text.secondary
           }}>
-          AI Confidence: <strong>{summary.aiConfidence}%</strong>
+            AI Confidence: <strong>{summary.aiConfidence ?? 0}%</strong>
         </div>
       </div>
 
@@ -119,11 +120,11 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
             marginBottom: "16px"
           }}>
           <span style={{ fontSize: "24px" }}>
-            {summary.clickbaitVerdict.label === "LEGIT"
-              ? "✓"
-              : summary.clickbaitVerdict.label === "MISLEADING"
-              ? "⚠"
-              : "✗"}
+              {summary.clickbaitVerdict?.label === "LEGIT"
+                ? "✓"
+                : summary.clickbaitVerdict?.label === "MISLEADING"
+                ? "⚠"
+                : "✗"}
           </span>
           <span
             style={{
@@ -132,7 +133,7 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
               color: COLORS[verdictColor].dark,
               letterSpacing: "0.5px"
             }}>
-            {summary.clickbaitVerdict.label}
+            {summary.clickbaitVerdict?.label}
           </span>
         </div>
 
@@ -154,7 +155,7 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
                 fontWeight: "600",
                 color: COLORS[verdictColor].text
               }}>
-              {summary.clickbaitVerdict.confidence}%
+              {summary.clickbaitVerdict?.confidence ?? 0}%
             </span>
           </div>
           <div
@@ -167,7 +168,7 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
             }}>
             <div
               style={{
-                width: `${summary.clickbaitVerdict.confidence}%`,
+                width: `${summary.clickbaitVerdict?.confidence ?? 0}%`,
                 height: "100%",
                 backgroundColor: COLORS[verdictColor].primary,
                 transition: "width 1s ease-out"
@@ -207,7 +208,7 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
                 fontWeight: "700",
                 color: COLORS.neutral.primary
               }}>
-              {summary.channelCredibility.score}/100
+              {summary.channelCredibility?.score ?? 0}/100
             </span>
           </div>
           <div
@@ -220,7 +221,7 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
             }}>
             <div
               style={{
-                width: `${summary.channelCredibility.score}%`,
+                width: `${summary.channelCredibility?.score ?? 0}%`,
                 height: "100%",
                 backgroundColor: COLORS.neutral.primary,
                 transition: "width 1s ease-out"
@@ -241,7 +242,7 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
             Key Factors:
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            {summary.channelCredibility.factors.map((factor, index) => (
+            {(summary.channelCredibility?.factors || []).map((factor: any, index: number) => (
               <div
                 key={index}
                 style={{

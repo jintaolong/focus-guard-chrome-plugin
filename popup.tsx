@@ -22,6 +22,7 @@ function IndexPopup() {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
+    console.log("Focus Guard popup loaded");
     loadUserData()
   }, [])
 

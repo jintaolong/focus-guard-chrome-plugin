@@ -8,6 +8,7 @@ import { StatusChip } from "~components/StatusChip"
 import { SidePanel } from "~components/SidePanel"
 import { PreWatchPopover } from "~components/PreWatchPopover"
 import { FocusGuardAPI } from "~lib/api"
+import { getRandomMockAnalysis } from "~lib/mockData"
 import type { VideoResult, UserStats } from "~types"
 import type {
   VideoAnalysis,
@@ -17,7 +18,7 @@ import type {
 
 // Configure to only run on YouTube
 export const config: PlasmoCSConfig = {
-  matches: ["https://www.youtube.com/*"],
+  matches: ["https://www.youtube.com/watch?v=*"],
   all_frames: false
 }
 
@@ -52,6 +53,7 @@ const ContentScript = () => {
 
   useEffect(() => {
     // Check if we're on YouTube home page or watch page
+    console.log("Focus Guard content script loaded");
     const checkPageType = () => {
       const isHome =
         window.location.pathname === "/" ||
@@ -61,6 +63,7 @@ const ContentScript = () => {
 
       setIsYouTubeHome(isHome)
       setOnWatchPage(isWatch)
+      console.log("Focus Guard checkPageType: isHome=", isHome, "isWatch=", isWatch, "href=", window.location.href)
 
       // FR-202: Auto-activate analysis on watch page
       if (isWatch) {
@@ -81,15 +84,15 @@ const ContentScript = () => {
 
     checkPageType()
 
-    // Listen for URL changes (YouTube is a SPA)
-    const observer = new MutationObserver(checkPageType)
-    observer.observe(document.body, { childList: true, subtree: true })
+    // // Listen for URL changes (YouTube is a SPA)
+    // const observer = new MutationObserver(checkPageType)
+    // observer.observe(document.body, { childList: true, subtree: true })
 
-    // Load user stats and history
-    loadUserStats()
-    loadAnalysisHistory()
+    // // Load user stats and history
+    // loadUserStats()
+    // loadAnalysisHistory()
 
-    return () => observer.disconnect()
+    // return () => observer.disconnect()
   }, [])
 
   useEffect(() => {
@@ -181,9 +184,8 @@ const ContentScript = () => {
       //   clickbaitVerdict: response.analysis.summary.clickbaitVerdict.label,
       //   isAnalyzing: false
       // })
-      
-      // Development mock data:
-      const { getRandomMockAnalysis } = await import("~lib/mockData")
+
+      // Development mock data (statically imported to avoid missing chunk errors):
       const mockAnalysis = getRandomMockAnalysis()
       setVideoAnalysis(mockAnalysis)
       setAnalysisStatus({
@@ -197,8 +199,7 @@ const ContentScript = () => {
       }
     } catch (error) {
       console.error("Video analysis failed:", error)
-      // Use mock data for development
-      const { getRandomMockAnalysis } = await import("~lib/mockData")
+      // Use mock data for development (statically imported fallback)
       const mockAnalysis = getRandomMockAnalysis()
       setVideoAnalysis(mockAnalysis)
       setAnalysisStatus({
@@ -300,12 +301,47 @@ const ContentScript = () => {
 
   const injectWatchPageUI = () => {
     // FR-103: Inject Status Chip near video title
-    const titleElement = document.querySelector("#title h1.ytd-watch-metadata, #container h1.title")
-    if (titleElement && !document.getElementById("focus-guard-status-chip")) {
+    const selectors = [
+      "#title h1.ytd-watch-metadata",
+      "#container h1.title",
+      "h1.title",
+      "h1.ytd-video-primary-info-renderer",
+      "yt-formatted-string.ytd-video-primary-info-renderer"
+    ]
+
+    let titleElement: Element | null = null
+    for (const sel of selectors) {
+      titleElement = document.querySelector(sel)
+      if (titleElement) {
+        console.log("Focus Guard: found title element with selector:", sel, titleElement)
+        break
+      }
+    }
+
+    if (!titleElement) {
+      console.log("Focus Guard: title element not found, skipping injection")
+      return
+    }
+
+    if (!document.getElementById("focus-guard-status-chip")) {
       const chipContainer = document.createElement("div")
       chipContainer.id = "focus-guard-status-chip"
-      chipContainer.style.display = "inline-block"
-      titleElement.parentElement?.appendChild(chipContainer)
+    // Render as a floating fixed element on the left so it doesn't block the video
+    chipContainer.style.display = "inline-block"
+    chipContainer.style.position = "fixed"
+    chipContainer.style.left = "12px"
+    chipContainer.style.top = "50%"
+    chipContainer.style.transform = "translateY(-50%)"
+    chipContainer.style.zIndex = "2147483647"
+
+      // Prefer appending to the title's parent, but fall back to inserting after the title
+      if (titleElement.parentElement) {
+        titleElement.parentElement.appendChild(chipContainer)
+        console.log("Focus Guard: appended chip to title parent")
+      } else {
+        titleElement.insertAdjacentElement("afterend", chipContainer)
+        console.log("Focus Guard: inserted chip after title element")
+      }
 
       const root = createRoot(chipContainer)
       root.render(
@@ -320,6 +356,7 @@ const ContentScript = () => {
   const cleanupWatchPageUI = () => {
     const chipContainer = document.getElementById("focus-guard-status-chip")
     if (chipContainer) {
+      console.log("Focus Guard: removing chip container")
       chipContainer.remove()
     }
   }

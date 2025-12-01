@@ -12,7 +12,8 @@ interface ContentGapsTabProps {
 }
 
 export const ContentGapsTab = ({ analysis, onBotFilterChange }: ContentGapsTabProps) => {
-  const { contentGaps } = analysis
+  const contentGaps = analysis?.contentGaps
+  if (!contentGaps) return null
   const [botFilterEnabled, setBotFilterEnabled] = useState(contentGaps.botDetectionEnabled)
 
   const handleBotFilterToggle = () => {
@@ -28,7 +29,8 @@ export const ContentGapsTab = ({ analysis, onBotFilterChange }: ContentGapsTabPr
     return COLORS.low
   }
 
-  const coverageColor = getCoverageColor(contentGaps.gapCoverageScore)
+  const coverageScore = contentGaps.gapCoverageScore ?? 0
+  const coverageColor = getCoverageColor(coverageScore)
 
   return (
     <div style={{ padding: "24px" }}>
@@ -39,7 +41,7 @@ export const ContentGapsTab = ({ analysis, onBotFilterChange }: ContentGapsTabPr
             margin: "0 0 16px 0",
             fontSize: "18px",
             fontWeight: "600",
-            color: COLORS.ui.text.primary
+            color: COLORS.ui.textPrimary
           }}>
           Content Gap Coverage
         </h3>
@@ -61,8 +63,8 @@ export const ContentGapsTab = ({ analysis, onBotFilterChange }: ContentGapsTabPr
             <span style={{ fontSize: "14px", fontWeight: "600", color: coverageColor.dark }}>
               Coverage Score
             </span>
-            <span style={{ fontSize: "32px", fontWeight: "700", color: coverageColor.primary }}>
-              {contentGaps.gapCoverageScore}%
+              <span style={{ fontSize: "32px", fontWeight: "700", color: coverageColor.primary }}>
+              {coverageScore}%
             </span>
           </div>
 
@@ -78,7 +80,7 @@ export const ContentGapsTab = ({ analysis, onBotFilterChange }: ContentGapsTabPr
             }}>
             <div
               style={{
-                width: `${contentGaps.gapCoverageScore}%`,
+                width: `${coverageScore}%`,
                 height: "100%",
                 backgroundColor: coverageColor.primary,
                 transition: "width 1s ease-out"
@@ -92,9 +94,9 @@ export const ContentGapsTab = ({ analysis, onBotFilterChange }: ContentGapsTabPr
               fontSize: "13px",
               color: coverageColor.dark
             }}>
-            {contentGaps.gapCoverageScore >= 80
+            {coverageScore >= 80
               ? "Excellent! Most viewer questions are addressed."
-              : contentGaps.gapCoverageScore >= 50
+              : coverageScore >= 50
               ? "Good coverage, but some questions remain unanswered."
               : "Many viewer questions are not addressed in the video."}
           </p>
@@ -164,17 +166,16 @@ export const ContentGapsTab = ({ analysis, onBotFilterChange }: ContentGapsTabPr
 
       {/* Unanswered Questions */}
       <div>
-        <h3
+          <h3
           style={{
             margin: "0 0 16px 0",
             fontSize: "16px",
             fontWeight: "600",
-            color: COLORS.medium.text
+              color: COLORS.medium.text
           }}>
           ⚠️ Unanswered Questions
         </h3>
-
-        {contentGaps.unansweredQuestions.length === 0 ? (
+        {(contentGaps.unansweredQuestions || []).length === 0 ? (
           <div
             style={{
               padding: "24px",
@@ -203,16 +204,15 @@ export const ContentGapsTab = ({ analysis, onBotFilterChange }: ContentGapsTabPr
           </div>
         ) : (
           <>
-            <p
+                <p
               style={{
                 margin: "0 0 16px 0",
                 fontSize: "13px",
-                color: COLORS.ui.text.secondary
+                    color: COLORS.ui.textSecondary
               }}>
               These questions from viewers were not addressed in the video transcript:
             </p>
-
-            {contentGaps.unansweredQuestions.map((gap) => (
+            {(contentGaps.unansweredQuestions || []).map((gap: any) => (
               <StatementBlock
                 key={gap.id}
                 insight={gap}

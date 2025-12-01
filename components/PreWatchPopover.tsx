@@ -10,7 +10,7 @@
 
 import { useState, useEffect } from "react"
 import type { VideoAnalysis } from "~types/analysis"
-import { COLORS, getTrustScoreColor, getClickbaitVerdictColor } from "~lib/colors"
+import { COLORS, getTrustScoreColor, getClickbaitVerdictColor, getColorSet } from "~lib/colors"
 
 interface PreWatchPopoverProps {
   analysis: VideoAnalysis | null
@@ -60,11 +60,27 @@ export const PreWatchPopover = ({
     return null
   }
 
-  const trustColor = analysis ? getTrustScoreColor(analysis.trustScore.score) : "neutral"
-  const verdictColor = analysis ? getClickbaitVerdictColor(analysis.clickbaitVerdict.verdict) : "neutral"
+  const trustScoreVal = analysis?.trustScore?.score ?? 0
+  const trustColor = getTrustScoreColor(trustScoreVal)
 
+  const verdictStr = analysis
+    ? typeof analysis.clickbaitVerdict === "string"
+      ? analysis.clickbaitVerdict
+      : analysis.clickbaitVerdict?.verdict
+    : undefined
+  const verdictColor = getClickbaitVerdictColor(verdictStr || "unknown")
+
+  // Normalize viewer insights into an array shape for rendering
+  const viewerInsightsArray = Array.isArray(analysis?.viewerInsights)
+    ? (analysis!.viewerInsights as any[])
+    : analysis?.viewerInsights?.actionableInsights
+    ? [
+        ...(analysis!.viewerInsights.actionableInsights.highValue || []),
+        ...(analysis!.viewerInsights.actionableInsights.improvements || [])
+      ]
+    : []
   // Get top 2 insights for preview
-  const topInsights = analysis?.viewerInsights.slice(0, 2) || []
+  const topInsights = (viewerInsightsArray || []).slice(0, 2)
 
   return (
     <div
@@ -150,7 +166,7 @@ export const PreWatchPopover = ({
                 🛡️
               </div>
               <div style={{ flex: 1 }}>
-                <h2 style={{ margin: 0, fontSize: "20px", fontWeight: "700", color: COLORS.ui.text }}>
+                <h2 style={{ margin: 0, fontSize: "20px", fontWeight: "700", color: COLORS.ui.textPrimary }}>
                   Video Analysis Complete
                 </h2>
                 <p style={{ margin: "4px 0 0", fontSize: "13px", color: COLORS.ui.textSecondary }}>
@@ -201,21 +217,21 @@ export const PreWatchPopover = ({
                     border: `2px solid ${COLORS[trustColor].primary}`
                   }}>
                   <span style={{ fontSize: "24px", fontWeight: "700", color: COLORS[trustColor].text }}>
-                    {analysis.trustScore.score}
+                    {analysis?.trustScore?.score ?? 0}
                   </span>
                   <span style={{ fontSize: "12px", fontWeight: "600", color: COLORS[trustColor].text }}>
                     / 100
                   </span>
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: "14px", fontWeight: "600", color: COLORS.ui.text }}>
+                  <div style={{ fontSize: "14px", fontWeight: "600", color: COLORS.ui.textPrimary }}>
                     Trust Score
                   </div>
-                  <div style={{ fontSize: "12px", color: COLORS.ui.textSecondary }}>
-                    {analysis.trustScore.level === "high" && "Highly Reliable"}
-                    {analysis.trustScore.level === "moderate" && "Moderate Credibility"}
-                    {analysis.trustScore.level === "low" && "Low Credibility"}
-                  </div>
+                    <div style={{ fontSize: "12px", color: COLORS.ui.textSecondary }}>
+                      {analysis?.trustScore?.level === "high" && "Highly Reliable"}
+                      {analysis?.trustScore?.level === "moderate" && "Moderate Credibility"}
+                      {analysis?.trustScore?.level === "low" && "Low Credibility"}
+                    </div>
                 </div>
               </div>
             </div>
@@ -233,14 +249,14 @@ export const PreWatchPopover = ({
                   border: `1px solid ${COLORS[verdictColor].primary}`
                 }}>
                 <span style={{ fontSize: "16px" }}>
-                  {analysis.clickbaitVerdict.verdict === "not-clickbait" && "✅"}
-                  {analysis.clickbaitVerdict.verdict === "moderate-clickbait" && "⚠️"}
-                  {analysis.clickbaitVerdict.verdict === "highly-clickbait" && "🚨"}
+                  {verdictStr === "not-clickbait" && "✅"}
+                  {verdictStr === "moderate-clickbait" && "⚠️"}
+                  {verdictStr === "highly-clickbait" && "🚨"}
                 </span>
                 <span style={{ fontSize: "13px", fontWeight: "700", color: COLORS[verdictColor].text }}>
-                  {analysis.clickbaitVerdict.verdict === "not-clickbait" && "LEGIT"}
-                  {analysis.clickbaitVerdict.verdict === "moderate-clickbait" && "MODERATE CLICKBAIT"}
-                  {analysis.clickbaitVerdict.verdict === "highly-clickbait" && "HIGHLY CLICKBAIT"}
+                  {verdictStr === "not-clickbait" && "LEGIT"}
+                  {verdictStr === "moderate-clickbait" && "MODERATE CLICKBAIT"}
+                  {verdictStr === "highly-clickbait" && "HIGHLY CLICKBAIT"}
                 </span>
               </div>
             </div>
@@ -248,23 +264,23 @@ export const PreWatchPopover = ({
             {/* Key Insights Preview */}
             {topInsights.length > 0 && (
               <div style={{ marginBottom: "20px" }}>
-                <h4 style={{ margin: "0 0 12px", fontSize: "14px", fontWeight: "600", color: COLORS.ui.text }}>
+                  <h4 style={{ margin: "0 0 12px", fontSize: "14px", fontWeight: "600", color: COLORS.ui.textPrimary }}>
                   Key Insights
                 </h4>
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                  {topInsights.map((insight, idx) => (
+                  {topInsights.map((insight: any, idx: number) => (
                     <div
                       key={idx}
                       style={{
                         padding: "12px",
                         backgroundColor: COLORS.ui.surface,
                         borderRadius: "8px",
-                        borderLeft: `3px solid ${COLORS[insight.type === "warning" ? "red" : insight.type === "caution" ? "yellow" : "green"].primary}`
+                        borderLeft: `3px solid ${getColorSet(insight.type === "warning" ? "low" : insight.type === "caution" ? "medium" : "high").primary}`
                       }}>
-                      <div style={{ fontSize: "13px", fontWeight: "500", color: COLORS.ui.text, lineHeight: "1.5" }}>
+                      <div style={{ fontSize: "13px", fontWeight: "500", color: COLORS.ui.textPrimary, lineHeight: "1.5" }}>
                         {insight.statement}
                       </div>
-                      {insight.supportingComments.length > 0 && (
+                      {insight.supportingComments?.length > 0 && (
                         <div style={{ marginTop: "6px", fontSize: "12px", color: COLORS.ui.textSecondary }}>
                           {insight.supportingComments[0].votes.toLocaleString()} upvotes
                         </div>
@@ -272,9 +288,9 @@ export const PreWatchPopover = ({
                     </div>
                   ))}
                 </div>
-                {analysis.viewerInsights.length > 2 && (
+                {viewerInsightsArray.length > 2 && (
                   <div style={{ marginTop: "8px", fontSize: "12px", color: COLORS.ui.textSecondary, textAlign: "center" }}>
-                    +{analysis.viewerInsights.length - 2} more insights
+                    +{viewerInsightsArray.length - 2} more insights
                   </div>
                 )}
               </div>
@@ -282,23 +298,23 @@ export const PreWatchPopover = ({
 
             {/* Sentiment Overview */}
             <div style={{ marginBottom: "20px" }}>
-              <h4 style={{ margin: "0 0 12px", fontSize: "14px", fontWeight: "600", color: COLORS.ui.text }}>
+              <h4 style={{ margin: "0 0 12px", fontSize: "14px", fontWeight: "600", color: COLORS.ui.textPrimary }}>
                 Viewer Sentiment
               </h4>
               <div style={{ display: "flex", gap: "8px" }}>
-                <div style={{ flex: analysis.sentiment.distribution.positive, height: "8px", backgroundColor: COLORS.green.primary, borderRadius: "4px" }} />
-                <div style={{ flex: analysis.sentiment.distribution.neutral, height: "8px", backgroundColor: COLORS.yellow.primary, borderRadius: "4px" }} />
-                <div style={{ flex: analysis.sentiment.distribution.negative, height: "8px", backgroundColor: COLORS.red.primary, borderRadius: "4px" }} />
+                <div style={{ flex: analysis?.sentiment?.distribution?.positive ?? 0, height: "8px", backgroundColor: getColorSet("high").primary, borderRadius: "4px" }} />
+                <div style={{ flex: analysis?.sentiment?.distribution?.neutral ?? 0, height: "8px", backgroundColor: getColorSet("neutral").primary, borderRadius: "4px" }} />
+                <div style={{ flex: analysis?.sentiment?.distribution?.negative ?? 0, height: "8px", backgroundColor: getColorSet("low").primary, borderRadius: "4px" }} />
               </div>
               <div style={{ display: "flex", gap: "16px", marginTop: "8px", fontSize: "12px" }}>
                 <span>
-                  <span style={{ color: COLORS.green.primary }}>●</span> {analysis.sentiment.distribution.positive}% Positive
+                  <span style={{ color: getColorSet("high").primary }}>●</span> {analysis?.sentiment?.distribution?.positive ?? 0}% Positive
                 </span>
                 <span>
-                  <span style={{ color: COLORS.yellow.primary }}>●</span> {analysis.sentiment.distribution.neutral}% Neutral
+                  <span style={{ color: getColorSet("neutral").primary }}>●</span> {analysis?.sentiment?.distribution?.neutral ?? 0}% Neutral
                 </span>
                 <span>
-                  <span style={{ color: COLORS.red.primary }}>●</span> {analysis.sentiment.distribution.negative}% Negative
+                  <span style={{ color: getColorSet("low").primary }}>●</span> {analysis?.sentiment?.distribution?.negative ?? 0}% Negative
                 </span>
               </div>
             </div>

@@ -42,7 +42,7 @@ export const ReportTab = ({
             margin: "0 0 16px 0",
             fontSize: "18px",
             fontWeight: "600",
-            color: COLORS.ui.text.primary
+            color: COLORS.ui.textPrimary
           }}>
           Download Report
         </h3>
@@ -58,8 +58,8 @@ export const ReportTab = ({
             }}>
             Select Format:
           </p>
-          <div style={{ display: "flex", gap: "12px" }}>
-            {analysis.reportInfo.availableFormats.map((format) => (
+            <div style={{ display: "flex", gap: "12px" }}>
+            {(analysis.reportInfo?.availableFormats || []).map((format: any) => (
               <button
                 key={format}
                 onClick={() => setSelectedFormat(format)}
@@ -68,7 +68,7 @@ export const ReportTab = ({
                   padding: "12px",
                   backgroundColor:
                     selectedFormat === format ? COLORS.neutral.primary : "white",
-                  color: selectedFormat === format ? "white" : COLORS.ui.text.primary,
+                  color: selectedFormat === format ? "white" : COLORS.ui.textPrimary,
                   border: `2px solid ${COLORS.neutral.primary}`,
                   borderRadius: "8px",
                   fontSize: "14px",
@@ -145,14 +145,14 @@ export const ReportTab = ({
         </button>
 
         {/* Analysis Date */}
-        <p
+          <p
           style={{
             margin: "12px 0 0 0",
             fontSize: "12px",
-            color: COLORS.ui.text.secondary,
+              color: COLORS.ui.textSecondary,
             textAlign: "center"
           }}>
-          Analysis performed: {new Date(analysis.reportInfo.analysisDate).toLocaleString()}
+          Analysis performed: {analysis.reportInfo?.analysisDate ? new Date(analysis.reportInfo.analysisDate).toLocaleString() : "Unknown"}
         </p>
       </div>
 

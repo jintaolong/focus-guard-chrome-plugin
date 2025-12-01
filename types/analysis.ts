@@ -14,53 +14,80 @@ export interface VideoAnalysisStatus {
 // FR-102: Complete Video Analysis data
 export interface VideoAnalysis {
   videoId: string
-  videoUrl: string
-  
-  // Tab 1: Summary & Score
-  summary: {
-    trustScore: number // 0-10
-    aiConfidence: number // 0-100%
-    clickbaitVerdict: {
-      label: "LEGIT" | "MISLEADING" | "CLICKBAIT"
-      confidence: number // 0-100%
+  videoTitle?: string
+  videoUrl?: string
+
+  // Legacy and current shapes supported for compatibility with components
+  // Summary-style (newer shape)
+  summary?: {
+    trustScore: number // 0-10 or 0-100
+    aiConfidence?: number // 0-100%
+    clickbaitVerdict?: {
+      label?: "LEGIT" | "MISLEADING" | "CLICKBAIT"
+      confidence?: number // 0-100%
     }
-    channelCredibility: {
-      score: number // 0-100
-      factors: string[] // e.g., ["Verified", "High Engagement"]
+    channelCredibility?: {
+      score?: number // 0-100
+      factors?: string[]
     }
   }
-  
-  // Tab 2: Viewer Insights
-  viewerInsights: {
-    sentimentBreakdown: {
-      positive: number // percentage
-      negative: number
+
+  // Top-level (legacy) fields used by several components
+  trustScore?: {
+    score: number // 0-100 or 0-10
+    level?: "high" | "moderate" | "low" | string
+    factors?: Array<{ name: string; score: number; description?: string }>
+  }
+
+  clickbaitVerdict?: {
+    verdict?: string
+    confidence?: number
+    reasoning?: string
+  }
+
+  // Viewer insights can be provided as an array (legacy) or as a structured object
+  viewerInsights?:
+    | InsightWithComments[]
+    | {
+        sentimentBreakdown: {
+          positive: number
+          negative: number
+          neutral: number
+          mixed: number
+          totalCommentsAnalyzed: number
+        }
+        actionableInsights: {
+          highValue: InsightWithComments[]
+          improvements: InsightWithComments[]
+        }
+      }
+
+  // Some consumers expect `sentiment` at top level
+  sentiment?: {
+    overall?: string
+    distribution?: {
+      positive: number
       neutral: number
-      mixed: number
-      totalCommentsAnalyzed: number
-    }
-    actionableInsights: {
-      highValue: InsightWithComments[] // Green - strengths
-      improvements: InsightWithComments[] // Red/Orange - issues
+      negative: number
+      mixed?: number
+      totalCommentsAnalyzed?: number
     }
   }
-  
-  // Tab 3: Content Gaps
-  contentGaps: {
-    gapCoverageScore: number // 0-100%
-    unansweredQuestions: InsightWithComments[]
-    botDetectionEnabled: boolean
+
+  // Content gaps (keep original name and shape)
+  contentGaps?: {
+    gapCoverageScore?: number
+    unansweredQuestions?: InsightWithComments[]
+    botDetectionEnabled?: boolean
   }
-  
-  // Tab 4: Report & Account
-  reportInfo: {
-    availableFormats: ("PDF" | "TXT")[]
-    analysisDate: string
+
+  reportInfo?: {
+    availableFormats?: ("PDF" | "TXT")[]
+    analysisDate?: string
   }
-  
-  // Metadata
-  analyzedAt: string
-  isStale: boolean
+
+  analyzedAt?: string
+  isStale?: boolean
 }
 
 // FR-401: Statement and Supporting Comments Pattern

@@ -2,7 +2,7 @@
 // Sentiment Overview (Donut Chart) + Actionable Insights (FR-401 pattern)
 
 import type { VideoAnalysis } from "~types/analysis"
-import { COLORS, getSentimentColor } from "~lib/colors"
+import { COLORS, getSentimentColor, getColorSet } from "~lib/colors"
 import { StatementBlock } from "~components/StatementBlock"
 
 interface ViewerInsightsTabProps {
@@ -10,42 +10,55 @@ interface ViewerInsightsTabProps {
 }
 
 export const ViewerInsightsTab = ({ analysis }: ViewerInsightsTabProps) => {
-  const { viewerInsights } = analysis
-  const { sentimentBreakdown, actionableInsights } = viewerInsights
+  const viewerInsights = (analysis as any)?.viewerInsights
+
+  // Normalize shapes: provide defaults when fields are missing
+  const sentimentBreakdown = viewerInsights?.sentimentBreakdown ?? {
+    positive: 0,
+    negative: 0,
+    neutral: 0,
+    mixed: 0,
+    totalCommentsAnalyzed: Array.isArray(viewerInsights) ? viewerInsights.length : 0
+  }
+
+  const actionableInsights = viewerInsights?.actionableInsights ?? {
+    highValue: Array.isArray(viewerInsights) ? viewerInsights : [],
+    improvements: []
+  }
 
   // Calculate percentages for donut chart
   const total =
-    sentimentBreakdown.positive +
-    sentimentBreakdown.negative +
-    sentimentBreakdown.neutral +
-    sentimentBreakdown.mixed
+    (sentimentBreakdown.positive || 0) +
+    (sentimentBreakdown.negative || 0) +
+    (sentimentBreakdown.neutral || 0) +
+    (sentimentBreakdown.mixed || 0) || 1
 
   const percentages = {
-    positive: (sentimentBreakdown.positive / total) * 100,
-    negative: (sentimentBreakdown.negative / total) * 100,
-    neutral: (sentimentBreakdown.neutral / total) * 100,
-    mixed: (sentimentBreakdown.mixed / total) * 100
+    positive: ((sentimentBreakdown.positive || 0) / total) * 100,
+    negative: ((sentimentBreakdown.negative || 0) / total) * 100,
+    neutral: ((sentimentBreakdown.neutral || 0) / total) * 100,
+    mixed: ((sentimentBreakdown.mixed || 0) / total) * 100
   }
 
   // Create donut chart segments
   let currentAngle = -90 // Start at top
   const segments = [
-    { type: "positive" as const, value: percentages.positive, count: sentimentBreakdown.positive },
-    { type: "negative" as const, value: percentages.negative, count: sentimentBreakdown.negative },
-    { type: "neutral" as const, value: percentages.neutral, count: sentimentBreakdown.neutral },
-    { type: "mixed" as const, value: percentages.mixed, count: sentimentBreakdown.mixed }
+    { type: "positive" as const, value: percentages.positive, count: sentimentBreakdown.positive || 0 },
+    { type: "negative" as const, value: percentages.negative, count: sentimentBreakdown.negative || 0 },
+    { type: "neutral" as const, value: percentages.neutral, count: sentimentBreakdown.neutral || 0 },
+    { type: "mixed" as const, value: percentages.mixed, count: sentimentBreakdown.mixed || 0 }
   ]
 
   return (
     <div style={{ padding: "24px" }}>
       {/* Sentiment Overview */}
       <div style={{ marginBottom: "32px" }}>
-        <h3
+          <h3
           style={{
             margin: "0 0 24px 0",
             fontSize: "18px",
             fontWeight: "600",
-            color: COLORS.ui.text.primary
+              color: COLORS.ui.textPrimary
           }}>
           Comment Sentiment Overview
         </h3>
@@ -103,18 +116,18 @@ export const ViewerInsightsTab = ({ analysis }: ViewerInsightsTabProps) => {
                 transform: "translate(-50%, -50%)",
                 textAlign: "center"
               }}>
-              <div
+                <div
                 style={{
                   fontSize: "32px",
                   fontWeight: "700",
-                  color: COLORS.ui.text.primary
+                    color: COLORS.ui.textPrimary
                 }}>
                 {sentimentBreakdown.totalCommentsAnalyzed}
               </div>
               <div
                 style={{
                   fontSize: "12px",
-                  color: COLORS.ui.text.secondary
+                    color: COLORS.ui.textSecondary
                 }}>
                 Comments
               </div>
@@ -142,11 +155,11 @@ export const ViewerInsightsTab = ({ analysis }: ViewerInsightsTabProps) => {
                 />
                 <div style={{ flex: 1 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span
+                      <span
                       style={{
                         fontSize: "14px",
                         fontWeight: "600",
-                        color: COLORS.ui.text.primary,
+                          color: COLORS.ui.textPrimary,
                         textTransform: "capitalize"
                       }}>
                       {segment.type}
@@ -155,7 +168,7 @@ export const ViewerInsightsTab = ({ analysis }: ViewerInsightsTabProps) => {
                       style={{
                         fontSize: "14px",
                         fontWeight: "600",
-                        color: COLORS.ui.text.secondary
+                          color: COLORS.ui.textSecondary
                       }}>
                       {segment.value.toFixed(1)}%
                     </span>
@@ -177,16 +190,16 @@ export const ViewerInsightsTab = ({ analysis }: ViewerInsightsTabProps) => {
             margin: "0 0 16px 0",
             fontSize: "16px",
             fontWeight: "600",
-            color: COLORS.high.text
+            color: getColorSet("high").text
           }}>
           🌟 High-Value Insights
         </h3>
-        {actionableInsights.highValue.length === 0 ? (
-          <p style={{ fontSize: "14px", color: COLORS.ui.text.secondary, fontStyle: "italic" }}>
+        {((actionableInsights.highValue || []) as any[]).length === 0 ? (
+          <p style={{ fontSize: "14px", color: COLORS.ui.textSecondary, fontStyle: "italic" }}>
             No high-value insights identified
           </p>
         ) : (
-          actionableInsights.highValue.map((insight) => (
+          (actionableInsights.highValue || []).map((insight: any) => (
             <StatementBlock key={insight.id} insight={insight} />
           ))
         )}
@@ -203,12 +216,12 @@ export const ViewerInsightsTab = ({ analysis }: ViewerInsightsTabProps) => {
           }}>
           ⚡ Areas for Improvement
         </h3>
-        {actionableInsights.improvements.length === 0 ? (
-          <p style={{ fontSize: "14px", color: COLORS.ui.text.secondary, fontStyle: "italic" }}>
+        {((actionableInsights.improvements || []) as any[]).length === 0 ? (
+          <p style={{ fontSize: "14px", color: COLORS.ui.textSecondary, fontStyle: "italic" }}>
             No areas for improvement identified
           </p>
         ) : (
-          actionableInsights.improvements.map((insight) => (
+          (actionableInsights.improvements || []).map((insight: any) => (
             <StatementBlock key={insight.id} insight={insight} />
           ))
         )}
