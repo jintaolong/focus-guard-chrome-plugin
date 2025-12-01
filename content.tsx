@@ -16,9 +16,12 @@ import type {
   AnalysisHistoryItem
 } from "~types/analysis"
 
-// Configure to only run on YouTube
+// Configure content-script matches. Use a static literal so Plasmo can
+// generate a valid manifest. During development we accept broader matches
+// so the content script can be debugged across YouTube pages. Narrow this
+// before packaging for production if desired.
 export const config: PlasmoCSConfig = {
-  matches: ["https://www.youtube.com/watch?v=*"],
+  matches: ["https://*.youtube.com/*", "https://youtube.com/*", "https://youtu.be/*"],
   all_frames: false
 }
 
@@ -31,6 +34,36 @@ function getVideoIdFromUrl(url: string): string | null {
 // Helper to check if we're on a watch page
 function isWatchPage(): boolean {
   return window.location.pathname === "/watch" && !!getVideoIdFromUrl(window.location.href)
+}
+
+// Debug mode: enable extended injection on any YouTube page when set.
+// Read debug flag from environment at build time (set by `dev:debug` script).
+// Use a direct `process.env.FOCUS_GUARD_DEBUG` access so the bundler can
+// statically replace the value during the build (avoid optional chaining).
+const BUILD_DEBUG = (process.env.FOCUS_GUARD_DEBUG === "1" || process.env.FOCUS_GUARD_DEBUG === "true")
+
+// Runtime debug fallback: allow enabling debug via URL param or
+// `localStorage.focusGuard.debug = '1'` so you can toggle on-the-fly
+// without restarting the dev server. Effective debug is true if either
+// build-time or runtime toggles are enabled.
+function runtimeDebugEnabled(): boolean {
+  try {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get("focusGuardDebug") === "1") return true
+    const byStorage = localStorage.getItem("focusGuard.debug")
+    if (byStorage === "1") return true
+  } catch (e) {
+    // If access to search/localStorage is blocked, silently ignore
+  }
+  return false
+}
+
+const RUNTIME_DEBUG = runtimeDebugEnabled()
+const DEBUG = BUILD_DEBUG || RUNTIME_DEBUG
+
+function isYouTubeDomain(): boolean {
+  const host = window.location.hostname || ""
+  return host.endsWith("youtube.com") || host === "youtu.be"
 }
 
 const ContentScript = () => {
@@ -54,16 +87,28 @@ const ContentScript = () => {
   useEffect(() => {
     // Check if we're on YouTube home page or watch page
     console.log("Focus Guard content script loaded");
+    // Print build-time debug flag so we can confirm whether the bundle
+    // was built with `FOCUS_GUARD_DEBUG=1`.
+    console.log("Focus Guard BUILD_DEBUG=", BUILD_DEBUG)
+    console.log("Focus Guard RUNTIME_DEBUG=", RUNTIME_DEBUG, "DEBUG=", DEBUG)
     const checkPageType = () => {
       const isHome =
         window.location.pathname === "/" ||
         window.location.pathname === "/feed/subscriptions" ||
         window.location.pathname === "/feed/trending"
-      const isWatch = isWatchPage()
+
+      // Respect debug mode: if enabled via build-time flag, runtime localStorage,
+      // or URL param, treat any YouTube domain page as a watch page so the UI can
+      // be inspected on non-watch paths during development.
+      const debug = DEBUG && isYouTubeDomain()
+      // When debug is enabled, treat YouTube domain pages (including Home)
+      // as watch pages so the UI can be inspected. This makes it easy to
+      // view chips and the side panel on the Home feed during development.
+      const isWatch = isWatchPage() || debug || (DEBUG && isHome)
 
       setIsYouTubeHome(isHome)
       setOnWatchPage(isWatch)
-      console.log("Focus Guard checkPageType: isHome=", isHome, "isWatch=", isWatch, "href=", window.location.href)
+      console.log("Focus Guard checkPageType: isHome=", isHome, "isWatch=", isWatch, "debug=", debug, "href=", window.location.href)
 
       // FR-202: Auto-activate analysis on watch page
       if (isWatch) {
@@ -71,6 +116,15 @@ const ContentScript = () => {
         if (videoId && videoId !== currentVideoId) {
           setCurrentVideoId(videoId)
           startVideoAnalysis(videoId)
+        } else if (DEBUG && !videoId) {
+          // In debug mode, if no videoId (e.g. on Home), always set mock data
+          const mockAnalysis = getRandomMockAnalysis()
+          setVideoAnalysis(mockAnalysis)
+          setAnalysisStatus({
+            trustScore: mockAnalysis.trustScore.score,
+            clickbaitVerdict: mockAnalysis.clickbaitVerdict.verdict.toUpperCase(),
+            isAnalyzing: false
+          })
         }
       } else {
         setCurrentVideoId(null)
@@ -319,8 +373,13 @@ const ContentScript = () => {
     }
 
     if (!titleElement) {
-      console.log("Focus Guard: title element not found, skipping injection")
-      return
+      // In debug mode we still want to render the chip so append it to
+      // the document body as a fixed element. If not in debug mode, skip.
+      if (!DEBUG) {
+        console.log("Focus Guard: title element not found, skipping injection")
+        return
+      }
+      console.log("Focus Guard: title element not found, debug mode - falling back to body")
     }
 
     if (!document.getElementById("focus-guard-status-chip")) {
@@ -334,13 +393,14 @@ const ContentScript = () => {
     chipContainer.style.transform = "translateY(-50%)"
     chipContainer.style.zIndex = "2147483647"
 
-      // Prefer appending to the title's parent, but fall back to inserting after the title
-      if (titleElement.parentElement) {
+      // Prefer appending to the title's parent, but fall back to inserting
+      // into the document body (used by debug mode).
+      if (titleElement && titleElement.parentElement) {
         titleElement.parentElement.appendChild(chipContainer)
         console.log("Focus Guard: appended chip to title parent")
       } else {
-        titleElement.insertAdjacentElement("afterend", chipContainer)
-        console.log("Focus Guard: inserted chip after title element")
+        document.body.appendChild(chipContainer)
+        console.log("Focus Guard: appended chip to document.body (debug fallback)")
       }
 
       const root = createRoot(chipContainer)
@@ -361,40 +421,40 @@ const ContentScript = () => {
     }
   }
 
-  // Render home/feed page overlay (original functionality)
-  if (isYouTubeHome) {
-    return (
-      <div
-        style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          width: "100%",
-          height: "100%",
-          backgroundColor: "white",
-          zIndex: 9999,
-          overflowY: "auto",
-          fontFamily:
-            '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-          animation: "fadeIn 0.4s ease-in"
-        }}>
-        <style>
-          {`
-            @keyframes fadeIn {
-              from { opacity: 0; }
-              to { opacity: 1; }
-            }
-          `}
-        </style>
-        <SearchInterface
-          onSearch={handleSearch}
-          isLoading={isLoading}
-          userStats={userStats}
-        />
-        <ResultsList results={results} isLoading={isLoading} />
-      </div>
-    )
-  }
+  // // Render home/feed page overlay (original functionality)
+  // if (isYouTubeHome) {
+  //   return (
+  //     <div
+  //       style={{
+  //         position: "fixed",
+  //         top: 0,
+  //         left: 0,
+  //         width: "100%",
+  //         height: "100%",
+  //         backgroundColor: "white",
+  //         zIndex: 9999,
+  //         overflowY: "auto",
+  //         fontFamily:
+  //           '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+  //         animation: "fadeIn 0.4s ease-in"
+  //       }}>
+  //       <style>
+  //         {`
+  //           @keyframes fadeIn {
+  //             from { opacity: 0; }
+  //             to { opacity: 1; }
+  //           }
+  //         `}
+  //       </style>
+  //       <SearchInterface
+  //         onSearch={handleSearch}
+  //         isLoading={isLoading}
+  //         userStats={userStats}
+  //       />
+  //       <ResultsList results={results} isLoading={isLoading} />
+  //     </div>
+  //   )
+  // }
 
   // FR-102: Render Side Panel on watch page
   if (onWatchPage) {
