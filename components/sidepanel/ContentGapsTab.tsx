@@ -1,0 +1,227 @@
+// FR-102 Tab 3: Content Gaps
+// Gap Coverage Score + Unanswered Questions (FR-401 pattern) + Bot Detection Toggle
+
+import { useState } from "react"
+import type { VideoAnalysis } from "~types/analysis"
+import { COLORS } from "~lib/colors"
+import { StatementBlock } from "~components/StatementBlock"
+
+interface ContentGapsTabProps {
+  analysis: VideoAnalysis
+  onBotFilterChange?: (enabled: boolean) => void
+}
+
+export const ContentGapsTab = ({ analysis, onBotFilterChange }: ContentGapsTabProps) => {
+  const contentGaps = analysis?.contentGaps
+  if (!contentGaps) return null
+  const [botFilterEnabled, setBotFilterEnabled] = useState(contentGaps.botDetectionEnabled)
+
+  const handleBotFilterToggle = () => {
+    const newValue = !botFilterEnabled
+    setBotFilterEnabled(newValue)
+    onBotFilterChange?.(newValue)
+  }
+
+  // Determine color based on gap coverage score
+  const getCoverageColor = (score: number) => {
+    if (score >= 80) return COLORS.high
+    if (score >= 50) return COLORS.medium
+    return COLORS.low
+  }
+
+  const coverageScore = contentGaps.gapCoverageScore ?? 0
+  const coverageColor = getCoverageColor(coverageScore)
+
+  return (
+    <div style={{ padding: "24px" }}>
+      {/* Gap Coverage Score */}
+      <div style={{ marginBottom: "32px" }}>
+        <h3
+          style={{
+            margin: "0 0 16px 0",
+            fontSize: "18px",
+            fontWeight: "600",
+            color: COLORS.ui.textPrimary
+          }}>
+          Content Gap Coverage
+        </h3>
+
+        <div
+          style={{
+            padding: "20px",
+            backgroundColor: coverageColor.light,
+            border: `2px solid ${coverageColor.primary}`,
+            borderRadius: "12px"
+          }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: "12px"
+            }}>
+            <span style={{ fontSize: "14px", fontWeight: "600", color: coverageColor.dark }}>
+              Coverage Score
+            </span>
+              <span style={{ fontSize: "32px", fontWeight: "700", color: coverageColor.primary }}>
+              {coverageScore}%
+            </span>
+          </div>
+
+          {/* Progress bar */}
+          <div
+            style={{
+              width: "100%",
+              height: "12px",
+              backgroundColor: "white",
+              borderRadius: "6px",
+              overflow: "hidden",
+              border: `1px solid ${coverageColor.primary}`
+            }}>
+            <div
+              style={{
+                width: `${coverageScore}%`,
+                height: "100%",
+                backgroundColor: coverageColor.primary,
+                transition: "width 1s ease-out"
+              }}
+            />
+          </div>
+
+          <p
+            style={{
+              margin: "12px 0 0 0",
+              fontSize: "13px",
+              color: coverageColor.dark
+            }}>
+            {coverageScore >= 80
+              ? "Excellent! Most viewer questions are addressed."
+              : coverageScore >= 50
+              ? "Good coverage, but some questions remain unanswered."
+              : "Many viewer questions are not addressed in the video."}
+          </p>
+        </div>
+      </div>
+
+      {/* Bot Detection Filter Toggle */}
+      <div
+        style={{
+          marginBottom: "24px",
+          padding: "16px",
+          backgroundColor: COLORS.ui.surface,
+          border: `1px solid ${COLORS.ui.border}`,
+          borderRadius: "8px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between"
+        }}>
+        <div>
+          <p
+            style={{
+              margin: "0 0 4px 0",
+              fontSize: "14px",
+              fontWeight: "600",
+              color: COLORS.ui.text.primary
+            }}>
+            Hide Bot/Spam Questions
+          </p>
+          <p
+            style={{
+              margin: 0,
+              fontSize: "12px",
+              color: COLORS.ui.text.secondary
+            }}>
+            Filter out questions with Human-Likeness Score {"<"} 5.0
+          </p>
+        </div>
+
+        <button
+          onClick={handleBotFilterToggle}
+          style={{
+            position: "relative",
+            width: "48px",
+            height: "28px",
+            backgroundColor: botFilterEnabled ? COLORS.neutral.primary : COLORS.ui.border,
+            borderRadius: "14px",
+            border: "none",
+            cursor: "pointer",
+            transition: "background-color 0.2s",
+            flexShrink: 0
+          }}>
+          <div
+            style={{
+              position: "absolute",
+              top: "4px",
+              left: botFilterEnabled ? "24px" : "4px",
+              width: "20px",
+              height: "20px",
+              backgroundColor: "white",
+              borderRadius: "50%",
+              transition: "left 0.2s",
+              boxShadow: "0 2px 4px rgba(0,0,0,0.2)"
+            }}
+          />
+        </button>
+      </div>
+
+      {/* Unanswered Questions */}
+      <div>
+          <h3
+          style={{
+            margin: "0 0 16px 0",
+            fontSize: "16px",
+            fontWeight: "600",
+              color: COLORS.medium.text
+          }}>
+          ⚠️ Unanswered Questions
+        </h3>
+        {(contentGaps.unansweredQuestions || []).length === 0 ? (
+          <div
+            style={{
+              padding: "24px",
+              textAlign: "center",
+              backgroundColor: COLORS.high.light,
+              border: `1px solid ${COLORS.high.primary}`,
+              borderRadius: "8px"
+            }}>
+            <p
+              style={{
+                margin: 0,
+                fontSize: "16px",
+                fontWeight: "600",
+                color: COLORS.high.dark
+              }}>
+              🎉 No significant content gaps found!
+            </p>
+            <p
+              style={{
+                margin: "8px 0 0 0",
+                fontSize: "14px",
+                color: COLORS.high.text
+              }}>
+              The video appears to address most viewer questions.
+            </p>
+          </div>
+        ) : (
+          <>
+                <p
+              style={{
+                margin: "0 0 16px 0",
+                fontSize: "13px",
+                    color: COLORS.ui.textSecondary
+              }}>
+              These questions from viewers were not addressed in the video transcript:
+            </p>
+            {(contentGaps.unansweredQuestions || []).map((gap: any) => (
+              <StatementBlock
+                key={gap.id}
+                insight={gap}
+                showBotScores={botFilterEnabled}
+              />
+            ))}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}

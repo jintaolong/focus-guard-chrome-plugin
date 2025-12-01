@@ -1,0 +1,95 @@
+﻿Focus Guard MVP: Frontend Functional Requirements
+This document specifies the required functionality, structure, and behavior for the Focus Guard Minimum Viable Product (MVP) interfaces, focusing on the Google Chrome Plugin components.
+1. Core Platform Components
+ID
+	Interface Component
+	Primary Function
+	Core Location
+	FR-100
+	Chrome Toolbar Pop-up
+	Handle global business logic: Auth, Subscription Status, Quota tracking, and Web Portal redirection.
+	Chrome Extension Toolbar
+	FR-101
+	Pre-Watch Insight Popover
+	Deliver proactive, quick-glance insights (cached data only) on listing pages. Pro-tier feature driver.
+	YouTube Listing/Feed Pages (On Hover)
+	FR-102
+	Focus Guard Side-Panel
+	The main interface for displaying deep, video-specific analysis data across four tabs.
+	YouTube Watch Page (Docked Right/Left)
+	FR-103
+	Inline Status Chip
+	Provide an at-a-glance Trust Score/Verdict near the video player.
+	YouTube Watch Page (Near Title)
+	________________
+
+
+2. Global Design & Behavior Requirements
+ID
+	Requirement
+	Specification
+	FR-201
+	"Agent" Standby Mode
+	On Home/Listing pages, only a minimal, subtle icon (Side-Panel Trigger) should be fixed to the browser edge. Clicking it opens a small popover showing "Focus Guard is Active!" and account status.
+	FR-202
+	Watch Page Auto-Display
+	The Side-Panel Trigger (FR-102) and the Inline Status Chip (FR-103) must automatically appear and activate analysis upon navigating to a YouTube Watch Page.
+	FR-203
+	Loading State
+	Must display a clear loading state (e.g., "Analyzing...") on both FR-102 and FR-103 while analysis takes place (approx. 10-20 seconds).
+	FR-204
+	Standard Color Mapping
+	Use a consistent traffic light system: Green/Blue (High Trust/Positive), Orange/Yellow (Medium/Misleading/Warning), Red (Low Trust/Negative/Spam).
+	________________
+
+
+3. Core Component Specifications
+3.1. FR-103: Inline Status Chip (Watch Page)
+Data Point
+	Presentation
+	Requirement
+	Trust Score
+	Prominent number (e.g., 8.5) with color-coding.
+	Must load instantly upon analysis completion.
+	Clickbait Verdict
+	Short label (e.g., LEGIT or CLICKBAIT) with a corresponding icon/color.
+	Must provide the immediate, actionable verdict.
+	Action
+	Clickable element: "View Full Focus Guard Report"
+	Opens the Focus Guard Side-Panel (FR-102).
+	3.2. FR-102: Focus Guard Side-Panel (Watch Page)
+The side-panel must be collapsible and present data across four distinct, navigable tabs:
+Tab 1: Summary & Score
+* Trust Score Visualization: A prominent Semi-Circular Radial Gauge displaying the $0-10$ score with color-coding (FR-204). Include the AI Confidence Level underneath.
+* Clickbait Verdict: Large, color-coded chip (LEGIT/MISLEADING/CLICKBAIT) followed by a $0-100\%$ Confidence Bar.
+* Channel Credibility: Progress bar showing the $0-100$ score, with 2-3 key driving factors listed below (e.g., "Verified," "High Engagement").
+Tab 2: Viewer Insights
+* Sentiment Overview: A Donut or Pie Chart showing the percentage breakdown of Positive, Negative, Neutral, and Mixed comments, along with the total comments analyzed.
+* Actionable Insights: List of findings categorized into High-Value (Green) and Improvement (Red/Orange), using the Statement and Supporting Comments Pattern (FR-401).
+Tab 3: Content Gaps
+* Gap Coverage Score: A score/percentage ($0-100\%$) indicating how well the video transcript covers viewer questions.
+* Unanswered Questions: List of identified content gaps, using the Statement and Supporting Comments Pattern (FR-401), colored Orange to denote a missed opportunity.
+* Bot Detection Filter: A clear toggle button to Hide Bot/Spam Questions (Human-Likeness Score $< 5.0$).
+Tab 4: Report & Account
+* Report Download: Options to select $\text{PDF}$ or $\text{TXT}$ format, and a button to Download Report for This Video.
+* Analysis History: A scrollable list of recent analyses with their Trust Score and options to re-analyze or download the report.
+________________
+
+
+4. Key Functional Patterns
+FR-401: Statement and Supporting Comments Pattern
+This repeatable pattern is the core data presentation structure for Tabs 2 and 3.
+Component
+	Functionality
+	The Statement Block
+	Summarizes the AI finding (e.g., "Lack of clarity on installation steps..."). Must be color-coded based on its nature (Green for benefit, Red/Orange for issue).
+	Evidence Counter
+	A count badge attached to the Statement: (X Comments).
+	The Toggle
+	A chevron/arrow icon to expand/collapse the Supporting Comments.
+	Supporting Comments
+	A collapsible, scrollable list of direct, redacted quotes from viewer comments that support the Statement.
+	Bot Score Tag
+	Optional tag next to a comment showing the Human-Likeness Score (0-10) for validation.
+	FR-402: Pro-Tier Feature Lock (FR-101 and FR-100)
+* Free Tier Users must be presented with a clear upgrade path when encountering Pro-only features (e.g., seeing only a limited quota in the Toolbar Pop-up, or seeing a "Upgrade to Pro" pitch instead of the full Pre-Watch Insight Popover on listing pages).

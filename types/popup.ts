@@ -9,7 +9,12 @@ export interface UserAccount {
 
 export interface FocusGuardSettings {
   isEnabled: boolean
-  mode: "deep-work" | "curated" | "intelligence"
+  mode: "deep-work" | "curated" | "intelligence" | "video-analysis"
+  videoAnalysis?: {
+    showPreWatchPopover: boolean
+    autoAnalyze: boolean
+    botDetectionEnabled: boolean
+  }
 }
 
 export const MODE_INFO = {
@@ -27,5 +32,10 @@ export const MODE_INFO = {
     name: "Intelligence Mode",
     description: "Maps sentiment and bias across sources for informed viewing",
     icon: "🧠"
+  },
+  "video-analysis": {
+    name: "Video Analysis Mode",
+    description: "Analyzes trust score, clickbait, and viewer sentiment for each video",
+    icon: "🛡️"
   }
 } as const
