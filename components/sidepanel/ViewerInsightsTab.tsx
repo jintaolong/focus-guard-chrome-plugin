@@ -199,8 +199,8 @@ export const ViewerInsightsTab = ({ analysis }: ViewerInsightsTabProps) => {
             No high-value insights identified
           </p>
         ) : (
-          (actionableInsights.highValue || []).map((insight: any) => (
-            <StatementBlock key={insight.id} insight={insight} />
+          (actionableInsights.highValue || []).map((insight: any, idx: number) => (
+            <StatementBlock key={insight.id ?? `high-${idx}`} insight={insight} />
           ))
         )}
       </div>
@@ -221,8 +221,8 @@ export const ViewerInsightsTab = ({ analysis }: ViewerInsightsTabProps) => {
             No areas for improvement identified
           </p>
         ) : (
-          (actionableInsights.improvements || []).map((insight: any) => (
-            <StatementBlock key={insight.id} insight={insight} />
+          (actionableInsights.improvements || []).map((insight: any, idx: number) => (
+            <StatementBlock key={insight.id ?? `impr-${idx}`} insight={insight} />
           ))
         )}
       </div>

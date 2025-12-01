@@ -422,11 +422,41 @@ const ContentScript = () => {
         )}
         
         {/* FR-102: Side Panel */}
+        {/* Persistent left-side toggle so panel can be shown/hidden from the left edge */}
+        <div
+          id="focus-guard-sidepanel-toggle"
+          style={{
+            position: "fixed",
+            left: "12px",
+            top: "60%",
+            transform: "translateY(-50%)",
+            zIndex: 2147483650,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center"
+          }}>
+          <button
+            onClick={() => setIsSidePanelOpen((s) => !s)}
+            title={isSidePanelOpen ? "Hide Focus Guard" : "Show Focus Guard"}
+            style={{
+              width: "44px",
+              height: "44px",
+              borderRadius: "10px",
+              border: `1px solid ${"#e5e7eb"}`,
+              background: isSidePanelOpen ? "white" : "#111827",
+              color: isSidePanelOpen ? "#111827" : "white",
+              cursor: "pointer",
+              boxShadow: "0 6px 18px rgba(0,0,0,0.12)"
+            }}>
+            {isSidePanelOpen ? "✕" : "▸"}
+          </button>
+        </div>
+
         <SidePanel
         analysis={videoAnalysis}
         isLoading={isAnalyzing}
         isOpen={isSidePanelOpen}
-        position="right"
+        position="left"
         history={analysisHistory}
         onClose={() => setIsSidePanelOpen(false)}
         onDownloadReport={handleDownloadReport}

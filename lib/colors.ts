@@ -125,6 +125,8 @@ export function getSentimentColor(
     case "mixed":
       return "medium"
   }
+  // Fallback for unexpected values
+  return "neutral"
 }
 
 export function getInsightTypeColor(
@@ -138,4 +140,7 @@ export function getInsightTypeColor(
     case "gap":
       return "medium"
   }
+  // Fallback for unexpected insight types
+  return "neutral"
 }
+

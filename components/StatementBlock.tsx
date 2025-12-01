@@ -3,7 +3,7 @@
 
 import { useState } from "react"
 import type { InsightWithComments } from "~types/analysis"
-import { COLORS, getInsightTypeColor } from "~lib/colors"
+import { COLORS, getInsightTypeColor, getColorSet } from "~lib/colors"
 
 interface StatementBlockProps {
   insight: InsightWithComments
@@ -13,8 +13,10 @@ interface StatementBlockProps {
 export const StatementBlock = ({ insight, showBotScores = false }: StatementBlockProps) => {
   const [isExpanded, setIsExpanded] = useState(insight.isExpanded || false)
   
-  const color = getInsightTypeColor(insight.type)
-  const colorSet = COLORS[color]
+  const color = getInsightTypeColor(insight.type as any)
+  const colorSet = getColorSet(color)
+  const comments = Array.isArray(insight.supportingComments) ? insight.supportingComments : []
+  const commentCount = insight.commentCount || comments.length || 0
 
   return (
     <div
@@ -98,7 +100,7 @@ export const StatementBlock = ({ insight, showBotScores = false }: StatementBloc
             fontSize: "12px",
             fontWeight: "700"
           }}>
-          {insight.commentCount} Comment{insight.commentCount !== 1 ? "s" : ""}
+          {commentCount} Comment{commentCount !== 1 ? "s" : ""}
         </div>
       </div>
 
@@ -111,7 +113,7 @@ export const StatementBlock = ({ insight, showBotScores = false }: StatementBloc
             maxHeight: "400px",
             overflowY: "auto"
           }}>
-          {insight.supportingComments.length === 0 ? (
+            {comments.length === 0 ? (
             <p
               style={{
                 margin: 0,
@@ -124,12 +126,12 @@ export const StatementBlock = ({ insight, showBotScores = false }: StatementBloc
               No supporting comments available
             </p>
           ) : (
-            insight.supportingComments.map((comment, index) => (
+            comments.map((comment: any, index: number) => (
               <div
-                key={comment.id}
+                key={comment.id ?? `comment-${index}`}
                 style={{
                   padding: "12px",
-                  marginBottom: index < insight.supportingComments.length - 1 ? "8px" : 0,
+                  marginBottom: index < comments.length - 1 ? "8px" : 0,
                   backgroundColor: COLORS.ui.surface,
                   borderRadius: "6px",
                   border: `1px solid ${COLORS.ui.border}`
