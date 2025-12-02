@@ -36,6 +36,7 @@ export const SidePanel = ({
 }: SidePanelProps) => {
   const [activeTab, setActiveTab] = useState<TabId>("summary")
   const [isCollapsed, setIsCollapsed] = useState(false)
+  // SidePanel is controlled by `isOpen` prop from parent
 
   const tabs = [
     { id: "summary" as TabId, label: "Summary", icon: "📊" },
@@ -119,7 +120,9 @@ export const SidePanel = ({
           {/* Close Button */}
           {!isCollapsed && (
             <button
-              onClick={onClose}
+              onClick={() => {
+                onClose()
+              }}
               style={{
                 width: "32px",
                 height: "32px",

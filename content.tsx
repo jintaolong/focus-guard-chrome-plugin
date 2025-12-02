@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client"
 
 import { ResultsList } from "~components/ResultsList"
 import { SearchInterface } from "~components/SearchInterface"
-import { StatusChip } from "~components/StatusChip"
+import { ToggleButton } from "~components/ToggleButton"
 import { SidePanel } from "~components/SidePanel"
 import { PreWatchPopover } from "~components/PreWatchPopover"
 import { FocusGuardAPI } from "~lib/api"
@@ -79,6 +79,14 @@ const ContentScript = () => {
   const [analysisStatus, setAnalysisStatus] = useState<VideoAnalysisStatus | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [isSidePanelOpen, setIsSidePanelOpen] = useState(false)
+  const [panelDock, setPanelDock] = useState<"left" | "right">(() => {
+    try {
+      const v = localStorage.getItem("focus-guard-toggle-dock")
+      return v === "left" ? "left" : "right"
+    } catch (e) {
+      return "right"
+    }
+  })
   const [analysisHistory, setAnalysisHistory] = useState<AnalysisHistoryItem[]>([])
   const [onWatchPage, setOnWatchPage] = useState(false)
   const [showPreWatchPopover, setShowPreWatchPopover] = useState(false)
@@ -342,84 +350,13 @@ const ContentScript = () => {
     }
   }
 
-  // FR-102 & FR-103: Inject Status Chip and Side Panel on watch page
-  useEffect(() => {
-    if (onWatchPage && analysisStatus) {
-      injectWatchPageUI()
-    }
-
-    return () => {
-      cleanupWatchPageUI()
-    }
-  }, [onWatchPage, analysisStatus, isSidePanelOpen])
+  // FR-102: SidePanel and Toggle injection handled by React render below
 
   const injectWatchPageUI = () => {
-    // FR-103: Inject Status Chip near video title
-    const selectors = [
-      "#title h1.ytd-watch-metadata",
-      "#container h1.title",
-      "h1.title",
-      "h1.ytd-video-primary-info-renderer",
-      "yt-formatted-string.ytd-video-primary-info-renderer"
-    ]
-
-    let titleElement: Element | null = null
-    for (const sel of selectors) {
-      titleElement = document.querySelector(sel)
-      if (titleElement) {
-        console.log("Focus Guard: found title element with selector:", sel, titleElement)
-        break
-      }
-    }
-
-    if (!titleElement) {
-      // In debug mode we still want to render the chip so append it to
-      // the document body as a fixed element. If not in debug mode, skip.
-      if (!DEBUG) {
-        console.log("Focus Guard: title element not found, skipping injection")
-        return
-      }
-      console.log("Focus Guard: title element not found, debug mode - falling back to body")
-    }
-
-    if (!document.getElementById("focus-guard-status-chip")) {
-      const chipContainer = document.createElement("div")
-      chipContainer.id = "focus-guard-status-chip"
-    // Render as a floating fixed element on the left so it doesn't block the video
-    chipContainer.style.display = "inline-block"
-    chipContainer.style.position = "fixed"
-    chipContainer.style.left = "12px"
-    chipContainer.style.top = "50%"
-    chipContainer.style.transform = "translateY(-50%)"
-    chipContainer.style.zIndex = "2147483647"
-
-      // Prefer appending to the title's parent, but fall back to inserting
-      // into the document body (used by debug mode).
-      if (titleElement && titleElement.parentElement) {
-        titleElement.parentElement.appendChild(chipContainer)
-        console.log("Focus Guard: appended chip to title parent")
-      } else {
-        document.body.appendChild(chipContainer)
-        console.log("Focus Guard: appended chip to document.body (debug fallback)")
-      }
-
-      const root = createRoot(chipContainer)
-      root.render(
-        <StatusChip
-          status={analysisStatus}
-          onViewReport={() => setIsSidePanelOpen(true)}
-        />
-      )
-    }
+    // Legacy StatusChip injection removed; ToggleButton now rendered by React.
   }
 
-  const cleanupWatchPageUI = () => {
-    const chipContainer = document.getElementById("focus-guard-status-chip")
-    if (chipContainer) {
-      console.log("Focus Guard: removing chip container")
-      chipContainer.remove()
-    }
-  }
+  // Note: cleanupWatchPageUI removed (StatusChip no longer injected)
 
   // // Render home/feed page overlay (original functionality)
   // if (isYouTubeHome) {
@@ -481,50 +418,35 @@ const ContentScript = () => {
           />
         )}
         
-        {/* FR-102: Side Panel */}
-        {/* Persistent left-side toggle so panel can be shown/hidden from the left edge */}
-        <div
-          id="focus-guard-sidepanel-toggle"
-          style={{
-            position: "fixed",
-            left: "12px",
-            top: "60%",
-            transform: "translateY(-50%)",
-            zIndex: 2147483650,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center"
-          }}>
-          <button
-            onClick={() => setIsSidePanelOpen((s) => !s)}
-            title={isSidePanelOpen ? "Hide Focus Guard" : "Show Focus Guard"}
-            style={{
-              width: "44px",
-              height: "44px",
-              borderRadius: "10px",
-              border: `1px solid ${"#e5e7eb"}`,
-              background: isSidePanelOpen ? "white" : "#111827",
-              color: isSidePanelOpen ? "#111827" : "white",
-              cursor: "pointer",
-              boxShadow: "0 6px 18px rgba(0,0,0,0.12)"
-            }}>
-            {isSidePanelOpen ? "✕" : "▸"}
-          </button>
-        </div>
+        {/* New ToggleButton - visible when panel is closed */}
+        {!isSidePanelOpen && (
+          <ToggleButton
+            trustScore={analysisStatus?.trustScore}
+            verdict={analysisStatus?.clickbaitVerdict}
+            dock={panelDock}
+            onToggle={() => setIsSidePanelOpen(true)}
+            onDockChange={(pos) => {
+              setPanelDock(pos)
+              try {
+                localStorage.setItem("focus-guard-toggle-dock", pos)
+              } catch (e) {}
+            }}
+          />
+        )}
 
         <SidePanel
-        analysis={videoAnalysis}
-        isLoading={isAnalyzing}
-        isOpen={isSidePanelOpen}
-        position="left"
-        history={analysisHistory}
-        onClose={() => setIsSidePanelOpen(false)}
-        onDownloadReport={handleDownloadReport}
-        onReAnalyze={handleReAnalyze}
-        onBotFilterChange={(enabled) => {
-          console.log("Bot filter changed:", enabled)
-        }}
-      />
+          analysis={videoAnalysis}
+          isLoading={isAnalyzing}
+          isOpen={isSidePanelOpen}
+          position={panelDock}
+          history={analysisHistory}
+          onClose={() => setIsSidePanelOpen(false)}
+          onDownloadReport={handleDownloadReport}
+          onReAnalyze={handleReAnalyze}
+          onBotFilterChange={(enabled) => {
+            console.log("Bot filter changed:", enabled)
+          }}
+        />
       </>
     )
   }
