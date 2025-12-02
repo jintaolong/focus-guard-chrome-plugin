@@ -16,6 +16,7 @@ export interface VideoAnalysis {
   videoId: string
   videoTitle?: string
   videoUrl?: string
+  executiveSummary?: string // AI-generated executive summary
 
   // Legacy and current shapes supported for compatibility with components
   // Summary-style (newer shape)
@@ -28,7 +29,7 @@ export interface VideoAnalysis {
     }
     channelCredibility?: {
       score?: number // 0-100
-      factors?: string[]
+      factors?: Array<{ name: string; value: string; weight: number }>
     }
   }
 
@@ -77,8 +78,18 @@ export interface VideoAnalysis {
   // Content gaps (keep original name and shape)
   contentGaps?: {
     gapCoverageScore?: number
+    botPercentage?: number // 0-100 percentage of bot comments detected
     unansweredQuestions?: InsightWithComments[]
     botDetectionEnabled?: boolean
+  }
+
+  // Channel credibility (can appear at top level too)
+  channelCredibility?: {
+    score?: number // 0-100
+    verifiedStatus?: boolean
+    history?: string
+    bias?: string
+    factors?: Array<{ name: string; value: string; weight: number }>
   }
 
   reportInfo?: {
