@@ -10,11 +10,13 @@ interface ToggleButtonProps {
   // parent-provided dock (controlled). If omitted, defaults to 'right'
   dock?: "left" | "right"
   onDockChange?: (pos: "left" | "right") => void
+  // state: 'idle' = pre-analysis, 'analyzing' = in progress, 'complete' = results ready
+  state?: "idle" | "analyzing" | "complete"
 }
 
 type DockPosition = "left" | "right"
 
-export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", onDockChange }: ToggleButtonProps) => {
+export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", onDockChange, state = "complete" }: ToggleButtonProps) => {
   const [isDragging, setIsDragging] = useState(false)
   const movedRef = useRef(false)
   const [dockPosition, setDockPosition] = useState<DockPosition>(dock)
@@ -95,6 +97,9 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
 
   // Calculate position based on dock
   const getPositionStyle = (): React.CSSProperties => {
+    // Use neutral color for idle/analyzing states
+    const bgColor = state === "complete" ? COLORS[trustColor].primary : COLORS.neutral.primary
+    
     const baseStyle: React.CSSProperties = {
       position: "fixed",
       zIndex: 10000,
@@ -104,9 +109,9 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
       justifyContent: "center",
       gap: "4px",
       padding: "12px 16px",
-      backgroundColor: COLORS[trustColor].primary,
+      backgroundColor: bgColor,
       border: `3px solid white`,
-      cursor: isDragging ? "grabbing" : "grab",
+      cursor: isDragging ? "grabbing" : (state === "analyzing" ? "wait" : "pointer"),
       boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3)",
       transition: isDragging ? "none" : "all 0.18s ease",
       userSelect: "none"
@@ -138,16 +143,79 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
     }
   }
 
-  return (
-    <div
-      onMouseDown={handleDragStart}
-      onClick={handleClick}
-      style={getPositionStyle()}
-      title="Drag to reposition • Click to open panel"
-    >
+  // Render content based on state
+  const renderContent = () => {
+    if (state === "idle") {
+      return (
+        <div style={{ 
+          display: "flex", 
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: "4px",
+          textAlign: "center",
+          padding: "4px 0"
+        }}>
+          <span style={{ fontSize: "20px" }}>🛡️</span>
+          <span style={{ 
+            fontSize: "13px", 
+            fontWeight: "700",
+            color: "white",
+            textShadow: "0 1px 2px rgba(0,0,0,0.3)",
+            lineHeight: 1.2,
+            maxWidth: "80px"
+          }}>
+            Analyze Comments
+          </span>
+        </div>
+      )
+    }
+
+    if (state === "analyzing") {
+      return (
+        <div style={{ 
+          display: "flex", 
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: "6px",
+          textAlign: "center"
+        }}>
+          <div
+            style={{
+              width: "24px",
+              height: "24px",
+              border: "3px solid rgba(255,255,255,0.3)",
+              borderTopColor: "white",
+              borderRadius: "50%",
+              animation: "spin 0.8s linear infinite"
+            }}
+          />
+          <span style={{ 
+            fontSize: "12px", 
+            fontWeight: "600",
+            color: "white",
+            textShadow: "0 1px 2px rgba(0,0,0,0.3)",
+            lineHeight: 1
+          }}>
+            Analyzing...
+          </span>
+          <style>
+            {`
+              @keyframes spin {
+                to { transform: rotate(360deg); }
+              }
+            `}
+          </style>
+        </div>
+      )
+    }
+
+    // state === "complete"
+    return (
       <div style={{ 
         display: "flex", 
-        flexDirection: dockPosition === "top" || dockPosition === "bottom" ? "row" : "column",
+        flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
         gap: "6px",
@@ -173,6 +241,21 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
           {verdictLabel}
         </span>
       </div>
+    )
+  }
+
+  return (
+    <div
+      onMouseDown={state === "complete" ? handleDragStart : undefined}
+      onClick={handleClick}
+      style={getPositionStyle()}
+      title={
+        state === "idle" ? "Click to analyze video comments" :
+        state === "analyzing" ? "Analysis in progress..." :
+        "Drag to reposition • Click to open panel"
+      }
+    >
+      {renderContent()}
     </div>
   );
 };

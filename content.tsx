@@ -1,5 +1,5 @@
 import type { PlasmoCSConfig } from "plasmo"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { createRoot } from "react-dom/client"
 
 import { ResultsList } from "~components/ResultsList"
@@ -75,9 +75,11 @@ const ContentScript = () => {
 
   // FR-102 & FR-103: Watch page analysis state
   const [currentVideoId, setCurrentVideoId] = useState<string | null>(null)
+  const currentVideoIdRef = useRef<string | null>(null)
   const [videoAnalysis, setVideoAnalysis] = useState<VideoAnalysis | null>(null)
   const [analysisStatus, setAnalysisStatus] = useState<VideoAnalysisStatus | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [analysisState, setAnalysisState] = useState<"idle" | "analyzing" | "complete">("idle")
   const [isSidePanelOpen, setIsSidePanelOpen] = useState(false)
   const [panelDock, setPanelDock] = useState<"left" | "right">(() => {
     try {
@@ -121,23 +123,32 @@ const ContentScript = () => {
       // FR-202: Auto-activate analysis on watch page
       if (isWatch) {
         const videoId = getVideoIdFromUrl(window.location.href)
-        if (videoId && videoId !== currentVideoId) {
+        console.log("Focus Guard: detected videoId=", videoId, "currentVideoIdRef=", currentVideoIdRef.current)
+        if (videoId && videoId !== currentVideoIdRef.current) {
+          console.log("Focus Guard: NEW VIDEO detected, resetting state")
+          currentVideoIdRef.current = videoId
           setCurrentVideoId(videoId)
-          startVideoAnalysis(videoId)
+          // Don't auto-analyze; wait for user to click the button
+          setAnalysisState("idle")
+          setVideoAnalysis(null)
+          setAnalysisStatus(null)
+          // A new page is assumed to be unanalyzed for development. Reset
+          // the pre-watch dismissed flag so the popover appears after
+          // analysis completes on this new page.
+          setPreWatchDismissed(false)
+          setShowPreWatchPopover(false)
         } else if (DEBUG && !videoId) {
-          // In debug mode, if no videoId (e.g. on Home), always set mock data
-          const mockAnalysis = getRandomMockAnalysis()
-          setVideoAnalysis(mockAnalysis)
-          setAnalysisStatus({
-            trustScore: mockAnalysis.trustScore.score,
-            clickbaitVerdict: mockAnalysis.clickbaitVerdict.verdict.toUpperCase(),
-            isAnalyzing: false
-          })
+          // In debug mode, start in idle state
+          setAnalysisState("idle")
+          setVideoAnalysis(null)
+          setAnalysisStatus(null)
         }
       } else {
+        currentVideoIdRef.current = null
         setCurrentVideoId(null)
         setVideoAnalysis(null)
         setAnalysisStatus(null)
+        setAnalysisState("idle")
         setIsSidePanelOpen(false)
         setShowPreWatchPopover(false)
         setPreWatchDismissed(false)
@@ -146,15 +157,57 @@ const ContentScript = () => {
 
     checkPageType()
 
-    // // Listen for URL changes (YouTube is a SPA)
-    // const observer = new MutationObserver(checkPageType)
-    // observer.observe(document.body, { childList: true, subtree: true })
+    // Listen for URL changes (YouTube is a SPA). Wrap history methods and
+    // emit a `locationchange` event so we can react to navigations performed
+    // via `pushState`/`replaceState` as well as browser back/forward.
+    const onLocationChange = () => {
+      checkPageType()
+    }
 
-    // // Load user stats and history
-    // loadUserStats()
-    // loadAnalysisHistory()
+    const originalPush = history.pushState
+    const originalReplace = history.replaceState
+    const popstateHandler = () => window.dispatchEvent(new Event("locationchange"))
 
-    // return () => observer.disconnect()
+    history.pushState = function (...args: any[]) {
+      const result = originalPush.apply(this, args as any)
+      window.dispatchEvent(new Event("locationchange"))
+      return result
+    }
+
+    history.replaceState = function (...args: any[]) {
+      const result = originalReplace.apply(this, args as any)
+      window.dispatchEvent(new Event("locationchange"))
+      return result
+    }
+
+    window.addEventListener("popstate", popstateHandler)
+    window.addEventListener("locationchange", onLocationChange)
+
+    // YouTube sometimes navigates without triggering history events (clicking
+    // video thumbnails, etc). Use a MutationObserver to detect URL changes
+    // via DOM updates and check periodically.
+    const urlCheckInterval = setInterval(() => {
+      const currentUrl = window.location.href
+      const currentVidId = getVideoIdFromUrl(currentUrl)
+      if (currentVidId && currentVidId !== currentVideoIdRef.current) {
+        console.log("Focus Guard: URL polling detected new video")
+        checkPageType()
+      }
+    }, 500)
+
+    // Optionally load user data for richer UI during development / debug
+    loadUserStats()
+    loadAnalysisHistory()
+
+    return () => {
+      try {
+        history.pushState = originalPush
+        history.replaceState = originalReplace
+      } catch (e) {}
+      window.removeEventListener("popstate", popstateHandler)
+      window.removeEventListener("locationchange", onLocationChange)
+      clearInterval(urlCheckInterval)
+    }
   }, [])
 
   useEffect(() => {
@@ -231,11 +284,13 @@ const ContentScript = () => {
   // FR-202: Start video analysis automatically on watch page
   const startVideoAnalysis = async (videoId: string) => {
     setIsAnalyzing(true)
-    setAnalysisStatus({
-      trustScore: 0,
-      clickbaitVerdict: "LEGIT",
-      isAnalyzing: true
-    })
+    setAnalysisState("analyzing")
+    setAnalysisStatus(null)
+    setVideoAnalysis(null)
+
+    // Simulate 3-5 second delay for demo/development
+    const delay = 3000 + Math.random() * 2000 // 3-5 seconds
+    await new Promise(resolve => setTimeout(resolve, delay))
 
     try {
       // Production code:
@@ -255,10 +310,11 @@ const ContentScript = () => {
         clickbaitVerdict: mockAnalysis.clickbaitVerdict.verdict.toUpperCase(),
         isAnalyzing: false
       })
+      setAnalysisState("complete")
+      
       // FR-101: Show pre-watch popover after analysis completes
-      if (!preWatchDismissed) {
-        setShowPreWatchPopover(true)
-      }
+      // Always show the popover when analysis completes (it will be reset per-video)
+      setShowPreWatchPopover(true)
     } catch (error) {
       console.error("Video analysis failed:", error)
       // Use mock data for development (statically imported fallback)
@@ -269,6 +325,11 @@ const ContentScript = () => {
         clickbaitVerdict: mockAnalysis.clickbaitVerdict.verdict.toUpperCase(),
         isAnalyzing: false
       })
+      setAnalysisState("complete")
+      
+      // FR-101: Show pre-watch popover after analysis completes
+      // Always show the popover when analysis completes (it will be reset per-video)
+      setShowPreWatchPopover(true)
     } finally {
       setIsAnalyzing(false)
     }
@@ -424,7 +485,22 @@ const ContentScript = () => {
             trustScore={analysisStatus?.trustScore}
             verdict={analysisStatus?.clickbaitVerdict}
             dock={panelDock}
-            onToggle={() => setIsSidePanelOpen(true)}
+            state={analysisState}
+            onToggle={() => {
+              if (analysisState === "idle") {
+                // Start analysis when in idle state
+                if (currentVideoId) {
+                  startVideoAnalysis(currentVideoId)
+                } else if (DEBUG) {
+                  // In debug mode without videoId, start analysis anyway
+                  startVideoAnalysis("debug-mock-video-id")
+                }
+              } else if (analysisState === "complete") {
+                // Open panel when analysis is complete
+                setIsSidePanelOpen(true)
+              }
+              // Do nothing if analyzing (wait for completion)
+            }}
             onDockChange={(pos) => {
               setPanelDock(pos)
               try {
