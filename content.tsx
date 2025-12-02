@@ -1,10 +1,10 @@
 import type { PlasmoCSConfig } from "plasmo"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { createRoot } from "react-dom/client"
 
 import { ResultsList } from "~components/ResultsList"
 import { SearchInterface } from "~components/SearchInterface"
-import { StatusChip } from "~components/StatusChip"
+import { ToggleButton } from "~components/ToggleButton"
 import { SidePanel } from "~components/SidePanel"
 import { PreWatchPopover } from "~components/PreWatchPopover"
 import { FocusGuardAPI } from "~lib/api"
@@ -16,9 +16,12 @@ import type {
   AnalysisHistoryItem
 } from "~types/analysis"
 
-// Configure to only run on YouTube
+// Configure content-script matches. Use a static literal so Plasmo can
+// generate a valid manifest. During development we accept broader matches
+// so the content script can be debugged across YouTube pages. Narrow this
+// before packaging for production if desired.
 export const config: PlasmoCSConfig = {
-  matches: ["https://www.youtube.com/watch?v=*"],
+  matches: ["https://*.youtube.com/*", "https://youtube.com/*", "https://youtu.be/*"],
   all_frames: false
 }
 
@@ -33,6 +36,36 @@ function isWatchPage(): boolean {
   return window.location.pathname === "/watch" && !!getVideoIdFromUrl(window.location.href)
 }
 
+// Debug mode: enable extended injection on any YouTube page when set.
+// Read debug flag from environment at build time (set by `dev:debug` script).
+// Use a direct `process.env.FOCUS_GUARD_DEBUG` access so the bundler can
+// statically replace the value during the build (avoid optional chaining).
+const BUILD_DEBUG = (process.env.FOCUS_GUARD_DEBUG === "1" || process.env.FOCUS_GUARD_DEBUG === "true")
+
+// Runtime debug fallback: allow enabling debug via URL param or
+// `localStorage.focusGuard.debug = '1'` so you can toggle on-the-fly
+// without restarting the dev server. Effective debug is true if either
+// build-time or runtime toggles are enabled.
+function runtimeDebugEnabled(): boolean {
+  try {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get("focusGuardDebug") === "1") return true
+    const byStorage = localStorage.getItem("focusGuard.debug")
+    if (byStorage === "1") return true
+  } catch (e) {
+    // If access to search/localStorage is blocked, silently ignore
+  }
+  return false
+}
+
+const RUNTIME_DEBUG = runtimeDebugEnabled()
+const DEBUG = BUILD_DEBUG || RUNTIME_DEBUG
+
+function isYouTubeDomain(): boolean {
+  const host = window.location.hostname || ""
+  return host.endsWith("youtube.com") || host === "youtu.be"
+}
+
 const ContentScript = () => {
   // Original feed replacement state
   const [results, setResults] = useState<VideoResult[]>([])
@@ -42,10 +75,20 @@ const ContentScript = () => {
 
   // FR-102 & FR-103: Watch page analysis state
   const [currentVideoId, setCurrentVideoId] = useState<string | null>(null)
+  const currentVideoIdRef = useRef<string | null>(null)
   const [videoAnalysis, setVideoAnalysis] = useState<VideoAnalysis | null>(null)
   const [analysisStatus, setAnalysisStatus] = useState<VideoAnalysisStatus | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [analysisState, setAnalysisState] = useState<"idle" | "analyzing" | "complete">("idle")
   const [isSidePanelOpen, setIsSidePanelOpen] = useState(false)
+  const [panelDock, setPanelDock] = useState<"left" | "right">(() => {
+    try {
+      const v = localStorage.getItem("focus-guard-toggle-dock")
+      return v === "left" ? "left" : "right"
+    } catch (e) {
+      return "right"
+    }
+  })
   const [analysisHistory, setAnalysisHistory] = useState<AnalysisHistoryItem[]>([])
   const [onWatchPage, setOnWatchPage] = useState(false)
   const [showPreWatchPopover, setShowPreWatchPopover] = useState(false)
@@ -54,28 +97,58 @@ const ContentScript = () => {
   useEffect(() => {
     // Check if we're on YouTube home page or watch page
     console.log("Focus Guard content script loaded");
+    // Print build-time debug flag so we can confirm whether the bundle
+    // was built with `FOCUS_GUARD_DEBUG=1`.
+    console.log("Focus Guard BUILD_DEBUG=", BUILD_DEBUG)
+    console.log("Focus Guard RUNTIME_DEBUG=", RUNTIME_DEBUG, "DEBUG=", DEBUG)
     const checkPageType = () => {
       const isHome =
         window.location.pathname === "/" ||
         window.location.pathname === "/feed/subscriptions" ||
         window.location.pathname === "/feed/trending"
-      const isWatch = isWatchPage()
+
+      // Respect debug mode: if enabled via build-time flag, runtime localStorage,
+      // or URL param, treat any YouTube domain page as a watch page so the UI can
+      // be inspected on non-watch paths during development.
+      const debug = DEBUG && isYouTubeDomain()
+      // When debug is enabled, treat YouTube domain pages (including Home)
+      // as watch pages so the UI can be inspected. This makes it easy to
+      // view chips and the side panel on the Home feed during development.
+      const isWatch = isWatchPage() || debug || (DEBUG && isHome)
 
       setIsYouTubeHome(isHome)
       setOnWatchPage(isWatch)
-      console.log("Focus Guard checkPageType: isHome=", isHome, "isWatch=", isWatch, "href=", window.location.href)
+      console.log("Focus Guard checkPageType: isHome=", isHome, "isWatch=", isWatch, "debug=", debug, "href=", window.location.href)
 
       // FR-202: Auto-activate analysis on watch page
       if (isWatch) {
         const videoId = getVideoIdFromUrl(window.location.href)
-        if (videoId && videoId !== currentVideoId) {
+        console.log("Focus Guard: detected videoId=", videoId, "currentVideoIdRef=", currentVideoIdRef.current)
+        if (videoId && videoId !== currentVideoIdRef.current) {
+          console.log("Focus Guard: NEW VIDEO detected, resetting state")
+          currentVideoIdRef.current = videoId
           setCurrentVideoId(videoId)
-          startVideoAnalysis(videoId)
+          // Don't auto-analyze; wait for user to click the button
+          setAnalysisState("idle")
+          setVideoAnalysis(null)
+          setAnalysisStatus(null)
+          // A new page is assumed to be unanalyzed for development. Reset
+          // the pre-watch dismissed flag so the popover appears after
+          // analysis completes on this new page.
+          setPreWatchDismissed(false)
+          setShowPreWatchPopover(false)
+        } else if (DEBUG && !videoId) {
+          // In debug mode, start in idle state
+          setAnalysisState("idle")
+          setVideoAnalysis(null)
+          setAnalysisStatus(null)
         }
       } else {
+        currentVideoIdRef.current = null
         setCurrentVideoId(null)
         setVideoAnalysis(null)
         setAnalysisStatus(null)
+        setAnalysisState("idle")
         setIsSidePanelOpen(false)
         setShowPreWatchPopover(false)
         setPreWatchDismissed(false)
@@ -84,15 +157,57 @@ const ContentScript = () => {
 
     checkPageType()
 
-    // // Listen for URL changes (YouTube is a SPA)
-    // const observer = new MutationObserver(checkPageType)
-    // observer.observe(document.body, { childList: true, subtree: true })
+    // Listen for URL changes (YouTube is a SPA). Wrap history methods and
+    // emit a `locationchange` event so we can react to navigations performed
+    // via `pushState`/`replaceState` as well as browser back/forward.
+    const onLocationChange = () => {
+      checkPageType()
+    }
 
-    // // Load user stats and history
-    // loadUserStats()
-    // loadAnalysisHistory()
+    const originalPush = history.pushState
+    const originalReplace = history.replaceState
+    const popstateHandler = () => window.dispatchEvent(new Event("locationchange"))
 
-    // return () => observer.disconnect()
+    history.pushState = function (...args: any[]) {
+      const result = originalPush.apply(this, args as any)
+      window.dispatchEvent(new Event("locationchange"))
+      return result
+    }
+
+    history.replaceState = function (...args: any[]) {
+      const result = originalReplace.apply(this, args as any)
+      window.dispatchEvent(new Event("locationchange"))
+      return result
+    }
+
+    window.addEventListener("popstate", popstateHandler)
+    window.addEventListener("locationchange", onLocationChange)
+
+    // YouTube sometimes navigates without triggering history events (clicking
+    // video thumbnails, etc). Use a MutationObserver to detect URL changes
+    // via DOM updates and check periodically.
+    const urlCheckInterval = setInterval(() => {
+      const currentUrl = window.location.href
+      const currentVidId = getVideoIdFromUrl(currentUrl)
+      if (currentVidId && currentVidId !== currentVideoIdRef.current) {
+        console.log("Focus Guard: URL polling detected new video")
+        checkPageType()
+      }
+    }, 500)
+
+    // Optionally load user data for richer UI during development / debug
+    loadUserStats()
+    loadAnalysisHistory()
+
+    return () => {
+      try {
+        history.pushState = originalPush
+        history.replaceState = originalReplace
+      } catch (e) {}
+      window.removeEventListener("popstate", popstateHandler)
+      window.removeEventListener("locationchange", onLocationChange)
+      clearInterval(urlCheckInterval)
+    }
   }, [])
 
   useEffect(() => {
@@ -169,11 +284,13 @@ const ContentScript = () => {
   // FR-202: Start video analysis automatically on watch page
   const startVideoAnalysis = async (videoId: string) => {
     setIsAnalyzing(true)
-    setAnalysisStatus({
-      trustScore: 0,
-      clickbaitVerdict: "LEGIT",
-      isAnalyzing: true
-    })
+    setAnalysisState("analyzing")
+    setAnalysisStatus(null)
+    setVideoAnalysis(null)
+
+    // Simulate 3-5 second delay for demo/development
+    const delay = 3000 + Math.random() * 2000 // 3-5 seconds
+    await new Promise(resolve => setTimeout(resolve, delay))
 
     try {
       // Production code:
@@ -193,10 +310,11 @@ const ContentScript = () => {
         clickbaitVerdict: mockAnalysis.clickbaitVerdict.verdict.toUpperCase(),
         isAnalyzing: false
       })
+      setAnalysisState("complete")
+      
       // FR-101: Show pre-watch popover after analysis completes
-      if (!preWatchDismissed) {
-        setShowPreWatchPopover(true)
-      }
+      // Always show the popover when analysis completes (it will be reset per-video)
+      setShowPreWatchPopover(true)
     } catch (error) {
       console.error("Video analysis failed:", error)
       // Use mock data for development (statically imported fallback)
@@ -207,6 +325,11 @@ const ContentScript = () => {
         clickbaitVerdict: mockAnalysis.clickbaitVerdict.verdict.toUpperCase(),
         isAnalyzing: false
       })
+      setAnalysisState("complete")
+      
+      // FR-101: Show pre-watch popover after analysis completes
+      // Always show the popover when analysis completes (it will be reset per-video)
+      setShowPreWatchPopover(true)
     } finally {
       setIsAnalyzing(false)
     }
@@ -288,113 +411,48 @@ const ContentScript = () => {
     }
   }
 
-  // FR-102 & FR-103: Inject Status Chip and Side Panel on watch page
-  useEffect(() => {
-    if (onWatchPage && analysisStatus) {
-      injectWatchPageUI()
-    }
-
-    return () => {
-      cleanupWatchPageUI()
-    }
-  }, [onWatchPage, analysisStatus, isSidePanelOpen])
+  // FR-102: SidePanel and Toggle injection handled by React render below
 
   const injectWatchPageUI = () => {
-    // FR-103: Inject Status Chip near video title
-    const selectors = [
-      "#title h1.ytd-watch-metadata",
-      "#container h1.title",
-      "h1.title",
-      "h1.ytd-video-primary-info-renderer",
-      "yt-formatted-string.ytd-video-primary-info-renderer"
-    ]
-
-    let titleElement: Element | null = null
-    for (const sel of selectors) {
-      titleElement = document.querySelector(sel)
-      if (titleElement) {
-        console.log("Focus Guard: found title element with selector:", sel, titleElement)
-        break
-      }
-    }
-
-    if (!titleElement) {
-      console.log("Focus Guard: title element not found, skipping injection")
-      return
-    }
-
-    if (!document.getElementById("focus-guard-status-chip")) {
-      const chipContainer = document.createElement("div")
-      chipContainer.id = "focus-guard-status-chip"
-    // Render as a floating fixed element on the left so it doesn't block the video
-    chipContainer.style.display = "inline-block"
-    chipContainer.style.position = "fixed"
-    chipContainer.style.left = "12px"
-    chipContainer.style.top = "50%"
-    chipContainer.style.transform = "translateY(-50%)"
-    chipContainer.style.zIndex = "2147483647"
-
-      // Prefer appending to the title's parent, but fall back to inserting after the title
-      if (titleElement.parentElement) {
-        titleElement.parentElement.appendChild(chipContainer)
-        console.log("Focus Guard: appended chip to title parent")
-      } else {
-        titleElement.insertAdjacentElement("afterend", chipContainer)
-        console.log("Focus Guard: inserted chip after title element")
-      }
-
-      const root = createRoot(chipContainer)
-      root.render(
-        <StatusChip
-          status={analysisStatus}
-          onViewReport={() => setIsSidePanelOpen(true)}
-        />
-      )
-    }
+    // Legacy StatusChip injection removed; ToggleButton now rendered by React.
   }
 
-  const cleanupWatchPageUI = () => {
-    const chipContainer = document.getElementById("focus-guard-status-chip")
-    if (chipContainer) {
-      console.log("Focus Guard: removing chip container")
-      chipContainer.remove()
-    }
-  }
+  // Note: cleanupWatchPageUI removed (StatusChip no longer injected)
 
-  // Render home/feed page overlay (original functionality)
-  if (isYouTubeHome) {
-    return (
-      <div
-        style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          width: "100%",
-          height: "100%",
-          backgroundColor: "white",
-          zIndex: 9999,
-          overflowY: "auto",
-          fontFamily:
-            '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-          animation: "fadeIn 0.4s ease-in"
-        }}>
-        <style>
-          {`
-            @keyframes fadeIn {
-              from { opacity: 0; }
-              to { opacity: 1; }
-            }
-          `}
-        </style>
-        <SearchInterface
-          onSearch={handleSearch}
-          isLoading={isLoading}
-          userStats={userStats}
-        />
-        <ResultsList results={results} isLoading={isLoading} />
-      </div>
-    )
-  }
+  // // Render home/feed page overlay (original functionality)
+  // if (isYouTubeHome) {
+  //   return (
+  //     <div
+  //       style={{
+  //         position: "fixed",
+  //         top: 0,
+  //         left: 0,
+  //         width: "100%",
+  //         height: "100%",
+  //         backgroundColor: "white",
+  //         zIndex: 9999,
+  //         overflowY: "auto",
+  //         fontFamily:
+  //           '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+  //         animation: "fadeIn 0.4s ease-in"
+  //       }}>
+  //       <style>
+  //         {`
+  //           @keyframes fadeIn {
+  //             from { opacity: 0; }
+  //             to { opacity: 1; }
+  //           }
+  //         `}
+  //       </style>
+  //       <SearchInterface
+  //         onSearch={handleSearch}
+  //         isLoading={isLoading}
+  //         userStats={userStats}
+  //       />
+  //       <ResultsList results={results} isLoading={isLoading} />
+  //     </div>
+  //   )
+  // }
 
   // FR-102: Render Side Panel on watch page
   if (onWatchPage) {
@@ -421,50 +479,50 @@ const ContentScript = () => {
           />
         )}
         
-        {/* FR-102: Side Panel */}
-        {/* Persistent left-side toggle so panel can be shown/hidden from the left edge */}
-        <div
-          id="focus-guard-sidepanel-toggle"
-          style={{
-            position: "fixed",
-            left: "12px",
-            top: "60%",
-            transform: "translateY(-50%)",
-            zIndex: 2147483650,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center"
-          }}>
-          <button
-            onClick={() => setIsSidePanelOpen((s) => !s)}
-            title={isSidePanelOpen ? "Hide Focus Guard" : "Show Focus Guard"}
-            style={{
-              width: "44px",
-              height: "44px",
-              borderRadius: "10px",
-              border: `1px solid ${"#e5e7eb"}`,
-              background: isSidePanelOpen ? "white" : "#111827",
-              color: isSidePanelOpen ? "#111827" : "white",
-              cursor: "pointer",
-              boxShadow: "0 6px 18px rgba(0,0,0,0.12)"
-            }}>
-            {isSidePanelOpen ? "✕" : "▸"}
-          </button>
-        </div>
+        {/* New ToggleButton - visible when panel is closed */}
+        {!isSidePanelOpen && (
+          <ToggleButton
+            trustScore={analysisStatus?.trustScore}
+            verdict={analysisStatus?.clickbaitVerdict}
+            dock={panelDock}
+            state={analysisState}
+            onToggle={() => {
+              if (analysisState === "idle") {
+                // Start analysis when in idle state
+                if (currentVideoId) {
+                  startVideoAnalysis(currentVideoId)
+                } else if (DEBUG) {
+                  // In debug mode without videoId, start analysis anyway
+                  startVideoAnalysis("debug-mock-video-id")
+                }
+              } else if (analysisState === "complete") {
+                // Open panel when analysis is complete
+                setIsSidePanelOpen(true)
+              }
+              // Do nothing if analyzing (wait for completion)
+            }}
+            onDockChange={(pos) => {
+              setPanelDock(pos)
+              try {
+                localStorage.setItem("focus-guard-toggle-dock", pos)
+              } catch (e) {}
+            }}
+          />
+        )}
 
         <SidePanel
-        analysis={videoAnalysis}
-        isLoading={isAnalyzing}
-        isOpen={isSidePanelOpen}
-        position="left"
-        history={analysisHistory}
-        onClose={() => setIsSidePanelOpen(false)}
-        onDownloadReport={handleDownloadReport}
-        onReAnalyze={handleReAnalyze}
-        onBotFilterChange={(enabled) => {
-          console.log("Bot filter changed:", enabled)
-        }}
-      />
+          analysis={videoAnalysis}
+          isLoading={isAnalyzing}
+          isOpen={isSidePanelOpen}
+          position={panelDock}
+          history={analysisHistory}
+          onClose={() => setIsSidePanelOpen(false)}
+          onDownloadReport={handleDownloadReport}
+          onReAnalyze={handleReAnalyze}
+          onBotFilterChange={(enabled) => {
+            console.log("Bot filter changed:", enabled)
+          }}
+        />
       </>
     )
   }

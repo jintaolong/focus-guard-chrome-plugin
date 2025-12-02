@@ -12,6 +12,7 @@ export const mockAnalysisHighTrust: any = {
   videoId: "dQw4w9WgXcQ",
   videoTitle: "Understanding Climate Change: A Scientific Overview",
   channelName: "Science Explained",
+  executiveSummary: "This video delivers high-quality educational content on climate change with strong scientific backing. The channel demonstrates excellent credibility with verified credentials, and viewer comments reflect positive engagement with minimal bot activity. Content is comprehensive though some viewers requested additional coverage of deforestation impacts.",
   trustScore: {
     score: 85,
     level: "high",
@@ -34,14 +35,22 @@ export const mockAnalysisHighTrust: any = {
     ]
   },
   clickbaitVerdict: {
-    verdict: "not-clickbait",
+    verdict: "LEGIT",
     confidence: 92,
     reasoning: "Title accurately reflects video content with no sensationalism"
   },
   channelCredibility: {
+    score: 92,
     verifiedStatus: true,
     history: "Consistent track record of accurate scientific content",
-    bias: "Minimal - fact-based presentation"
+    bias: "Minimal - fact-based presentation",
+    factors: [
+      { name: "Subscriber Count", value: "2.4M subscribers", weight: 25 },
+      { name: "Video Count", value: "340 videos", weight: 15 },
+      { name: "Average Views", value: "450K per video", weight: 20 },
+      { name: "Account Age", value: "8 years", weight: 15 },
+      { name: "Verified Status", value: "✓ Verified", weight: 25 }
+    ]
   },
   sentiment: {
     overall: "positive",
@@ -82,6 +91,7 @@ export const mockAnalysisHighTrust: any = {
   ],
   contentGaps: {
     overallCoverage: 78,
+    botPercentage: 7,
     unansweredQuestions: [
       {
         category: "clarification",
@@ -111,6 +121,7 @@ export const mockAnalysisMediumTrust: any = {
   videoId: "abc123xyz",
   videoTitle: "Top 10 Stock Picks for 2024 - Financial Freedom Awaits!",
   channelName: "InvestSmart Daily",
+  executiveSummary: "This financial advice video presents a mix of data-driven insights and personal opinions. The channel shows moderate credibility with some financial background but lacks professional licensing. Comment analysis reveals mixed viewer sentiment and elevated bot activity, suggesting caution when evaluating recommendations.",
   trustScore: {
     score: 55,
     level: "moderate",
@@ -133,14 +144,22 @@ export const mockAnalysisMediumTrust: any = {
     ]
   },
   clickbaitVerdict: {
-    verdict: "moderate-clickbait",
+    verdict: "MISLEADING",
     confidence: 78,
     reasoning: "Title uses attention-grabbing language ('Financial Freedom') but content is related"
   },
   channelCredibility: {
+    score: 58,
     verifiedStatus: false,
     history: "Inconsistent prediction accuracy in past videos",
-    bias: "Moderate - favors growth stocks"
+    bias: "Moderate - favors growth stocks",
+    factors: [
+      { name: "Subscriber Count", value: "180K subscribers", weight: 25 },
+      { name: "Video Count", value: "520 videos", weight: 15 },
+      { name: "Average Views", value: "25K per video", weight: 20 },
+      { name: "Account Age", value: "3 years", weight: 15 },
+      { name: "Verified Status", value: "✗ Not Verified", weight: 25 }
+    ]
   },
   sentiment: {
     overall: "neutral",
@@ -181,6 +200,7 @@ export const mockAnalysisMediumTrust: any = {
   ],
   contentGaps: {
     overallCoverage: 55,
+    botPercentage: 23,
     unansweredQuestions: [
       {
         category: "concern",
@@ -221,6 +241,7 @@ export const mockAnalysisLowTrust: any = {
   videoId: "xyz789def",
   videoTitle: "SHOCKING TRUTH They Don't Want You to Know! 🚨",
   channelName: "TruthSeeker3000",
+  executiveSummary: "This video exhibits multiple red flags including sensationalist clickbait, lack of credible sources, and claims contradicting established facts. The channel has a history of promoting unverified theories. Analysis reveals high bot activity in comments and significant viewer concern regarding misinformation. Exercise extreme caution with content from this source.",
   trustScore: {
     score: 25,
     level: "low",
@@ -243,14 +264,22 @@ export const mockAnalysisLowTrust: any = {
     ]
   },
   clickbaitVerdict: {
-    verdict: "highly-clickbait",
+    verdict: "CLICKBAIT",
     confidence: 95,
     reasoning: "Sensational title with shock value and urgency tactics; vague about actual content"
   },
   channelCredibility: {
+    score: 28,
     verifiedStatus: false,
     history: "History of promoting conspiracy theories and unverified claims",
-    bias: "Extreme - promotes fringe theories"
+    bias: "Extreme - promotes fringe theories",
+    factors: [
+      { name: "Subscriber Count", value: "45K subscribers", weight: 25 },
+      { name: "Video Count", value: "1,240 videos", weight: 15 },
+      { name: "Average Views", value: "8K per video", weight: 20 },
+      { name: "Account Age", value: "1.5 years", weight: 15 },
+      { name: "Verified Status", value: "✗ Not Verified", weight: 25 }
+    ]
   },
   sentiment: {
     overall: "negative",
@@ -291,6 +320,7 @@ export const mockAnalysisLowTrust: any = {
   ],
   contentGaps: {
     overallCoverage: 20,
+    botPercentage: 41,
     unansweredQuestions: [
       {
         category: "concern",
