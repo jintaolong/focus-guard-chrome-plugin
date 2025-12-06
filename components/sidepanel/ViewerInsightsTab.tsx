@@ -1,6 +1,7 @@
 // FR-102 Tab 2: Viewer Insights
 // Sentiment Overview (Donut Chart) + Actionable Insights (FR-401 pattern)
 
+import { useState } from "react"
 import type { VideoAnalysis } from "~types/analysis"
 import { COLORS, getSentimentColor, getColorSet } from "~lib/colors"
 import { StatementBlock } from "~components/StatementBlock"
@@ -17,7 +18,6 @@ export const ViewerInsightsTab = ({ analysis }: ViewerInsightsTabProps) => {
     positive: 0,
     negative: 0,
     neutral: 0,
-    mixed: 0,
     totalCommentsAnalyzed: Array.isArray(viewerInsights) ? viewerInsights.length : 0
   }
 
@@ -26,18 +26,16 @@ export const ViewerInsightsTab = ({ analysis }: ViewerInsightsTabProps) => {
     improvements: []
   }
 
-  // Calculate percentages for donut chart
+  // Calculate percentages for donut chart (without mixed)
   const total =
     (sentimentBreakdown.positive || 0) +
     (sentimentBreakdown.negative || 0) +
-    (sentimentBreakdown.neutral || 0) +
-    (sentimentBreakdown.mixed || 0) || 1
+    (sentimentBreakdown.neutral || 0) || 1
 
   const percentages = {
     positive: ((sentimentBreakdown.positive || 0) / total) * 100,
     negative: ((sentimentBreakdown.negative || 0) / total) * 100,
-    neutral: ((sentimentBreakdown.neutral || 0) / total) * 100,
-    mixed: ((sentimentBreakdown.mixed || 0) / total) * 100
+    neutral: ((sentimentBreakdown.neutral || 0) / total) * 100
   }
 
   // Create donut chart segments
@@ -45,8 +43,7 @@ export const ViewerInsightsTab = ({ analysis }: ViewerInsightsTabProps) => {
   const segments = [
     { type: "positive" as const, value: percentages.positive, count: sentimentBreakdown.positive || 0 },
     { type: "negative" as const, value: percentages.negative, count: sentimentBreakdown.negative || 0 },
-    { type: "neutral" as const, value: percentages.neutral, count: sentimentBreakdown.neutral || 0 },
-    { type: "mixed" as const, value: percentages.mixed, count: sentimentBreakdown.mixed || 0 }
+    { type: "neutral" as const, value: percentages.neutral, count: sentimentBreakdown.neutral || 0 }
   ]
 
   return (
@@ -60,7 +57,7 @@ export const ViewerInsightsTab = ({ analysis }: ViewerInsightsTabProps) => {
             fontWeight: "600",
               color: COLORS.ui.textPrimary
           }}>
-          Comment Sentiment Overview
+          Comment Sentiment on Content Relevancy
         </h3>
 
         <div style={{ display: "flex", gap: "32px", alignItems: "center" }}>
@@ -205,27 +202,139 @@ export const ViewerInsightsTab = ({ analysis }: ViewerInsightsTabProps) => {
         )}
       </div>
 
-      {/* Actionable Insights - Improvements */}
+      {/* Example Comments by Sentiment */}
       <div>
         <h3
           style={{
             margin: "0 0 16px 0",
             fontSize: "16px",
             fontWeight: "600",
-            color: COLORS.low.text
+            color: COLORS.ui.textPrimary
           }}>
-          ⚡ Areas for Improvement
+          Example Comments on Content Relevancy
         </h3>
-        {((actionableInsights.improvements || []) as any[]).length === 0 ? (
-          <p style={{ fontSize: "14px", color: COLORS.ui.textSecondary, fontStyle: "italic" }}>
-            No areas for improvement identified
-          </p>
-        ) : (
-          (actionableInsights.improvements || []).map((insight: any, idx: number) => (
-            <StatementBlock key={insight.id ?? `impr-${idx}`} insight={insight} />
-          ))
-        )}
+        {renderExampleComments(analysis)}
       </div>
+    </div>
+  )
+}
+
+// Helper to render example comments for each sentiment type
+function renderExampleComments(analysis: VideoAnalysis) {
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({})
+  const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({})
+  
+  const sentiment = (analysis as any)?.sentiment
+  const exampleComments = sentiment?.distribution?.exampleComments
+  
+  if (!exampleComments) {
+    return (
+      <p style={{ fontSize: "14px", color: COLORS.ui.textSecondary, fontStyle: "italic" }}>
+        No example comments available
+      </p>
+    )
+  }
+
+  const sentimentTypes = [
+    { type: "positive", label: "Positive", comments: exampleComments.positive || [] },
+    { type: "neutral", label: "Neutral", comments: exampleComments.neutral || [] },
+    { type: "negative", label: "Negative", comments: exampleComments.negative || [] }
+  ]
+
+  const toggleSection = (type: string) => {
+    setExpandedSections(prev => ({ ...prev, [type]: !prev[type] }))
+  }
+
+  const toggleComment = (commentId: string) => {
+    setExpandedComments(prev => ({ ...prev, [commentId]: !prev[commentId] }))
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      {sentimentTypes.map(({ type, label, comments }) => {
+        const topComments = comments.slice(0, 3)
+        if (topComments.length === 0) return null
+        const isExpanded = expandedSections[type]
+
+        return (
+          <div key={type}>
+            <button
+              onClick={() => toggleSection(type)}
+              style={{
+                width: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "8px 12px",
+                backgroundColor: COLORS.ui.surface,
+                border: `1px solid ${COLORS.ui.border}`,
+                borderRadius: "6px",
+                cursor: "pointer",
+                marginBottom: isExpanded ? "8px" : "0"
+              }}>
+              <h4
+                style={{
+                  margin: 0,
+                  fontSize: "13px",
+                  fontWeight: "600",
+                  color: COLORS.ui.textSecondary,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px"
+                }}>
+                {label} ({topComments.length})
+              </h4>
+              <span style={{ fontSize: "14px", color: COLORS.ui.textSecondary }}>
+                {isExpanded ? "−" : "+"}
+              </span>
+            </button>
+            {isExpanded && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                {topComments.map((comment: any, idx: number) => {
+                  const commentId = `${type}-${idx}`
+                  const commentText = comment.text || comment
+                  const isLong = commentText.length > 150
+                  const isCommentExpanded = expandedComments[commentId]
+                  const displayText = isLong && !isCommentExpanded 
+                    ? commentText.substring(0, 150) + "..." 
+                    : commentText
+
+                  return (
+                    <div
+                      key={idx}
+                      style={{
+                        padding: "10px 12px",
+                        backgroundColor: COLORS.ui.background,
+                        borderLeft: `3px solid ${COLORS[getSentimentColor(type as any)].primary}`,
+                        borderRadius: "4px",
+                        fontSize: "13px",
+                        lineHeight: "1.5",
+                        color: COLORS.ui.textPrimary
+                      }}>
+                      {displayText}
+                      {isLong && (
+                        <button
+                          onClick={() => toggleComment(commentId)}
+                          style={{
+                            marginLeft: "8px",
+                            padding: "2px 6px",
+                            fontSize: "11px",
+                            color: COLORS.neutral.primary,
+                            backgroundColor: "transparent",
+                            border: "none",
+                            cursor: "pointer",
+                            textDecoration: "underline"
+                          }}>
+                          {isCommentExpanded ? "Show less" : "Show more"}
+                        </button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }

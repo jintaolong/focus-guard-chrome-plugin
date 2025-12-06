@@ -4,6 +4,8 @@ import { AccountInfo } from "~components/popup/AccountInfo"
 import { LoginForm } from "~components/popup/LoginForm"
 import { ModeSelector } from "~components/popup/ModeSelector"
 import { ToggleSwitch } from "~components/popup/ToggleSwitch"
+import { AuthService } from "~lib/auth"
+import { SubscriptionService } from "~lib/subscription"
 import type { UserAccount, FocusGuardSettings } from "~types/popup"
 
 import "./style.css"
@@ -20,59 +22,110 @@ function IndexPopup() {
     }
   })
   const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     console.log("Focus Guard popup loaded");
+    // Test storage first
+    AuthService.testStorage()
+      .then(() => console.log("Storage test passed"))
+      .catch((err) => console.error("Storage test failed:", err))
     loadUserData()
   }, [])
 
   const loadUserData = async () => {
     try {
-      // Load from chrome storage
-      const result = await chrome.storage.sync.get([
-        "account",
-        "settings"
-      ])
-
-      if (result.account) {
-        setAccount(result.account)
-      }
+      console.log("Popup: Loading user data...")
+      
+      // Load settings from chrome storage
+      const result = await chrome.storage.sync.get(["settings"])
       if (result.settings) {
         setSettings(result.settings)
       }
-    } catch (error) {
-      console.error("Failed to load user data:", error)
-    } finally {
-      setIsLoading(false)
-    }
-  }
 
-  const handleLogin = async (email: string) => {
-    setIsLoading(true)
-    try {
-      // TODO: Implement actual login API call
-      // Mock login for now
-      const newAccount: UserAccount = {
-        isLoggedIn: true,
-        email,
-        tier: "starter",
-        searchesUsedToday: 0,
-        searchesRemaining: 3,
-        resetTime: new Date(new Date().setHours(24, 0, 0, 0)).toISOString()
+      // Check if user is authenticated
+      const isAuth = await AuthService.isAuthenticated()
+      console.log("Popup: isAuthenticated =", isAuth)
+      
+      if (isAuth) {
+        // Get user and subscription info
+        console.log("Popup: Fetching user, subscription, and usage...")
+        const [user, subscription, usage] = await Promise.all([
+          AuthService.getCurrentUser(),
+          SubscriptionService.getSubscription(),
+          SubscriptionService.getUsage()
+        ])
+
+        console.log("Popup: Got user data:", { user, subscription, usage })
+
+        if (user) {
+          const newAccount: UserAccount = {
+            isLoggedIn: true,
+            email: user.email,
+            tier: subscription.tier === "PRO" ? "pro" : "starter",
+            searchesUsedToday: usage.daily_searches_used,
+            searchesRemaining: usage.searches_remaining,
+            resetTime: subscription.last_reset_date
+          }
+          setAccount(newAccount)
+        } else {
+          console.log("Popup: No user data, setting account to null")
+          setAccount(null)
+        }
+      } else {
+        console.log("Popup: Not authenticated, setting account to null")
+        setAccount(null)
       }
-
-      await chrome.storage.sync.set({ account: newAccount })
-      setAccount(newAccount)
     } catch (error) {
-      console.error("Login failed:", error)
+      console.error("Popup: Failed to load user data:", error)
+      // If there's an error, user is likely not authenticated
+      setAccount(null)
     } finally {
       setIsLoading(false)
     }
   }
 
-  const handleUpgrade = () => {
-    // TODO: Open upgrade page
-    chrome.tabs.create({ url: "https://focusguard.com/upgrade" })
+  const handleLogin = async (email: string, password: string) => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      // Try to login first - if successful, we're done
+      try {
+        await AuthService.login(email, password)
+      } catch (loginError) {
+        // If login fails, it might be a new user, try registration
+        // However, the LoginForm should handle this by having separate modes
+        throw loginError
+      }
+      
+      // Reload user data
+      await loadUserData()
+    } catch (error) {
+      console.error("Authentication failed:", error)
+      setError(error instanceof Error ? error.message : "Authentication failed")
+      throw error
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleUpgrade = async () => {
+    try {
+      // Open Stripe checkout
+      await SubscriptionService.openCheckout()
+    } catch (error) {
+      console.error("Failed to open checkout:", error)
+      setError(error instanceof Error ? error.message : "Failed to open checkout")
+    }
+  }
+
+  const handleLogout = async () => {
+    try {
+      await AuthService.logout()
+      setAccount(null)
+    } catch (error) {
+      console.error("Logout failed:", error)
+    }
   }
 
   const handleToggle = async (enabled: boolean) => {
@@ -307,10 +360,7 @@ function IndexPopup() {
           textAlign: "center"
         }}>
         <button
-          onClick={() => {
-            chrome.storage.sync.clear()
-            setAccount(null)
-          }}
+          onClick={handleLogout}
           style={{
             fontSize: "12px",
             color: "#999",

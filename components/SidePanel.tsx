@@ -20,6 +20,7 @@ interface SidePanelProps {
   onClose: () => void
   onDownloadReport?: (format: "PDF" | "TXT") => void
   onReAnalyze?: (videoId: string) => void
+  onDownloadHistoryReport?: (videoId: string) => void
   onBotFilterChange?: (enabled: boolean) => void
 }
 
@@ -32,6 +33,7 @@ export const SidePanel = ({
   onClose,
   onDownloadReport,
   onReAnalyze,
+  onDownloadHistoryReport,
   onBotFilterChange
 }: SidePanelProps) => {
   const [activeTab, setActiveTab] = useState<TabId>("summary")
@@ -275,6 +277,7 @@ export const SidePanel = ({
                     history={history}
                     onDownloadReport={onDownloadReport}
                     onReAnalyze={onReAnalyze}
+                    onDownloadHistoryReport={onDownloadHistoryReport}
                   />
                 )}
               </>

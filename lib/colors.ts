@@ -102,18 +102,18 @@ export function getClickbaitVerdictColor(
   verdict: string
 ): ColorKey {
   // Accept multiple verdict string formats used across code and mock data
-  // e.g. typed labels: "LEGIT" | "MISLEADING" | "CLICKBAIT"
+  // e.g. typed labels: "LEGIT" | "MISLEADING" | "CLICKBAIT" | "DISPUTED"
   // or mock/legacy values: "not-clickbait" | "moderate-clickbait" | "highly-clickbait"
   const v = (verdict || "").toString().toLowerCase()
   if (v === "legit" || v === "not-clickbait") return "high"
-  if (v === "misleading" || v === "moderate-clickbait") return "medium"
+  if (v === "misleading" || v === "moderate-clickbait" || v === "disputed") return "medium"
   if (v === "clickbait" || v === "highly-clickbait") return "low"
   // Fallback to neutral if unknown
   return "neutral"
 }
 
 export function getSentimentColor(
-  sentiment: "positive" | "neutral" | "negative" | "mixed"
+  sentiment: "positive" | "neutral" | "negative"
 ): ColorKey {
   switch (sentiment) {
     case "positive":
@@ -122,8 +122,6 @@ export function getSentimentColor(
       return "neutral"
     case "negative":
       return "low"
-    case "mixed":
-      return "medium"
   }
   // Fallback for unexpected values
   return "neutral"
