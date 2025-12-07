@@ -10,6 +10,9 @@ import type { UserAccount, FocusGuardSettings } from "~types/popup"
 
 import "./style.css"
 
+// Portal URL (dev default -> localhost). Can be overridden with PLASMO_PUBLIC_PORTAL_URL
+const PORTAL_URL = process.env.PLASMO_PUBLIC_PORTAL_URL || "http://localhost:3000"
+
 function IndexPopup() {
   const [account, setAccount] = useState<UserAccount | null>(null)
   const [settings, setSettings] = useState<FocusGuardSettings>({
@@ -59,10 +62,21 @@ function IndexPopup() {
         console.log("Popup: Got user data:", { user, subscription, usage })
 
         if (user) {
+          // Map backend tier (FREE/STARTER/PRO) to frontend tier (free/starter/pro)
+          let tier: "free" | "starter" | "pro"
+          if (subscription.tier === "PRO") {
+            tier = "pro"
+          } else if (subscription.tier === "STARTER") {
+            tier = "starter"
+          } else {
+            tier = "free"
+          }
+
           const newAccount: UserAccount = {
             isLoggedIn: true,
             email: user.email,
-            tier: subscription.tier === "PRO" ? "pro" : "starter",
+            tier,
+            dailySearchesLimit: usage.daily_searches_limit,
             searchesUsedToday: usage.daily_searches_used,
             searchesRemaining: usage.searches_remaining,
             resetTime: subscription.last_reset_date
@@ -111,11 +125,12 @@ function IndexPopup() {
 
   const handleUpgrade = async () => {
     try {
-      // Open Stripe checkout
-      await SubscriptionService.openCheckout()
+      // Open the hosted portal for upgrading (dev default: http://localhost:3000)
+      // The portal will handle creating a Stripe checkout session and redirecting back to the app.
+      await chrome.tabs.create({ url: `${PORTAL_URL}/signup` })
     } catch (error) {
-      console.error("Failed to open checkout:", error)
-      setError(error instanceof Error ? error.message : "Failed to open checkout")
+      console.error("Failed to open portal:", error)
+      setError(error instanceof Error ? error.message : "Failed to open portal")
     }
   }
 

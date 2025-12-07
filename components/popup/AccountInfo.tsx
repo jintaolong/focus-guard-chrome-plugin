@@ -6,10 +6,17 @@ interface AccountInfoProps {
 }
 
 export const AccountInfo = ({ account, onUpgrade }: AccountInfoProps) => {
+  const isPro = account.tier === "pro"
   const isStarter = account.tier === "starter"
-  const usagePercent = isStarter
-    ? (account.searchesUsedToday / 3) * 100
+  const isFree = account.tier === "free"
+  const hasLimits = !isPro // Free and Starter both have limits
+  
+  const usagePercent = hasLimits && account.dailySearchesLimit > 0
+    ? (account.searchesUsedToday / account.dailySearchesLimit) * 100
     : 0
+
+  // Tier display labels
+  const tierLabel = isPro ? "⭐ Pro Plan" : isStarter ? "🌱 Starter Plan" : "🆓 Free Plan"
 
   return (
     <div
@@ -38,10 +45,10 @@ export const AccountInfo = ({ account, onUpgrade }: AccountInfoProps) => {
             {account.email}
           </p>
           <p style={{ fontSize: "12px", color: "#666" }}>
-            {isStarter ? "🌱 Starter Plan" : "⭐ Pro Plan"}
+            {tierLabel}
           </p>
         </div>
-        {isStarter && (
+        {!isPro && (
           <button
             onClick={onUpgrade}
             style={{
@@ -63,13 +70,13 @@ export const AccountInfo = ({ account, onUpgrade }: AccountInfoProps) => {
               e.currentTarget.style.backgroundColor = "white"
               e.currentTarget.style.color = "#3b82f6"
             }}>
-            Upgrade to Pro
+            {isStarter ? "Upgrade to Pro" : "Upgrade Plan"}
           </button>
         )}
       </div>
 
-      {/* Usage Stats for Starter */}
-      {isStarter && (
+      {/* Usage Stats for Free and Starter */}
+      {hasLimits && (
         <div>
           <div
             style={{
@@ -123,7 +130,7 @@ export const AccountInfo = ({ account, onUpgrade }: AccountInfoProps) => {
       )}
 
       {/* Pro Benefits */}
-      {!isStarter && (
+      {isPro && (
         <div
           style={{
             display: "flex",
