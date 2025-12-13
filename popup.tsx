@@ -2,7 +2,6 @@ import { useState, useEffect } from "react"
 
 import { AccountInfo } from "~components/popup/AccountInfo"
 import { LoginForm } from "~components/popup/LoginForm"
-import { ModeSelector } from "~components/popup/ModeSelector"
 import { ToggleSwitch } from "~components/popup/ToggleSwitch"
 import { AuthService } from "~lib/auth"
 import { SubscriptionService } from "~lib/subscription"
@@ -10,14 +9,16 @@ import type { UserAccount, FocusGuardSettings } from "~types/popup"
 
 import "./style.css"
 
+console.log("🚀 Focus Guard Popup: Module loaded")
+
 // Portal URL (dev default -> localhost). Can be overridden with PLASMO_PUBLIC_PORTAL_URL
 const PORTAL_URL = process.env.PLASMO_PUBLIC_PORTAL_URL || "http://localhost:3000"
 
 function IndexPopup() {
+  console.log("🎯 Focus Guard Popup: Component initializing")
   const [account, setAccount] = useState<UserAccount | null>(null)
   const [settings, setSettings] = useState<FocusGuardSettings>({
     isEnabled: true,
-    mode: "curated",
     videoAnalysis: {
       showPreWatchPopover: true,
       autoAnalyze: true,
@@ -34,6 +35,20 @@ function IndexPopup() {
       .then(() => console.log("Storage test passed"))
       .catch((err) => console.error("Storage test failed:", err))
     loadUserData()
+    
+    // Listen for storage changes (e.g., OAuth completion in background)
+    const storageListener = (changes: any, areaName: string) => {
+      if (areaName === 'sync' && (changes.focus_guard_access_token || changes.focus_guard_user)) {
+        console.log("Popup: Detected token/user change in storage, reloading data")
+        loadUserData()
+      }
+    }
+    
+    chrome.storage.onChanged.addListener(storageListener)
+    
+    return () => {
+      chrome.storage.onChanged.removeListener(storageListener)
+    }
   }, [])
 
   const loadUserData = async () => {
@@ -60,17 +75,33 @@ function IndexPopup() {
         ])
 
         console.log("Popup: Got user data:", { user, subscription, usage })
+        console.log("Popup: Subscription tier from backend:", subscription.tier)
+        console.log("Popup: Usage data from backend:", usage)
 
         if (user) {
           // Map backend tier (FREE/STARTER/PRO) to frontend tier (free/starter/pro)
+          // Make comparison case-insensitive
+          const backendTier = (subscription.tier || "").toUpperCase()
+          console.log("Popup: Backend tier (uppercased):", backendTier)
+          
           let tier: "free" | "starter" | "pro"
-          if (subscription.tier === "PRO") {
+          if (backendTier === "PRO") {
             tier = "pro"
-          } else if (subscription.tier === "STARTER") {
+            console.log("✅ Popup: Mapped to 'pro' tier")
+          } else if (backendTier === "STARTER") {
             tier = "starter"
+            console.log("✅ Popup: Mapped to 'starter' tier")
           } else {
             tier = "free"
+            console.log("⚠️ Popup: Mapped to 'free' tier (default) - backend tier was:", subscription.tier)
           }
+
+          console.log("Popup: Creating account with:", {
+            tier,
+            dailySearchesLimit: usage.daily_searches_limit,
+            searchesUsedToday: usage.daily_searches_used,
+            searchesRemaining: usage.searches_remaining
+          })
 
           const newAccount: UserAccount = {
             isLoggedIn: true,
@@ -81,6 +112,7 @@ function IndexPopup() {
             searchesRemaining: usage.searches_remaining,
             resetTime: subscription.last_reset_date
           }
+          console.log("📊 Popup: Setting account state:", newAccount)
           setAccount(newAccount)
         } else {
           console.log("Popup: No user data, setting account to null")
@@ -123,11 +155,11 @@ function IndexPopup() {
     }
   }
 
-  const handleUpgrade = async () => {
+  const handleManagePlan = async () => {
     try {
-      // Open the hosted portal for upgrading (dev default: http://localhost:3000)
-      // The portal will handle creating a Stripe checkout session and redirecting back to the app.
-      await chrome.tabs.create({ url: `${PORTAL_URL}/signup` })
+      // Open the web portal dashboard for plan management
+      // Users can upgrade, downgrade, or cancel their subscription there
+      await chrome.tabs.create({ url: `${PORTAL_URL}/dashboard` })
     } catch (error) {
       console.error("Failed to open portal:", error)
       setError(error instanceof Error ? error.message : "Failed to open portal")
@@ -145,12 +177,6 @@ function IndexPopup() {
 
   const handleToggle = async (enabled: boolean) => {
     const newSettings = { ...settings, isEnabled: enabled }
-    setSettings(newSettings)
-    await chrome.storage.sync.set({ settings: newSettings })
-  }
-
-  const handleModeChange = async (mode: FocusGuardSettings["mode"]) => {
-    const newSettings = { ...settings, mode }
     setSettings(newSettings)
     await chrome.storage.sync.set({ settings: newSettings })
   }
@@ -224,7 +250,7 @@ function IndexPopup() {
       </div>
 
       {/* Account Info */}
-      <AccountInfo account={account} onUpgrade={handleUpgrade} />
+      <AccountInfo account={account} onManagePlan={handleManagePlan} />
 
       {/* Enable/Disable Toggle */}
       <ToggleSwitch
@@ -238,16 +264,8 @@ function IndexPopup() {
         }
       />
 
-      {/* Mode Selector */}
-      {settings.isEnabled && (
-        <ModeSelector
-          currentMode={settings.mode}
-          onModeChange={handleModeChange}
-        />
-      )}
-
       {/* Video Analysis Settings */}
-      {settings.isEnabled && settings.mode === "video-analysis" && (
+      {settings.isEnabled && (
         <div
           style={{
             marginTop: "16px",

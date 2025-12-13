@@ -390,10 +390,8 @@ const ContentScript = () => {
             console.error("Focus Guard: failed to fetch credibility:", err)
             return null
           }),
-          FocusGuardAPI.analyzeHumanLikenessV2(videoId, false).catch(err => {
-            console.error("Focus Guard: failed to fetch human likeness:", err)
-            return null
-          }),
+          // Human-likeness excluded from general flow - load on-demand for advanced features
+          Promise.resolve(null),
           FocusGuardAPI.analyzeTopicClusteringV2(videoId, false).catch(err => {
             console.error("Focus Guard: failed to fetch topic clusters:", err)
             return null
@@ -588,6 +586,15 @@ const ContentScript = () => {
       const analysisStartTime = Date.now()
       console.log("Starting video analysis for:", videoId)
       
+      // Check authentication before starting
+      console.log("Checking authentication before analysis...")
+      const isAuth = await AuthService.isAuthenticated()
+      console.log("Authentication check result:", isAuth)
+      
+      if (!isAuth) {
+        throw new Error("Not authenticated. Please log in to analyze videos.")
+      }
+      
       // Step 1: Check cache status
       console.log("Checking cache status...")
       const cacheCheckStart = Date.now()
@@ -628,34 +635,34 @@ const ContentScript = () => {
         const pollDuration = ((Date.now() - pollStartTime) / 1000).toFixed(1)
         console.log(`Job completed in ${pollDuration}s:`, jobResult)
 
-        // Step 3a: After job completes, fetch ALL analysis endpoints in parallel (data is now cached)
-        console.log("Fetching all analysis data in parallel (post-job)...")
+        // Step 3a: After job completes, fetch analysis endpoints in parallel (data is now cached)
+        // NOTE: Excluding human-likeness from general flow - will be loaded on-demand for advanced features
+        console.log("Fetching analysis data in parallel (post-job)...")
         const fetchStartTime = Date.now()
         const results = await Promise.allSettled([
           FocusGuardAPI.analyzeRelevancyV2(videoId, false),
           FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: false }),
           FocusGuardAPI.analyzeSummaryV2({ video_id: videoId, force_refresh: false }),
           FocusGuardAPI.analyzeChannelCredibilityV2(videoId, false),
-          FocusGuardAPI.analyzeHumanLikenessV2(videoId, false),
           FocusGuardAPI.analyzeTopicClusteringV2(videoId, false),
           FocusGuardAPI.analyzeTopicGapV2(videoId, false)
         ])
         const fetchDuration = ((Date.now() - fetchStartTime) / 1000).toFixed(1)
-        console.log(`All analysis data fetched in ${fetchDuration}s`)
+        console.log(`Analysis data fetched in ${fetchDuration}s`)
         
         // Extract results, logging any failures
         relevancyData = results[0].status === 'fulfilled' ? results[0].value : null
         sentimentData = results[1].status === 'fulfilled' ? results[1].value : null
         summaryData = results[2].status === 'fulfilled' ? results[2].value : null
         credibilityData = results[3].status === 'fulfilled' ? results[3].value : null
-        humanLikenessData = results[4].status === 'fulfilled' ? results[4].value : null
-        topicClustersData = results[5].status === 'fulfilled' ? results[5].value : null
-        topicGapsData = results[6].status === 'fulfilled' ? results[6].value : null
+        topicClustersData = results[4].status === 'fulfilled' ? results[4].value : null
+        topicGapsData = results[5].status === 'fulfilled' ? results[5].value : null
+        humanLikenessData = null // Not fetched in general flow - load on-demand for advanced features
         
         // Log any failures
         results.forEach((result, idx) => {
           if (result.status === 'rejected') {
-            const endpoints = ['relevancy', 'sentiment', 'summary', 'credibility', 'humanLikeness', 'topicClusters', 'topicGaps']
+            const endpoints = ['relevancy', 'sentiment', 'summary', 'credibility', 'topicClusters', 'topicGaps']
             console.error(`Failed to fetch ${endpoints[idx]}:`, result.reason)
           }
         })
@@ -684,15 +691,15 @@ const ContentScript = () => {
       console.log("Focus Guard: Final trustScore for analysisStatus:", trustScoreNormalized, "confidencePercent:", confidencePercent)
 
       // Fetch additional analysis data for full report (only if we haven't already fetched it)
-      if (!sentimentData || !summaryData || !credibilityData || !humanLikenessData || !topicClustersData || !topicGapsData) {
+      // NOTE: Excluding human-likeness from general flow - will be loaded on-demand for advanced features
+      if (!sentimentData || !summaryData || !credibilityData || !topicClustersData || !topicGapsData) {
         console.log("Focus Guard: Fetching remaining analysis data for video:", videoId)
         const remainingFetchStart = Date.now()
-        // Fetch all data in parallel with resilient error handling
+        // Fetch data in parallel with resilient error handling (excluding human-likeness)
         const remainingResults = await Promise.allSettled([
           FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: false }),
           FocusGuardAPI.analyzeSummaryV2({ video_id: videoId, force_refresh: false }),
           FocusGuardAPI.analyzeChannelCredibilityV2(videoId, false),
-          FocusGuardAPI.analyzeHumanLikenessV2(videoId, false),
           FocusGuardAPI.analyzeTopicClusteringV2(videoId, false),
           FocusGuardAPI.analyzeTopicGapV2(videoId, false)
         ])
@@ -700,9 +707,9 @@ const ContentScript = () => {
         sentimentData = sentimentData || (remainingResults[0].status === 'fulfilled' ? remainingResults[0].value : null)
         summaryData = summaryData || (remainingResults[1].status === 'fulfilled' ? remainingResults[1].value : null)
         credibilityData = credibilityData || (remainingResults[2].status === 'fulfilled' ? remainingResults[2].value : null)
-        humanLikenessData = humanLikenessData || (remainingResults[3].status === 'fulfilled' ? remainingResults[3].value : null)
-        topicClustersData = topicClustersData || (remainingResults[4].status === 'fulfilled' ? remainingResults[4].value : null)
-        topicGapsData = topicGapsData || (remainingResults[5].status === 'fulfilled' ? remainingResults[5].value : null)
+        topicClustersData = topicClustersData || (remainingResults[3].status === 'fulfilled' ? remainingResults[3].value : null)
+        topicGapsData = topicGapsData || (remainingResults[4].status === 'fulfilled' ? remainingResults[4].value : null)
+        humanLikenessData = null // Not fetched - load on-demand for advanced features
         
         const remainingFetchDuration = ((Date.now() - remainingFetchStart) / 1000).toFixed(1)
         console.log(`Remaining analysis data fetched in ${remainingFetchDuration}s`)
@@ -710,7 +717,7 @@ const ContentScript = () => {
         // Log any failures
         remainingResults.forEach((result, idx) => {
           if (result.status === 'rejected') {
-            const endpoints = ['sentiment', 'summary', 'credibility', 'humanLikeness', 'topicClusters', 'topicGaps']
+            const endpoints = ['sentiment', 'summary', 'credibility', 'topicClusters', 'topicGaps']
             console.error(`Failed to fetch ${endpoints[idx]}:`, result.reason)
           }
         })

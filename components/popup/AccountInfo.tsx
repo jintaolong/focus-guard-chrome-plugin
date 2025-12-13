@@ -2,10 +2,10 @@ import type { UserAccount } from "~types/popup"
 
 interface AccountInfoProps {
   account: UserAccount
-  onUpgrade: () => void
+  onManagePlan: () => void
 }
 
-export const AccountInfo = ({ account, onUpgrade }: AccountInfoProps) => {
+export const AccountInfo = ({ account, onManagePlan }: AccountInfoProps) => {
   const isPro = account.tier === "pro"
   const isStarter = account.tier === "starter"
   const isFree = account.tier === "free"
@@ -17,6 +17,14 @@ export const AccountInfo = ({ account, onUpgrade }: AccountInfoProps) => {
 
   // Tier display labels
   const tierLabel = isPro ? "⭐ Pro Plan" : isStarter ? "🌱 Starter Plan" : "🆓 Free Plan"
+  
+  // Button text based on tier
+  const getButtonText = () => {
+    if (isFree) return "Upgrade Plan"
+    if (isStarter) return "Manage Plan"
+    if (isPro) return "Manage Plan"
+    return "Manage Plan"
+  }
 
   return (
     <div
@@ -48,31 +56,29 @@ export const AccountInfo = ({ account, onUpgrade }: AccountInfoProps) => {
             {tierLabel}
           </p>
         </div>
-        {!isPro && (
-          <button
-            onClick={onUpgrade}
-            style={{
-              padding: "6px 12px",
-              fontSize: "12px",
-              fontWeight: "600",
-              color: "#3b82f6",
-              backgroundColor: "white",
-              border: "1px solid #3b82f6",
-              borderRadius: "6px",
-              cursor: "pointer",
-              transition: "all 0.2s"
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "#3b82f6"
-              e.currentTarget.style.color = "white"
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "white"
-              e.currentTarget.style.color = "#3b82f6"
-            }}>
-            {isStarter ? "Upgrade to Pro" : "Upgrade Plan"}
-          </button>
-        )}
+        <button
+          onClick={onManagePlan}
+          style={{
+            padding: "6px 12px",
+            fontSize: "12px",
+            fontWeight: "600",
+            color: "#3b82f6",
+            backgroundColor: "white",
+            border: "1px solid #3b82f6",
+            borderRadius: "6px",
+            cursor: "pointer",
+            transition: "all 0.2s"
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = "#3b82f6"
+            e.currentTarget.style.color = "white"
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = "white"
+            e.currentTarget.style.color = "#3b82f6"
+          }}>
+          {getButtonText()}
+        </button>
       </div>
 
       {/* Usage Stats for Free and Starter */}

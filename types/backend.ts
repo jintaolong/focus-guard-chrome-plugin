@@ -309,6 +309,16 @@ export interface SummaryStatusResponse {
   } | null
 }
 
+export interface RunningJobInfo {
+  job_id: string // Celery task ID
+  job_type: JobType // Type of job (summary, report, etc.)
+  status: "pending" | "running" // Current status
+  query_context: string | null // The query context (important for matching identical jobs)
+  created_at: string // ISO datetime - when the job was created
+  progress_percent: number // Current progress (0-100)
+  progress_message: string | null // Progress description
+}
+
 export interface CacheStatusResponse {
   video_id: string
   cached: boolean
@@ -319,6 +329,8 @@ export interface CacheStatusResponse {
   view_count: number | null
   like_count: number | null
   last_fetched_at: string | null
+  has_running_jobs: boolean // Boolean indicating if there are any pending/running jobs
+  running_jobs: RunningJobInfo[] // Array of job details
 }
 
 export interface ReportMetadata {
