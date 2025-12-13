@@ -11,17 +11,22 @@ interface SummaryTabProps {
 
 export const SummaryTab = ({ analysis }: SummaryTabProps) => {
   const [showCredibilityFactors, setShowCredibilityFactors] = useState(false)
+  const [isExecutiveSummaryExpanded, setIsExecutiveSummaryExpanded] = useState(false)
   
   if (!analysis) return null
   
   // Support both legacy and new data shapes
-  const summary = analysis.summary || {}
+  const summary = (analysis.summary || {}) as any
   const trustScore = summary.trustScore ?? analysis.trustScore?.score ?? 0
   const trustColor = getTrustScoreColor(trustScore)
   const verdictColor = getClickbaitVerdictColor(summary.clickbaitVerdict?.label ?? "unknown")
   
   // Extract executive summary from analysis
   const executiveSummary = analysis.executiveSummary || "This video has been analyzed by Focus Guard AI to assess its relevancy, credibility, and viewer insights based on comments, transcript, and metadata."
+  const isLongSummary = executiveSummary.length > 200
+  const displaySummary = isLongSummary && !isExecutiveSummaryExpanded 
+    ? executiveSummary.substring(0, 200) + "..." 
+    : executiveSummary
   
   // Channel credibility data
   const channelCredibility = summary.channelCredibility || analysis.channelCredibility || {}
@@ -45,19 +50,39 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
           }}>
           Executive Summary
         </h3>
-        <p
+        <div
           style={{
-            margin: 0,
-            fontSize: "14px",
-            lineHeight: "1.6",
-            color: COLORS.ui.textSecondary,
             backgroundColor: COLORS.neutral.light,
             padding: "16px",
             borderRadius: "8px",
-            borderLeft: `4px solid ${COLORS[trustColor].primary}`
+            borderLeft: `4px solid ${COLORS[verdictColor].primary}`
           }}>
-          {executiveSummary}
-        </p>
+          <p
+            style={{
+              margin: 0,
+              fontSize: "14px",
+              lineHeight: "1.6",
+              color: COLORS.ui.textSecondary
+            }}>
+            {displaySummary}
+          </p>
+          {isLongSummary && (
+            <button
+              onClick={() => setIsExecutiveSummaryExpanded(!isExecutiveSummaryExpanded)}
+              style={{
+                marginTop: "8px",
+                padding: "4px 8px",
+                fontSize: "12px",
+                color: COLORS.neutral.primary,
+                backgroundColor: "transparent",
+                border: "none",
+                cursor: "pointer",
+                textDecoration: "underline"
+              }}>
+              {isExecutiveSummaryExpanded ? "Show less" : "Show more"}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Trust Score Visualization - Semi-Circular Radial Gauge */}
@@ -91,7 +116,7 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
             <path
               d="M 20 100 A 80 80 0 0 1 180 100"
               fill="none"
-              stroke={COLORS[trustColor].primary}
+              stroke={COLORS[verdictColor].primary}
               strokeWidth="20"
               strokeLinecap="round"
               strokeDasharray={`${(trustScore / 10) * 251.2} 251.2`}
@@ -110,14 +135,14 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
               transform: "translate(-50%, -20%)",
               fontSize: "48px",
               fontWeight: "700",
-              color: COLORS[trustColor].primary
+              color: COLORS[verdictColor].primary
             }}>
             {trustScore.toFixed(1)}
           </div>
           <div
             style={{
               position: "absolute",
-              top: "70%",
+              bottom: "0%",
               left: "50%",
               transform: "translateX(-50%)",
               fontSize: "13px",
@@ -234,114 +259,266 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
           Channel Credibility
         </h3>
 
-        {/* Semi-Circular Gauge */}
-        <div style={{ textAlign: "center", marginBottom: "16px" }}>
-          <div style={{ position: "relative", width: "180px", margin: "0 auto" }}>
-            <svg viewBox="0 0 180 95" style={{ width: "100%", height: "auto" }}>
-              {/* Background arc */}
-              <path
-                d="M 15 90 A 75 75 0 0 1 165 90"
-                fill="none"
-                stroke={COLORS.ui.border}
-                strokeWidth="16"
-                strokeLinecap="round"
-              />
-              {/* Score arc */}
-              <path
-                d="M 15 90 A 75 75 0 0 1 165 90"
-                fill="none"
-                stroke={credibilityScore >= 70 ? COLORS.green.primary : credibilityScore >= 40 ? COLORS.yellow.primary : COLORS.red.primary}
-                strokeWidth="16"
-                strokeLinecap="round"
-                strokeDasharray={`${(credibilityScore / 100) * 235.6} 235.6`}
-                style={{
-                  transition: "stroke-dasharray 1s ease-out"
-                }}
-              />
-            </svg>
+        {/* Note: Factor scores are normalized percentages (0-100) representing relative weight/importance 
+            in credibility calculation, NOT raw values. For example, 300K subscribers might show as 30% 
+            because it represents moderate weight in the overall credibility score calculation. 
+            See "Value" column for actual raw values. */}
 
-            {/* Score number */}
-            <div
-              style={{
-                position: "absolute",
-                top: "55%",
-                left: "50%",
-                transform: "translate(-50%, -50%)",
-                fontSize: "36px",
-                fontWeight: "700",
-                color: credibilityScore >= 70 ? COLORS.green.primary : credibilityScore >= 40 ? COLORS.yellow.primary : COLORS.red.primary
-              }}>
+        {/* Overall Score */}
+        <div style={{ textAlign: "center", marginBottom: "24px" }}>
+          <div style={{ 
+            display: "inline-flex", 
+            alignItems: "center", 
+            gap: "12px",
+            padding: "16px 24px",
+            backgroundColor: COLORS.neutral.light,
+            borderRadius: "12px",
+            border: `2px solid ${credibilityScore >= 70 ? COLORS.high.primary : credibilityScore >= 40 ? COLORS.medium.primary : COLORS.low.primary}`
+          }}>
+            <div style={{
+              fontSize: "42px",
+              fontWeight: "700",
+              color: credibilityScore >= 70 ? COLORS.high.primary : credibilityScore >= 40 ? COLORS.medium.primary : COLORS.low.primary
+            }}>
               {credibilityScore}
             </div>
-            <div
-              style={{
-                position: "absolute",
-                top: "85%",
-                left: "50%",
-                transform: "translateX(-50%)",
-                fontSize: "12px",
-                fontWeight: "500",
-                color: COLORS.ui.textSecondary
-              }}>
-              out of 100
+            <div style={{ textAlign: "left" }}>
+              <div style={{ fontSize: "11px", color: COLORS.ui.textSecondary, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                Overall Score
+              </div>
+              <div style={{ fontSize: "14px", fontWeight: "600", color: COLORS.ui.textPrimary }}>
+                out of 100
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Expandable Factors */}
-        {credibilityFactors.length > 0 && (
-          <div>
-            <button
-              onClick={() => setShowCredibilityFactors(!showCredibilityFactors)}
-              style={{
-                width: "100%",
-                padding: "12px 16px",
-                backgroundColor: COLORS.neutral.light,
-                border: `1px solid ${COLORS.ui.border}`,
-                borderRadius: "8px",
-                fontSize: "14px",
-                fontWeight: "600",
-                color: COLORS.ui.textPrimary,
-                cursor: "pointer",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                transition: "background-color 0.2s"
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = COLORS.ui.border}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = COLORS.neutral.light}>
-              <span>Contributing Factors</span>
-              <span style={{ fontSize: "18px" }}>{showCredibilityFactors ? "▼" : "▶"}</span>
-            </button>
+        {/* Spider/Radar Chart */}
+        {credibilityFactors.length > 0 && (() => {
+          // Debug: log raw factor data
+          console.log("SummaryTab: Raw credibilityFactors:", credibilityFactors)
+          
+          // Normalize factor weights to 0-100 range first (in case they're 0-1)
+          const factorsWithScores = credibilityFactors.map((factor: any) => {
+            const rawWeight = Number(factor.weight) || 0
+            // If weight is between 0-1, convert to 0-100
+            const normalizedWeight = rawWeight <= 1 ? rawWeight * 100 : rawWeight
+            return { ...factor, normalizedWeight }
+          })
+          
+          console.log("SummaryTab: Factors after first normalization:", factorsWithScores)
+          
+          // Apply min-max normalization to spread values across the chart better
+          const weights = factorsWithScores.map((f: any) => f.normalizedWeight)
+          const minWeight = Math.min(...weights)
+          const maxWeight = Math.max(...weights)
+          const range = maxWeight - minWeight
+          
+          console.log("SummaryTab: Min weight:", minWeight, "Max weight:", maxWeight, "Range:", range)
+          
+          // Re-normalize to 20-100 range for better visualization (avoid too small shapes)
+          const visualFactors = factorsWithScores.map((f: any) => ({
+            ...f,
+            visualScore: range > 0 
+              ? 20 + ((f.normalizedWeight - minWeight) / range) * 80 
+              : 60 // fallback to middle if all same
+          }))
+          
+          console.log("SummaryTab: Visual factors for radar chart:", visualFactors)
+          
+          const centerX = 150
+          const centerY = 150
+          const radius = 100
+          const numFactors = visualFactors.length
+          
+          // Calculate points for the web and the data
+          const webLevels = [0.2, 0.4, 0.6, 0.8, 1.0] // 5 concentric levels
+          const dataPoints = visualFactors.map((factor: any, i: number) => {
+            const angle = (Math.PI * 2 * i) / numFactors - Math.PI / 2 // Start from top
+            const normalizedScore = factor.visualScore / 100 // Use visualScore for chart
+            const x = centerX + radius * normalizedScore * Math.cos(angle)
+            const y = centerY + radius * normalizedScore * Math.sin(angle)
+            return { x, y, angle, score: normalizedScore, factor }
+          })
 
-            {showCredibilityFactors && (
-              <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "8px" }}>
-                {credibilityFactors.map((factor: any, index: number) => (
+          // Generate axis points (endpoints)
+          const axisPoints = visualFactors.map((factor: any, i: number) => {
+            const angle = (Math.PI * 2 * i) / numFactors - Math.PI / 2
+            return {
+              x: centerX + radius * Math.cos(angle),
+              y: centerY + radius * Math.sin(angle),
+              angle,
+              factor
+            }
+          })
+
+          return (
+            <div>
+              <div style={{ textAlign: "center", marginBottom: "16px" }}>
+                <svg viewBox="0 0 300 300" style={{ width: "100%", maxWidth: "300px", height: "auto" }}>
+                  {/* Background web circles */}
+                  {webLevels.map((level, idx) => (
+                    <circle
+                      key={`web-${idx}`}
+                      cx={centerX}
+                      cy={centerY}
+                      r={radius * level}
+                      fill="none"
+                      stroke={COLORS.ui.border}
+                      strokeWidth="1"
+                      opacity={0.3}
+                    />
+                  ))}
+
+                  {/* Axis lines */}
+                  {axisPoints.map((point: any, i: number) => (
+                    <line
+                      key={`axis-${i}`}
+                      x1={centerX}
+                      y1={centerY}
+                      x2={point.x}
+                      y2={point.y}
+                      stroke={COLORS.ui.border}
+                      strokeWidth="1"
+                      opacity={0.5}
+                    />
+                  ))}
+
+                  {/* Data polygon */}
+                  <polygon
+                    points={dataPoints.map((p: any) => `${p.x},${p.y}`).join(' ')}
+                    fill={COLORS.high.primary}
+                    fillOpacity={0.2}
+                    stroke={COLORS.high.primary}
+                    strokeWidth="2"
+                  />
+
+                  {/* Data points */}
+                  {dataPoints.map((point: any, i: number) => (
+                    <circle
+                      key={`point-${i}`}
+                      cx={point.x}
+                      cy={point.y}
+                      r="4"
+                      fill={COLORS.high.primary}
+                      stroke="white"
+                      strokeWidth="2"
+                    />
+                  ))}
+
+                  {/* Labels */}
+                  {axisPoints.map((point: any, i: number) => {
+                    const factor = point.factor
+                    const labelDistance = radius + 35
+                    const labelX = centerX + labelDistance * Math.cos(point.angle)
+                    const labelY = centerY + labelDistance * Math.sin(point.angle)
+                    
+                    // Format factor name for display (remove underscores, capitalize)
+                    const displayName = factor.name
+                      .split('_')
+                      .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
+                      .join(' ')
+                    
+                    return (
+                      <text
+                        key={`label-${i}`}
+                        x={labelX}
+                        y={labelY}
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        fontSize="11"
+                        fontWeight="600"
+                        fill={COLORS.ui.textPrimary}
+                        style={{ 
+                          userSelect: 'none',
+                          maxWidth: '60px'
+                        }}>
+                        {displayName}
+                      </text>
+                    )
+                  })}
+                </svg>
+              </div>
+
+              {/* Factor Details Table */}
+              <div style={{ 
+                marginTop: "16px",
+                backgroundColor: COLORS.neutral.light,
+                borderRadius: "8px",
+                padding: "12px",
+                fontSize: "12px"
+              }}>
+                <div style={{ 
+                  display: "grid", 
+                  gridTemplateColumns: "1fr auto auto",
+                  gap: "8px",
+                  fontWeight: "600",
+                  paddingBottom: "8px",
+                  borderBottom: `1px solid ${COLORS.ui.border}`,
+                  color: COLORS.ui.textSecondary
+                }}>
+                  <div>Factor</div>
+                  <div style={{ textAlign: "right" }}>Score</div>
+                  <div style={{ textAlign: "right" }}>Value</div>
+                </div>
+                {visualFactors.map((factor: any, index: number) => (
                   <div
                     key={index}
                     style={{
-                      padding: "12px",
-                      backgroundColor: COLORS.neutral.light,
-                      borderRadius: "6px",
-                      borderLeft: `3px solid ${COLORS.neutral.primary}`
+                      display: "grid",
+                      gridTemplateColumns: "1fr auto auto",
+                      gap: "8px",
+                      paddingTop: "8px",
+                      alignItems: "center"
                     }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
-                      <span style={{ fontSize: "13px", fontWeight: "600", color: COLORS.ui.textPrimary }}>
-                        {factor.name}
-                      </span>
-                      <span style={{ fontSize: "13px", fontWeight: "700", color: COLORS.neutral.primary }}>
-                        {factor.weight}%
-                      </span>
+                    <div style={{ 
+                      fontWeight: "500", 
+                      color: COLORS.ui.textPrimary,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap"
+                    }}>
+                      {factor.name.split('_').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
                     </div>
-                    <div style={{ fontSize: "12px", color: COLORS.ui.textSecondary, lineHeight: "1.4" }}>
-                      {factor.value}
+                    <div style={{ 
+                      textAlign: "right",
+                      fontWeight: "700",
+                      color: factor.normalizedWeight >= 70 ? COLORS.high.primary : factor.normalizedWeight >= 40 ? COLORS.medium.primary : COLORS.low.primary
+                    }}>
+                      {Math.round(factor.normalizedWeight)}%
+                    </div>
+                    <div style={{ 
+                      textAlign: "right",
+                      color: COLORS.ui.textSecondary,
+                      fontSize: "11px",
+                      maxWidth: "80px",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap"
+                    }}>
+                      {/* Special handling for verified (boolean 0/1 -> Yes/No) */}
+                      {factor.name.toLowerCase() === 'verified' 
+                        ? (factor.value == 1 || factor.value === true || factor.value === 'true' ? 'Yes' : 'No')
+                        : factor.value
+                      }
                     </div>
                   </div>
                 ))}
               </div>
-            )}
-          </div>
-        )}
+
+              {/* Legend */}
+              <div style={{ 
+                marginTop: "12px",
+                fontSize: "11px",
+                color: COLORS.ui.textSecondary,
+                textAlign: "center",
+                fontStyle: "italic"
+              }}>
+                Scores represent normalized credibility metrics (0-100%). Radar chart uses min-max scaling for better visualization.
+              </div>
+            </div>
+          )
+        })()}
       </div>
 
       {/* Bot Detection */}
@@ -375,7 +552,7 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
                 cy="60"
                 r="50"
                 fill="none"
-                stroke={COLORS.red.primary}
+                stroke={COLORS.low.primary}
                 strokeWidth="20"
                 strokeDasharray={`${(botPercentage / 100) * 314} 314`}
                 strokeDashoffset="0"
@@ -393,7 +570,7 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
                 transform: "translate(-50%, -50%)",
                 textAlign: "center"
               }}>
-              <div style={{ fontSize: "24px", fontWeight: "700", color: COLORS.red.primary }}>
+              <div style={{ fontSize: "24px", fontWeight: "700", color: COLORS.low.primary }}>
                 {botPercentage}%
               </div>
               <div style={{ fontSize: "10px", color: COLORS.ui.textSecondary }}>
@@ -410,7 +587,7 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
                   style={{
                     width: "16px",
                     height: "16px",
-                    backgroundColor: COLORS.red.primary,
+                    backgroundColor: COLORS.low.primary,
                     borderRadius: "3px"
                   }}
                 />
@@ -418,7 +595,7 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
                   Bot Comments
                 </span>
               </div>
-              <div style={{ fontSize: "20px", fontWeight: "700", color: COLORS.red.primary, marginLeft: "24px" }}>
+              <div style={{ fontSize: "20px", fontWeight: "700", color: COLORS.low.primary, marginLeft: "24px" }}>
                 {botPercentage}%
               </div>
             </div>
@@ -429,7 +606,7 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
                   style={{
                     width: "16px",
                     height: "16px",
-                    backgroundColor: COLORS.green.primary,
+                    backgroundColor: COLORS.high.primary,
                     borderRadius: "3px"
                   }}
                 />
@@ -437,7 +614,7 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
                   Human Comments
                 </span>
               </div>
-              <div style={{ fontSize: "20px", fontWeight: "700", color: COLORS.green.primary, marginLeft: "24px" }}>
+              <div style={{ fontSize: "20px", fontWeight: "700", color: COLORS.high.primary, marginLeft: "24px" }}>
                 {humanPercentage}%
               </div>
             </div>

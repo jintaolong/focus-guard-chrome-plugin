@@ -1,19 +1,23 @@
 import { useState } from "react"
+import { AuthService } from "~lib/auth"
 
 interface LoginFormProps {
-  onLogin: (email: string) => void
+  onLogin: (email: string, password: string) => Promise<void>
   isLoading: boolean
 }
 
 export const LoginForm = ({ onLogin, isLoading }: LoginFormProps) => {
+  const [mode, setMode] = useState<"login" | "register">("login")
   const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [fullName, setFullName] = useState("")
   const [error, setError] = useState("")
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
 
-    // Basic email validation
+    // Basic validation
     if (!email.trim()) {
       setError("Please enter your email")
       return
@@ -25,7 +29,38 @@ export const LoginForm = ({ onLogin, isLoading }: LoginFormProps) => {
       return
     }
 
-    onLogin(email)
+    if (!password.trim()) {
+      setError("Please enter your password")
+      return
+    }
+
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters")
+      return
+    }
+
+    if (mode === "register" && !fullName.trim()) {
+      setError("Please enter your full name")
+      return
+    }
+
+    try {
+      if (mode === "register") {
+        // Register first
+        await AuthService.register({ 
+          email, 
+          password, 
+          full_name: fullName || undefined 
+        })
+        // Then auto-login
+        await onLogin(email, password)
+      } else {
+        // Direct login
+        await onLogin(email, password)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Authentication failed")
+    }
   }
 
   return (
@@ -56,50 +91,147 @@ export const LoginForm = ({ onLogin, isLoading }: LoginFormProps) => {
             color: "#1a1a1a",
             marginBottom: "8px"
           }}>
-          Welcome to Focus Guard
+          {mode === "login" ? "Welcome Back" : "Create Account"}
         </h2>
         <p style={{ fontSize: "14px", color: "#666" }}>
-          Sign in to start curating your YouTube experience
+          {mode === "login" 
+            ? "Sign in to continue" 
+            : "Join Focus Guard to start curating your YouTube experience"}
         </p>
       </div>
 
-      <form onSubmit={handleSubmit}>
-        <input
-          type="email"
-          placeholder="Enter your email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          disabled={isLoading}
-          style={{
-            width: "100%",
-            padding: "12px 16px",
-            fontSize: "14px",
-            border: error ? "2px solid #dc2626" : "1px solid #e5e5e5",
-            borderRadius: "8px",
-            outline: "none",
-            transition: "border-color 0.2s",
-            backgroundColor: isLoading ? "#fafafa" : "white",
-            boxSizing: "border-box"
-          }}
-          onFocus={(e) => {
-            if (!error) {
+      <form onSubmit={handleSubmit} style={{ textAlign: "left" }}>
+        {mode === "register" && (
+          <div style={{ marginBottom: "12px" }}>
+            <label style={{ 
+              display: "block", 
+              marginBottom: "6px", 
+              fontSize: "13px", 
+              fontWeight: "500",
+              color: "#374151"
+            }}>
+              Full Name
+            </label>
+            <input
+              type="text"
+              placeholder="John Doe"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              disabled={isLoading}
+              style={{
+                width: "100%",
+                padding: "12px 16px",
+                fontSize: "14px",
+                border: "1px solid #e5e5e5",
+                borderRadius: "8px",
+                outline: "none",
+                transition: "border-color 0.2s",
+                backgroundColor: isLoading ? "#fafafa" : "white",
+                boxSizing: "border-box"
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = "#3b82f6"
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = "#e5e5e5"
+              }}
+            />
+          </div>
+        )}
+
+        <div style={{ marginBottom: "12px" }}>
+          <label style={{ 
+            display: "block", 
+            marginBottom: "6px", 
+            fontSize: "13px", 
+            fontWeight: "500",
+            color: "#374151"
+          }}>
+            Email
+          </label>
+          <input
+            type="email"
+            placeholder="you@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={isLoading}
+            style={{
+              width: "100%",
+              padding: "12px 16px",
+              fontSize: "14px",
+              border: error ? "2px solid #dc2626" : "1px solid #e5e5e5",
+              borderRadius: "8px",
+              outline: "none",
+              transition: "border-color 0.2s",
+              backgroundColor: isLoading ? "#fafafa" : "white",
+              boxSizing: "border-box"
+            }}
+            onFocus={(e) => {
+              if (!error) {
+                e.target.style.borderColor = "#3b82f6"
+              }
+            }}
+            onBlur={(e) => {
+              if (!error) {
+                e.target.style.borderColor = "#e5e5e5"
+              }
+            }}
+          />
+        </div>
+
+        <div style={{ marginBottom: "16px" }}>
+          <label style={{ 
+            display: "block", 
+            marginBottom: "6px", 
+            fontSize: "13px", 
+            fontWeight: "500",
+            color: "#374151"
+          }}>
+            Password
+          </label>
+          <input
+            type="password"
+            placeholder="••••••••"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={isLoading}
+            style={{
+              width: "100%",
+              padding: "12px 16px",
+              fontSize: "14px",
+              border: "1px solid #e5e5e5",
+              borderRadius: "8px",
+              outline: "none",
+              transition: "border-color 0.2s",
+              backgroundColor: isLoading ? "#fafafa" : "white",
+              boxSizing: "border-box"
+            }}
+            onFocus={(e) => {
               e.target.style.borderColor = "#3b82f6"
-            }
-          }}
-          onBlur={(e) => {
-            if (!error) {
+            }}
+            onBlur={(e) => {
               e.target.style.borderColor = "#e5e5e5"
-            }
-          }}
-        />
+            }}
+          />
+          <p style={{ 
+            marginTop: "4px", 
+            fontSize: "11px", 
+            color: "#6b7280" 
+          }}>
+            Minimum 8 characters
+          </p>
+        </div>
 
         {error && (
           <p
             style={{
-              marginTop: "8px",
-              fontSize: "12px",
+              marginBottom: "12px",
+              padding: "12px",
+              fontSize: "13px",
               color: "#dc2626",
-              textAlign: "left"
+              backgroundColor: "#fef2f2",
+              border: "1px solid #fecaca",
+              borderRadius: "6px"
             }}>
             {error}
           </p>
@@ -109,7 +241,6 @@ export const LoginForm = ({ onLogin, isLoading }: LoginFormProps) => {
           type="submit"
           disabled={isLoading}
           style={{
-            marginTop: "16px",
             width: "100%",
             padding: "12px",
             fontSize: "14px",
@@ -131,8 +262,55 @@ export const LoginForm = ({ onLogin, isLoading }: LoginFormProps) => {
               e.currentTarget.style.backgroundColor = "#3b82f6"
             }
           }}>
-          {isLoading ? "Signing in..." : "Continue"}
+          {isLoading 
+            ? (mode === "login" ? "Signing in..." : "Creating account...") 
+            : (mode === "login" ? "Sign In" : "Create Account")}
         </button>
+
+        <div style={{ 
+          marginTop: "16px", 
+          textAlign: "center",
+          fontSize: "13px",
+          color: "#6b7280"
+        }}>
+          {mode === "login" ? (
+            <>
+              Don't have an account?{" "}
+              <button
+                type="button"
+                onClick={() => setMode("register")}
+                disabled={isLoading}
+                style={{
+                  color: "#3b82f6",
+                  backgroundColor: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  textDecoration: "underline",
+                  fontWeight: "500"
+                }}>
+                Sign up
+              </button>
+            </>
+          ) : (
+            <>
+              Already have an account?{" "}
+              <button
+                type="button"
+                onClick={() => setMode("login")}
+                disabled={isLoading}
+                style={{
+                  color: "#3b82f6",
+                  backgroundColor: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  textDecoration: "underline",
+                  fontWeight: "500"
+                }}>
+                Sign in
+              </button>
+            </>
+          )}
+        </div>
       </form>
     </div>
   )

@@ -8,6 +8,7 @@ import { ToggleButton } from "~components/ToggleButton"
 import { SidePanel } from "~components/SidePanel"
 import { PreWatchPopover } from "~components/PreWatchPopover"
 import { FocusGuardAPI } from "~lib/api"
+import { AuthService } from "~lib/auth"
 import { getRandomMockAnalysis } from "~lib/mockData"
 import type { VideoResult, UserStats } from "~types"
 import type {
@@ -15,25 +16,52 @@ import type {
   VideoAnalysisStatus,
   AnalysisHistoryItem
 } from "~types/analysis"
+import type { FocusGuardSettings } from "~types/popup"
 
 // Configure content-script matches. Use a static literal so Plasmo can
 // generate a valid manifest. During development we accept broader matches
 // so the content script can be debugged across YouTube pages. Narrow this
 // before packaging for production if desired.
 export const config: PlasmoCSConfig = {
-  matches: ["https://*.youtube.com/*", "https://youtube.com/*", "https://youtu.be/*"],
+  matches: [
+    "https://*.youtube.com/*", 
+    "https://youtube.com/*", 
+    "https://youtu.be/*"],
   all_frames: false
 }
 
 // Helper to extract video ID from YouTube URL
 function getVideoIdFromUrl(url: string): string | null {
-  const urlParams = new URLSearchParams(new URL(url).search)
-  return urlParams.get("v")
+  try {
+    const urlObj = new URL(url)
+    
+    // Standard watch page: /watch?v={id}
+    const urlParams = new URLSearchParams(urlObj.search)
+    const vParam = urlParams.get("v")
+    if (vParam) return vParam
+    
+    // YouTube Shorts: /shorts/{id}
+    const pathMatch = urlObj.pathname.match(/^\/shorts\/([a-zA-Z0-9_-]+)/)
+    if (pathMatch) return pathMatch[1]
+    
+    return null
+  } catch (e) {
+    return null
+  }
 }
 
-// Helper to check if we're on a watch page
+// Helper to check if we're on a watch page or shorts page
 function isWatchPage(): boolean {
-  return window.location.pathname === "/watch" && !!getVideoIdFromUrl(window.location.href)
+  const pathname = window.location.pathname
+  // Check for standard watch page
+  if (pathname === "/watch" && !!getVideoIdFromUrl(window.location.href)) {
+    return true
+  }
+  // Check for YouTube Shorts
+  if (pathname.startsWith("/shorts/") && !!getVideoIdFromUrl(window.location.href)) {
+    return true
+  }
+  return false
 }
 
 // Debug mode: enable extended injection on any YouTube page when set.
@@ -72,6 +100,7 @@ const ContentScript = () => {
   const [isLoading, setIsLoading] = useState(false)
   const [userStats, setUserStats] = useState<UserStats | null>(null)
   const [isYouTubeHome, setIsYouTubeHome] = useState(false)
+  const [settings, setSettings] = useState<FocusGuardSettings | null>(null)
 
   // FR-102 & FR-103: Watch page analysis state
   const [currentVideoId, setCurrentVideoId] = useState<string | null>(null)
@@ -93,6 +122,10 @@ const ContentScript = () => {
   const [onWatchPage, setOnWatchPage] = useState(false)
   const [showPreWatchPopover, setShowPreWatchPopover] = useState(false)
   const [preWatchDismissed, setPreWatchDismissed] = useState(false)
+  const [analysisError, setAnalysisError] = useState<string | null>(null)
+  const [isCached, setIsCached] = useState<boolean | null>(null)
+  const [currentJobId, setCurrentJobId] = useState<string | null>(null)
+  const [isCheckingCache, setIsCheckingCache] = useState(false)
 
   useEffect(() => {
     // Check if we're on YouTube home page or watch page
@@ -101,6 +134,11 @@ const ContentScript = () => {
     // was built with `FOCUS_GUARD_DEBUG=1`.
     console.log("Focus Guard BUILD_DEBUG=", BUILD_DEBUG)
     console.log("Focus Guard RUNTIME_DEBUG=", RUNTIME_DEBUG, "DEBUG=", DEBUG)
+    
+    // Load user stats and analysis history
+    loadUserStats()
+    loadAnalysisHistory()
+    
     const checkPageType = () => {
       const isHome =
         window.location.pathname === "/" ||
@@ -132,16 +170,28 @@ const ContentScript = () => {
           setAnalysisState("idle")
           setVideoAnalysis(null)
           setAnalysisStatus(null)
+          setAnalysisError(null)
+          setIsCached(null)
+          setCurrentJobId(null)
           // A new page is assumed to be unanalyzed for development. Reset
           // the pre-watch dismissed flag so the popover appears after
           // analysis completes on this new page.
           setPreWatchDismissed(false)
           setShowPreWatchPopover(false)
+          // Check cache & prefetch full analysis asynchronously
+          try {
+            checkCacheAndPrefetch(videoId)
+          } catch (e) {
+            // ignore
+          }
         } else if (DEBUG && !videoId) {
-          // In debug mode, start in idle state
+          // In debug mode without videoId, start in idle state
           setAnalysisState("idle")
           setVideoAnalysis(null)
           setAnalysisStatus(null)
+          setAnalysisError(null)
+          setIsCached(null)
+          setCurrentJobId(null)
         }
       } else {
         currentVideoIdRef.current = null
@@ -149,6 +199,9 @@ const ContentScript = () => {
         setVideoAnalysis(null)
         setAnalysisStatus(null)
         setAnalysisState("idle")
+        setAnalysisError(null)
+        setIsCached(null)
+        setCurrentJobId(null)
         setIsSidePanelOpen(false)
         setShowPreWatchPopover(false)
         setPreWatchDismissed(false)
@@ -198,6 +251,37 @@ const ContentScript = () => {
     // Optionally load user data for richer UI during development / debug
     loadUserStats()
     loadAnalysisHistory()
+    // Load saved settings (do not assume defaults here to avoid unexpectedly hiding feed)
+    const loadSettings = async () => {
+      try {
+        const result = await chrome.storage.sync.get(["settings"])
+        if (result.settings) setSettings(result.settings)
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    loadSettings()
+
+    const onStorageChange = (changes: { [key: string]: any }, areaName: string) => {
+      if (areaName === "sync") {
+        if (changes.settings) {
+          setSettings(changes.settings.newValue || null)
+        }
+        // Reload user data when auth tokens change (user logs in/out)
+        if (changes.focus_guard_access_token || changes.focus_guard_user) {
+          console.log("Focus Guard: Auth state changed, reloading user data")
+          loadUserStats()
+          loadAnalysisHistory()
+        }
+      }
+    }
+
+    try {
+      chrome.storage.onChanged.addListener(onStorageChange)
+    } catch (e) {
+      // ignore if API not available
+    }
 
     return () => {
       try {
@@ -207,129 +291,615 @@ const ContentScript = () => {
       window.removeEventListener("popstate", popstateHandler)
       window.removeEventListener("locationchange", onLocationChange)
       clearInterval(urlCheckInterval)
+      try {
+        chrome.storage.onChanged.removeListener(onStorageChange)
+      } catch (e) {
+        // ignore
+      }
     }
   }, [])
 
+  // IMPORTANT: The extension must never modify or hide the YouTube home feed.
+  // All feed/hide logic has been removed to ensure we do not touch the home page.
   useEffect(() => {
-    if (isYouTubeHome) {
-      // Hide YouTube's default feed
-      hideYouTubeFeed()
-    } else {
-      // Show YouTube's default content on other pages
-      showYouTubeFeed()
-    }
-  }, [isYouTubeHome])
+    // No-op: intentionally do not modify the home feed.
+  }, [isYouTubeHome, settings])
 
-  const hideYouTubeFeed = () => {
-    const style = document.createElement("style")
-    style.id = "focus-guard-hide-feed"
-    style.textContent = `
-      ytd-browse[page-subtype="home"],
-      ytd-browse[page-subtype="subscriptions"],
-      ytd-browse[page-subtype="trending"],
-      #contents.ytd-rich-grid-renderer {
-        animation: fadeOutBlur 0.6s ease-out forwards;
-      }
-      
-      @keyframes fadeOutBlur {
-        0% {
-          opacity: 1;
-          filter: blur(0px);
-        }
-        100% {
-          opacity: 0;
-          filter: blur(10px);
-          pointer-events: none;
-        }
-      }
-    `
-    document.head.appendChild(style)
-  }
-
-  const showYouTubeFeed = () => {
-    const style = document.getElementById("focus-guard-hide-feed")
-    if (style) {
-      style.remove()
-    }
-  }
+  // Note: feed hiding helpers intentionally removed. The extension will not
+  // inject styles or modify the YouTube home/feed page under any condition.
 
   const loadUserStats = async () => {
     try {
+      // Check if authenticated first
+      const isAuth = await AuthService.isAuthenticated()
+      if (!isAuth) {
+        console.log("Focus Guard: User not authenticated, skipping stats load")
+        setUserStats(null)
+        return
+      }
+
       const stats = await FocusGuardAPI.getUserStats()
       setUserStats(stats)
     } catch (error) {
-      console.error("Failed to load user stats:", error)
-      // Mock data for development
-      setUserStats({
-        searchesUsedToday: 0,
-        searchesRemaining: 3,
-        tier: "free",
-        resetTime: new Date(
-          new Date().setHours(24, 0, 0, 0)
-        ).toISOString()
-      })
+      console.log("Focus Guard: Failed to load user stats (user may not be logged in):", (error as any)?.message || String(error))
+      // Set null if not authenticated
+      setUserStats(null)
     }
   }
 
   const loadAnalysisHistory = async () => {
     try {
+      // Check if authenticated first
+      const isAuth = await AuthService.isAuthenticated()
+      if (!isAuth) {
+        console.log("Focus Guard: User not authenticated, skipping history load")
+        setAnalysisHistory([])
+        return
+      }
+
       const response = await FocusGuardAPI.getAnalysisHistory()
       setAnalysisHistory(response.history)
     } catch (error) {
-      console.error("Failed to load analysis history:", error)
+      console.log("Focus Guard: Failed to load analysis history (user may not be logged in):", (error as any)?.message || String(error))
       setAnalysisHistory([])
     }
   }
 
-  // FR-202: Start video analysis automatically on watch page
+  // FR-202: Start video analysis with cache check and job polling
+  const normalizeConfidence = (v: number) => {
+    if (!Number.isFinite(v)) return 0
+    // If API returns 0-100, convert to 0-1; otherwise assume 0-1
+    if (v > 1.5) return v / 100
+    if (v < 0) return 0
+    return v
+  }
+
+  // Helper: check cache on landing and prefetch full analysis components
+  const checkCacheAndPrefetch = async (videoId: string) => {
+    setIsCheckingCache(true)
+    try {
+      console.log("Focus Guard: checking cache on landing for video", videoId)
+      const cacheStatus = await FocusGuardAPI.getCacheStatus(videoId)
+      console.log("Focus Guard: cache status on landing:", cacheStatus)
+      setIsCached(cacheStatus.cached)
+
+      if (!cacheStatus.cached) {
+        // Not cached — leave defaults
+        setAnalysisState("idle")
+        setAnalysisStatus(null)
+        setVideoAnalysis(null)
+        setIsCheckingCache(false)
+        return
+      }
+
+      // Cached - fetch relevancy and additional data for quick display
+      try {
+        console.log("Focus Guard: Fetching analysis data for cached video...")
+        // Fetch all analysis components in parallel
+        const [relevancyData, sentimentData, summaryData, credibilityData, humanLikenessData, topicClustersData, topicGapsData] = await Promise.all([
+          FocusGuardAPI.analyzeRelevancyV2(videoId, false),
+          FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: false }).catch(err => {
+            console.error("Focus Guard: failed to fetch sentiment:", err)
+            return null
+          }),
+          FocusGuardAPI.analyzeSummaryV2({ video_id: videoId, force_refresh: false }).catch(err => {
+            console.error("Focus Guard: failed to fetch summary:", err)
+            return null
+          }),
+          FocusGuardAPI.analyzeChannelCredibilityV2(videoId, false).catch(err => {
+            console.error("Focus Guard: failed to fetch credibility:", err)
+            return null
+          }),
+          FocusGuardAPI.analyzeHumanLikenessV2(videoId, false).catch(err => {
+            console.error("Focus Guard: failed to fetch human likeness:", err)
+            return null
+          }),
+          FocusGuardAPI.analyzeTopicClusteringV2(videoId, false).catch(err => {
+            console.error("Focus Guard: failed to fetch topic clusters:", err)
+            return null
+          }),
+          FocusGuardAPI.analyzeTopicGapV2(videoId, false).catch(err => {
+            console.error("Focus Guard: failed to fetch topic gaps:", err)
+            return null
+          })
+        ])
+        
+        console.log("Focus Guard: Relevancy data on landing:", relevancyData)
+        console.log("Focus Guard: Sentiment data on landing:", sentimentData)
+        console.log("Focus Guard: Summary data on landing:", summaryData)
+        console.log("Focus Guard: Credibility data on landing:", credibilityData)
+        console.log("Focus Guard: Human Likeness data on landing:", humanLikenessData)
+        console.log("Focus Guard: Topic Clusters data on landing:", topicClustersData)
+        console.log("Focus Guard: Topic Gaps data on landing:", topicGapsData)
+        
+        const verdictRaw = (relevancyData.data.verdict || "UNKNOWN").toUpperCase()
+        const confidenceRaw = typeof relevancyData.data.confidence_score === "number" ? relevancyData.data.confidence_score : 0
+        console.log("Focus Guard: Raw confidence:", confidenceRaw)
+        
+        const confidenceNorm = normalizeConfidence(confidenceRaw)
+        console.log("Focus Guard: Normalized confidence:", confidenceNorm)
+        
+        const confidencePercent = Math.round(confidenceNorm * 100)
+        const trustScoreNormalized = Math.round(confidenceNorm * 10 * 10) / 10
+        console.log("Focus Guard: Final trustScore:", trustScoreNormalized, "verdict:", verdictRaw)
+
+        setAnalysisStatus({
+          trustScore: trustScoreNormalized,
+          clickbaitVerdict: verdictRaw as "LEGIT" | "MISLEADING" | "CLICKBAIT",
+          isAnalyzing: false
+        })
+
+        const minimalSummary = {
+          trustScore: trustScoreNormalized,
+          aiConfidence: confidencePercent,
+          clickbaitVerdict: {
+            label: verdictRaw,
+            confidence: confidencePercent
+          },
+          channelCredibility: credibilityData ? {
+            score: credibilityData.score,
+            factors: credibilityData.normalized_factors ? Object.entries(credibilityData.normalized_factors).map(([name, weight]) => ({
+              name,
+              weight,
+              value: credibilityData.factual_factors?.[name] ?? 'N/A'
+            })) : []
+          } : undefined
+        }
+
+        // Build sentiment distribution if available
+        const sentimentDistribution = sentimentData ? (() => {
+          const positiveCount = typeof sentimentData.data.positive === 'number' ? sentimentData.data.positive : (sentimentData.data.positive?.count ?? 0)
+          const neutralCount = typeof sentimentData.data.neutral === 'number' ? sentimentData.data.neutral : (sentimentData.data.neutral?.count ?? 0)
+          const negativeCount = typeof sentimentData.data.negative === 'number' ? sentimentData.data.negative : (sentimentData.data.negative?.count ?? 0)
+          const totalComments = sentimentData.data.total_comments ?? (positiveCount + neutralCount + negativeCount)
+          
+          // Extract top comments
+          const positiveComments = typeof sentimentData.data.positive === 'object' ? sentimentData.data.positive?.top_comments ?? [] : []
+          const neutralComments = typeof sentimentData.data.neutral === 'object' ? sentimentData.data.neutral?.top_comments ?? [] : []
+          const negativeComments = typeof sentimentData.data.negative === 'object' ? sentimentData.data.negative?.top_comments ?? [] : []
+          
+          return {
+            positive: totalComments > 0 ? (positiveCount / totalComments) * 100 : 0,
+            neutral: totalComments > 0 ? (neutralCount / totalComments) * 100 : 0,
+            negative: totalComments > 0 ? (negativeCount / totalComments) * 100 : 0,
+            totalCommentsAnalyzed: totalComments,
+            exampleComments: {
+              positive: positiveComments,
+              neutral: neutralComments,
+              negative: negativeComments
+            }
+          }
+        })() : undefined
+
+        // Transform topic clusters to high-value insights
+        const benefitInsights = topicClustersData?.topic_clusters
+          ?.filter(cluster => cluster.count > 0)
+          .slice(0, 5)
+          .map((cluster, idx) => ({
+            id: `benefit-${idx}`,
+            statement: cluster.statement,
+            type: "benefit" as const,
+            commentCount: cluster.count,
+            supportingComments: cluster.supporting_quotes.map((quote, qIdx) => ({
+              id: `comment-${idx}-${qIdx}`,
+              text: quote,
+              timestamp: undefined,
+              author: undefined
+            })),
+            isExpanded: false
+          })) || []
+
+        // Transform topic gaps to unanswered questions for ContentGapsTab
+        const unansweredQuestions = topicGapsData?.topic_gaps
+          ?.map((gap, idx) => ({
+            id: `gap-${idx}`,
+            statement: gap.question_statement,
+            type: "issue" as const,
+            commentCount: gap.supporting_comments.length,
+            supportingComments: gap.supporting_comments.map((comment, cIdx) => ({
+              id: `gap-comment-${idx}-${cIdx}`,
+              text: comment,
+              timestamp: undefined,
+              author: undefined
+            })),
+            isExpanded: false
+          })) || []
+
+        setVideoAnalysis({
+          summary: minimalSummary,
+          trustScore: { score: trustScoreNormalized },
+          clickbaitVerdict: { verdict: verdictRaw },
+          executiveSummary: summaryData?.summary_paragraph ?? null,
+          channelCredibility: credibilityData ? {
+            score: credibilityData.score,
+            factors: credibilityData.normalized_factors ? Object.entries(credibilityData.normalized_factors).map(([name, weight]) => ({
+              name,
+              weight,
+              value: credibilityData.factual_factors?.[name] ?? 'N/A'
+            })) : []
+          } : null,
+          sentiment: sentimentDistribution ? {
+            overall: (() => {
+              const positiveCount = typeof sentimentData!.data.positive === 'number' ? sentimentData!.data.positive : (sentimentData!.data.positive?.count ?? 0)
+              const negativeCount = typeof sentimentData!.data.negative === 'number' ? sentimentData!.data.negative : (sentimentData!.data.negative?.count ?? 0)
+              return positiveCount > negativeCount ? "positive" : negativeCount > positiveCount ? "negative" : "neutral"
+            })(),
+            distribution: sentimentDistribution
+          } : null,
+          credibility: null,
+          topicClusters: null,
+          contentGaps: {
+            botPercentage: (humanLikenessData && humanLikenessData.total_comments && humanLikenessData.total_comments > 0)
+              ? Math.round((humanLikenessData.bot_count / humanLikenessData.total_comments) * 100)
+              : 0,
+            gapCoverageScore: topicGapsData?.topic_gaps ? Math.max(0, 100 - (topicGapsData.topic_gaps.length * 10)) : 100,
+            botDetectionEnabled: true,
+            unansweredQuestions: unansweredQuestions
+          },
+          viewerInsights: sentimentData ? {
+            sentimentBreakdown: {
+              positive: typeof sentimentData.data.positive === 'number' ? sentimentData.data.positive : (sentimentData.data.positive?.count ?? 0),
+              negative: typeof sentimentData.data.negative === 'number' ? sentimentData.data.negative : (sentimentData.data.negative?.count ?? 0),
+              neutral: typeof sentimentData.data.neutral === 'number' ? sentimentData.data.neutral : (sentimentData.data.neutral?.count ?? 0),
+              totalCommentsAnalyzed: (() => {
+                const pos = typeof sentimentData.data.positive === 'number' ? sentimentData.data.positive : (sentimentData.data.positive?.count ?? 0)
+                const neg = typeof sentimentData.data.negative === 'number' ? sentimentData.data.negative : (sentimentData.data.negative?.count ?? 0)
+                const neu = typeof sentimentData.data.neutral === 'number' ? sentimentData.data.neutral : (sentimentData.data.neutral?.count ?? 0)
+                return sentimentData.data.total_comments ?? (pos + neg + neu)
+              })()
+            },
+            actionableInsights: {
+              highValue: benefitInsights
+            }
+          } : null,
+          reportInfo: {
+            availableFormats: ["PDF", "TXT"],
+            analysisDate: new Date().toISOString()
+          }
+        } as any)
+
+        setAnalysisState("complete")
+        setIsCheckingCache(false)
+      } catch (err) {
+        console.warn("Focus Guard: failed to fetch relevancy on landing:", (err as any)?.message || String(err))
+        setAnalysisState("idle")
+        setAnalysisStatus(null)
+        setVideoAnalysis(null)
+        setIsCheckingCache(false)
+      }
+    } catch (error) {
+      console.log("Focus Guard: cache check failed on landing (likely unauthenticated):", (error as any)?.message || String(error))
+      setIsCached(false)
+      setAnalysisState("idle")
+      setAnalysisStatus(null)
+      setVideoAnalysis(null)
+      setIsCheckingCache(false)
+    }
+  }
+
   const startVideoAnalysis = async (videoId: string) => {
     setIsAnalyzing(true)
     setAnalysisState("analyzing")
     setAnalysisStatus(null)
     setVideoAnalysis(null)
-
-    // Simulate 3-5 second delay for demo/development
-    const delay = 3000 + Math.random() * 2000 // 3-5 seconds
-    await new Promise(resolve => setTimeout(resolve, delay))
+    setAnalysisError(null)
 
     try {
-      // Production code:
-      // const response = await FocusGuardAPI.analyzeVideo({ videoId })
-      // setVideoAnalysis(response.analysis)
-      // setAnalysisStatus({
-      //   trustScore: response.analysis.summary.trustScore,
-      //   clickbaitVerdict: response.analysis.summary.clickbaitVerdict.label,
-      //   isAnalyzing: false
-      // })
+      const analysisStartTime = Date.now()
+      console.log("Starting video analysis for:", videoId)
+      
+      // Step 1: Check cache status
+      console.log("Checking cache status...")
+      const cacheCheckStart = Date.now()
+      const cacheStatus = await FocusGuardAPI.getCacheStatus(videoId)
+      const cacheCheckDuration = ((Date.now() - cacheCheckStart) / 1000).toFixed(2)
+      setIsCached(cacheStatus.cached)
+      console.log(`Cache status (${cacheCheckDuration}s):`, cacheStatus)
 
-      // Development mock data (statically imported to avoid missing chunk errors):
-      const mockAnalysis = getRandomMockAnalysis()
-      setVideoAnalysis(mockAnalysis)
+      let relevancyData
+      let sentimentData = null
+      let summaryData = null
+      let credibilityData = null
+      let humanLikenessData = null
+      let topicClustersData = null
+      let topicGapsData = null
+
+      if (!cacheStatus.cached) {
+        // Step 2a: Not cached - submit job and poll
+        console.log("Video not cached, submitting summary job...")
+        const jobResponse = await FocusGuardAPI.submitSummaryJob({
+          video_id: videoId,
+          force_refresh: false
+        })
+        console.log("Job submitted:", jobResponse)
+        setCurrentJobId(jobResponse.job_id)
+
+        // Poll job status
+        console.log("Polling job status...")
+        const pollStartTime = Date.now()
+        const jobResult = await FocusGuardAPI.pollJob(
+          jobResponse.job_id,
+          (status) => {
+            const elapsed = ((Date.now() - pollStartTime) / 1000).toFixed(1)
+            console.log(`[${elapsed}s] Job progress:`, status.progress_percent, "%", status.progress_message, "Status:", status.status)
+          },
+          500 // Poll every 500ms for faster response
+        )
+        const pollDuration = ((Date.now() - pollStartTime) / 1000).toFixed(1)
+        console.log(`Job completed in ${pollDuration}s:`, jobResult)
+
+        // Step 3a: After job completes, fetch ALL analysis endpoints in parallel (data is now cached)
+        console.log("Fetching all analysis data in parallel (post-job)...")
+        const fetchStartTime = Date.now()
+        const results = await Promise.allSettled([
+          FocusGuardAPI.analyzeRelevancyV2(videoId, false),
+          FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: false }),
+          FocusGuardAPI.analyzeSummaryV2({ video_id: videoId, force_refresh: false }),
+          FocusGuardAPI.analyzeChannelCredibilityV2(videoId, false),
+          FocusGuardAPI.analyzeHumanLikenessV2(videoId, false),
+          FocusGuardAPI.analyzeTopicClusteringV2(videoId, false),
+          FocusGuardAPI.analyzeTopicGapV2(videoId, false)
+        ])
+        const fetchDuration = ((Date.now() - fetchStartTime) / 1000).toFixed(1)
+        console.log(`All analysis data fetched in ${fetchDuration}s`)
+        
+        // Extract results, logging any failures
+        relevancyData = results[0].status === 'fulfilled' ? results[0].value : null
+        sentimentData = results[1].status === 'fulfilled' ? results[1].value : null
+        summaryData = results[2].status === 'fulfilled' ? results[2].value : null
+        credibilityData = results[3].status === 'fulfilled' ? results[3].value : null
+        humanLikenessData = results[4].status === 'fulfilled' ? results[4].value : null
+        topicClustersData = results[5].status === 'fulfilled' ? results[5].value : null
+        topicGapsData = results[6].status === 'fulfilled' ? results[6].value : null
+        
+        // Log any failures
+        results.forEach((result, idx) => {
+          if (result.status === 'rejected') {
+            const endpoints = ['relevancy', 'sentiment', 'summary', 'credibility', 'humanLikeness', 'topicClusters', 'topicGaps']
+            console.error(`Failed to fetch ${endpoints[idx]}:`, result.reason)
+          }
+        })
+        
+        if (!relevancyData) {
+          throw new Error("Failed to fetch relevancy data (required)")
+        }
+      } else {
+        // Step 2b: Cached - directly get relevancy
+        console.log("Video cached, fetching relevancy data...")
+        relevancyData = await FocusGuardAPI.analyzeRelevancyV2(videoId, false)
+      }
+
+      console.log("Relevancy data:", relevancyData)
+
+      // Map relevancy verdict and confidence to our analysis status
+      const verdictRaw = (relevancyData.data.verdict || "UNKNOWN").toUpperCase()
+      const confidenceRaw = typeof relevancyData.data.confidence_score === "number" ? relevancyData.data.confidence_score : 0
+      console.log("Focus Guard: Raw confidence from API:", confidenceRaw)
+      const confidenceNorm = normalizeConfidence(confidenceRaw)
+      console.log("Focus Guard: Normalized confidence:", confidenceNorm)
+
+      // Normalize confidence: convert to percent and 0-10 trust score.
+      const confidencePercent = Math.round(confidenceNorm * 100)
+      const trustScoreNormalized = Math.round(confidenceNorm * 10 * 10) / 10 // 0-10, one decimal
+      console.log("Focus Guard: Final trustScore for analysisStatus:", trustScoreNormalized, "confidencePercent:", confidencePercent)
+
+      // Fetch additional analysis data for full report (only if we haven't already fetched it)
+      if (!sentimentData || !summaryData || !credibilityData || !humanLikenessData || !topicClustersData || !topicGapsData) {
+        console.log("Focus Guard: Fetching remaining analysis data for video:", videoId)
+        const remainingFetchStart = Date.now()
+        // Fetch all data in parallel with resilient error handling
+        const remainingResults = await Promise.allSettled([
+          FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: false }),
+          FocusGuardAPI.analyzeSummaryV2({ video_id: videoId, force_refresh: false }),
+          FocusGuardAPI.analyzeChannelCredibilityV2(videoId, false),
+          FocusGuardAPI.analyzeHumanLikenessV2(videoId, false),
+          FocusGuardAPI.analyzeTopicClusteringV2(videoId, false),
+          FocusGuardAPI.analyzeTopicGapV2(videoId, false)
+        ])
+        
+        sentimentData = sentimentData || (remainingResults[0].status === 'fulfilled' ? remainingResults[0].value : null)
+        summaryData = summaryData || (remainingResults[1].status === 'fulfilled' ? remainingResults[1].value : null)
+        credibilityData = credibilityData || (remainingResults[2].status === 'fulfilled' ? remainingResults[2].value : null)
+        humanLikenessData = humanLikenessData || (remainingResults[3].status === 'fulfilled' ? remainingResults[3].value : null)
+        topicClustersData = topicClustersData || (remainingResults[4].status === 'fulfilled' ? remainingResults[4].value : null)
+        topicGapsData = topicGapsData || (remainingResults[5].status === 'fulfilled' ? remainingResults[5].value : null)
+        
+        const remainingFetchDuration = ((Date.now() - remainingFetchStart) / 1000).toFixed(1)
+        console.log(`Remaining analysis data fetched in ${remainingFetchDuration}s`)
+        
+        // Log any failures
+        remainingResults.forEach((result, idx) => {
+          if (result.status === 'rejected') {
+            const endpoints = ['sentiment', 'summary', 'credibility', 'humanLikeness', 'topicClusters', 'topicGaps']
+            console.error(`Failed to fetch ${endpoints[idx]}:`, result.reason)
+          }
+        })
+      }
+      
+      if (sentimentData) {
+        console.log("Focus Guard: Sentiment data received:", sentimentData)
+      }
+      if (summaryData) {
+        console.log("Focus Guard: Summary data received:", summaryData)
+      }
+      if (credibilityData) {
+        console.log("Focus Guard: Credibility data received:", credibilityData)
+      }
+      if (humanLikenessData) {
+        console.log("Focus Guard: Human Likeness data received:", humanLikenessData)
+      }
+      if (topicClustersData) {
+        console.log("Focus Guard: Topic Clusters data received:", topicClustersData)
+      }
+      if (topicGapsData) {
+        console.log("Focus Guard: Topic Gaps data received:", topicGapsData)
+      }
+      
+      // Extract counts from nested structure (if sentiment data exists)
+      const positiveCount = sentimentData ? (typeof sentimentData.data.positive === 'number' ? sentimentData.data.positive : (sentimentData.data.positive?.count ?? 0)) : 0
+      const neutralCount = sentimentData ? (typeof sentimentData.data.neutral === 'number' ? sentimentData.data.neutral : (sentimentData.data.neutral?.count ?? 0)) : 0
+      const negativeCount = sentimentData ? (typeof sentimentData.data.negative === 'number' ? sentimentData.data.negative : (sentimentData.data.negative?.count ?? 0)) : 0
+      const totalComments = sentimentData?.data.total_comments ?? (positiveCount + neutralCount + negativeCount)
+      
+      console.log("Focus Guard: Sentiment counts:", {
+        positive: positiveCount,
+        neutral: neutralCount,
+        negative: negativeCount,
+        total: totalComments
+      })
+
       setAnalysisStatus({
-        trustScore: mockAnalysis.trustScore.score,
-        clickbaitVerdict: mockAnalysis.clickbaitVerdict.verdict.toUpperCase(),
+        trustScore: trustScoreNormalized,
+        clickbaitVerdict: verdictRaw as "LEGIT" | "MISLEADING" | "CLICKBAIT",
         isAnalyzing: false
       })
+
+      // Create a minimal video analysis object for the panel with expected fields
+      const minimalSummary = {
+        trustScore: trustScoreNormalized,
+        aiConfidence: confidencePercent,
+        clickbaitVerdict: {
+          label: verdictRaw,
+          confidence: confidencePercent
+        },
+        channelCredibility: credibilityData ? {
+          score: credibilityData.score,
+          factors: credibilityData.normalized_factors ? Object.entries(credibilityData.normalized_factors).map(([name, weight]) => ({
+            name,
+            weight,
+            value: credibilityData.factual_factors?.[name] ?? 'N/A'
+          })) : []
+        } : undefined
+      }
+
+      // Build sentiment distribution if available
+      const sentimentDistribution = sentimentData ? (() => {
+        const positiveCount = typeof sentimentData.data.positive === 'number' ? sentimentData.data.positive : (sentimentData.data.positive?.count ?? 0)
+        const neutralCount = typeof sentimentData.data.neutral === 'number' ? sentimentData.data.neutral : (sentimentData.data.neutral?.count ?? 0)
+        const negativeCount = typeof sentimentData.data.negative === 'number' ? sentimentData.data.negative : (sentimentData.data.negative?.count ?? 0)
+        const totalComments = sentimentData.data.total_comments ?? (positiveCount + neutralCount + negativeCount)
+        
+        // Extract top comments
+        const positiveComments = typeof sentimentData.data.positive === 'object' ? sentimentData.data.positive?.top_comments ?? [] : []
+        const neutralComments = typeof sentimentData.data.neutral === 'object' ? sentimentData.data.neutral?.top_comments ?? [] : []
+        const negativeComments = typeof sentimentData.data.negative === 'object' ? sentimentData.data.negative?.top_comments ?? [] : []
+        
+        return {
+          positive: totalComments > 0 ? (positiveCount / totalComments) * 100 : 0,
+          neutral: totalComments > 0 ? (neutralCount / totalComments) * 100 : 0,
+          negative: totalComments > 0 ? (negativeCount / totalComments) * 100 : 0,
+          totalCommentsAnalyzed: totalComments,
+          exampleComments: {
+            positive: positiveComments,
+            neutral: neutralComments,
+            negative: negativeComments
+          }
+        }
+      })() : undefined
+
+      // Transform topic clusters to high-value insights
+      const benefitInsights = topicClustersData?.topic_clusters
+        ?.filter(cluster => cluster.count > 0)
+        .slice(0, 5)
+        .map((cluster, idx) => ({
+          id: `benefit-${idx}`,
+          statement: cluster.statement,
+          type: "benefit" as const,
+          commentCount: cluster.count,
+          supportingComments: cluster.supporting_quotes.map((quote, qIdx) => ({
+            id: `comment-${idx}-${qIdx}`,
+            text: quote,
+            timestamp: undefined,
+            author: undefined
+          })),
+          isExpanded: false
+        })) || []
+
+      // Transform topic gaps to unanswered questions for ContentGapsTab
+      const unansweredQuestions = topicGapsData?.topic_gaps
+        ?.map((gap, idx) => ({
+          id: `gap-${idx}`,
+          statement: gap.question_statement,
+          type: "issue" as const,
+          commentCount: gap.supporting_comments.length,
+          supportingComments: gap.supporting_comments.map((comment, cIdx) => ({
+            id: `gap-comment-${idx}-${cIdx}`,
+            text: comment,
+            timestamp: undefined,
+            author: undefined
+          })),
+          isExpanded: false
+        })) || []
+
+      setVideoAnalysis({
+        // Legacy shape support
+        summary: minimalSummary,
+        trustScore: { score: trustScoreNormalized },
+        clickbaitVerdict: { verdict: verdictRaw },
+        executiveSummary: summaryData?.summary_paragraph ?? null,
+        channelCredibility: credibilityData ? {
+          score: credibilityData.score,
+          factors: credibilityData.normalized_factors ? Object.entries(credibilityData.normalized_factors).map(([name, weight]) => ({
+            name,
+            weight,
+            value: credibilityData.factual_factors?.[name] ?? 'N/A'
+          })) : []
+        } : null,
+        // Minimal placeholders for other tabs
+        sentiment: sentimentDistribution ? {
+          overall: (() => {
+            const positiveCount = typeof sentimentData!.data.positive === 'number' ? sentimentData!.data.positive : (sentimentData!.data.positive?.count ?? 0)
+            const negativeCount = typeof sentimentData!.data.negative === 'number' ? sentimentData!.data.negative : (sentimentData!.data.negative?.count ?? 0)
+            return positiveCount > negativeCount ? "positive" : negativeCount > positiveCount ? "negative" : "neutral"
+          })(),
+          distribution: sentimentDistribution
+        } : null,
+        credibility: null,
+        topicClusters: null,
+        contentGaps: {
+          botPercentage: (humanLikenessData && humanLikenessData.total_comments && humanLikenessData.total_comments > 0)
+            ? Math.round((humanLikenessData.bot_count / humanLikenessData.total_comments) * 100)
+            : 0,
+          gapCoverageScore: topicGapsData?.topic_gaps ? Math.max(0, 100 - (topicGapsData.topic_gaps.length * 10)) : 100,
+          botDetectionEnabled: true,
+          unansweredQuestions: unansweredQuestions
+        },
+        viewerInsights: sentimentData ? {
+          sentimentBreakdown: {
+            positive: typeof sentimentData.data.positive === 'number' ? sentimentData.data.positive : (sentimentData.data.positive?.count ?? 0),
+            negative: typeof sentimentData.data.negative === 'number' ? sentimentData.data.negative : (sentimentData.data.negative?.count ?? 0),
+            neutral: typeof sentimentData.data.neutral === 'number' ? sentimentData.data.neutral : (sentimentData.data.neutral?.count ?? 0),
+            totalCommentsAnalyzed: (() => {
+              const pos = typeof sentimentData.data.positive === 'number' ? sentimentData.data.positive : (sentimentData.data.positive?.count ?? 0)
+              const neg = typeof sentimentData.data.negative === 'number' ? sentimentData.data.negative : (sentimentData.data.negative?.count ?? 0)
+              const neu = typeof sentimentData.data.neutral === 'number' ? sentimentData.data.neutral : (sentimentData.data.neutral?.count ?? 0)
+              return sentimentData.data.total_comments ?? (pos + neg + neu)
+            })()
+          },
+          actionableInsights: {
+            highValue: benefitInsights
+          }
+        } : null,
+        reportInfo: {
+          availableFormats: ["PDF", "TXT"],
+          analysisDate: new Date().toISOString()
+        }
+      } as any)
+
       setAnalysisState("complete")
-      
+      setCurrentJobId(null)
+
+      const totalDuration = ((Date.now() - analysisStartTime) / 1000).toFixed(1)
+      console.log(`✅ Total analysis completed in ${totalDuration}s`)
+
       // FR-101: Show pre-watch popover after analysis completes
-      // Always show the popover when analysis completes (it will be reset per-video)
       setShowPreWatchPopover(true)
     } catch (error) {
       console.error("Video analysis failed:", error)
-      // Use mock data for development (statically imported fallback)
-      const mockAnalysis = getRandomMockAnalysis()
-      setVideoAnalysis(mockAnalysis)
-      setAnalysisStatus({
-        trustScore: mockAnalysis.trustScore.score,
-        clickbaitVerdict: mockAnalysis.clickbaitVerdict.verdict.toUpperCase(),
-        isAnalyzing: false
-      })
-      setAnalysisState("complete")
-      
-      // FR-101: Show pre-watch popover after analysis completes
-      // Always show the popover when analysis completes (it will be reset per-video)
-      setShowPreWatchPopover(true)
+      const errorMessage = error instanceof Error ? error.message : "Analysis failed"
+      setAnalysisError(errorMessage)
+      setAnalysisState("idle") // Return to idle so user can retry
+      setCurrentJobId(null)
     } finally {
       setIsAnalyzing(false)
     }
@@ -355,6 +925,14 @@ const ContentScript = () => {
       document.body.removeChild(a)
     } catch (error) {
       console.error("Failed to download report:", error)
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      
+      // Show user-friendly error
+      if (errorMessage.includes("Pro subscription")) {
+        alert("PDF reports require a Pro subscription. Please try TXT format or upgrade your account.")
+      } else {
+        alert(`Failed to download report: ${errorMessage}`)
+      }
     }
   }
 
@@ -364,95 +942,44 @@ const ContentScript = () => {
     }
   }
 
-  const handleSearch = async (query: string) => {
-    if (!userStats || userStats.searchesRemaining <= 0) return
-
-    setIsLoading(true)
+  const handleDownloadHistoryReport = async (videoId: string) => {
     try {
-      const response = await FocusGuardAPI.search({ query })
-      setResults(response.results)
-      setUserStats((prev: UserStats | null) =>
-        prev
-          ? {
-              ...prev,
-              searchesRemaining: response.searchesRemaining,
-              searchesUsedToday: prev.searchesUsedToday + 1
-            }
-          : null
-      )
-    } catch (error) {
-      console.error("Search failed:", error)
-      // Mock data for development
-      setResults([
-        {
-          id: "1",
-          title: "Understanding Climate Change: The Science Explained",
-          channelName: "ScienceExplained",
-          thumbnailUrl: "https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg",
-          url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-          relevanceScore: 0.95,
-          transcriptSentiment: { score: 0.8, label: "positive" },
-          commentSentiment: { score: 0.6, label: "neutral" },
-          duration: "12:34",
-          viewCount: "1.2M"
+      // Try PDF first, fallback to TXT if Pro subscription is required
+      let blob: Blob
+      try {
+        blob = await FocusGuardAPI.downloadReport({
+          videoId,
+          format: "PDF"
+        })
+      } catch (pdfError) {
+        const errorMessage = pdfError instanceof Error ? pdfError.message : String(pdfError)
+        if (errorMessage.includes("Pro subscription")) {
+          // Fallback to TXT format
+          console.log("PDF requires Pro, downloading TXT instead")
+          blob = await FocusGuardAPI.downloadReport({
+            videoId,
+            format: "TXT"
+          })
+        } else {
+          throw pdfError
         }
-      ])
-      setUserStats((prev: UserStats | null) =>
-        prev
-          ? {
-              ...prev,
-              searchesRemaining: prev.searchesRemaining - 1,
-              searchesUsedToday: prev.searchesUsedToday + 1
-            }
-          : null
-      )
-    } finally {
-      setIsLoading(false)
+      }
+
+      // Create download link
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `focus-guard-report-${videoId}.${blob.type.includes('pdf') ? 'pdf' : 'txt'}`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+    } catch (error) {
+      console.error("Failed to download history report:", error)
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      alert(`Failed to download report: ${errorMessage}`)
     }
   }
-
-  // FR-102: SidePanel and Toggle injection handled by React render below
-
-  const injectWatchPageUI = () => {
-    // Legacy StatusChip injection removed; ToggleButton now rendered by React.
-  }
-
-  // Note: cleanupWatchPageUI removed (StatusChip no longer injected)
-
-  // // Render home/feed page overlay (original functionality)
-  // if (isYouTubeHome) {
-  //   return (
-  //     <div
-  //       style={{
-  //         position: "fixed",
-  //         top: 0,
-  //         left: 0,
-  //         width: "100%",
-  //         height: "100%",
-  //         backgroundColor: "white",
-  //         zIndex: 9999,
-  //         overflowY: "auto",
-  //         fontFamily:
-  //           '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-  //         animation: "fadeIn 0.4s ease-in"
-  //       }}>
-  //       <style>
-  //         {`
-  //           @keyframes fadeIn {
-  //             from { opacity: 0; }
-  //             to { opacity: 1; }
-  //           }
-  //         `}
-  //       </style>
-  //       <SearchInterface
-  //         onSearch={handleSearch}
-  //         isLoading={isLoading}
-  //         userStats={userStats}
-  //       />
-  //       <ResultsList results={results} isLoading={isLoading} />
-  //     </div>
-  //   )
-  // }
 
   // FR-102: Render Side Panel on watch page
   if (onWatchPage) {
@@ -481,12 +1008,20 @@ const ContentScript = () => {
         
         {/* New ToggleButton - visible when panel is closed */}
         {!isSidePanelOpen && (
+          // Debug: log props sent to ToggleButton to verify shapes at runtime
+          console.log("Focus Guard: Toggle props", { analysisState, analysisStatus, videoAnalysisSummary: videoAnalysis?.summary, isCached, analysisError }),
           <ToggleButton
             trustScore={analysisStatus?.trustScore}
             verdict={analysisStatus?.clickbaitVerdict}
             dock={panelDock}
-            state={analysisState}
+            state={isCheckingCache ? "analyzing" : analysisState}
+            isCached={isCached}
+            errorMessage={analysisError}
             onToggle={() => {
+              if (isCheckingCache) {
+                // Do nothing while checking cache
+                return
+              }
               if (analysisState === "idle") {
                 // Start analysis when in idle state
                 if (currentVideoId) {
@@ -519,6 +1054,7 @@ const ContentScript = () => {
           onClose={() => setIsSidePanelOpen(false)}
           onDownloadReport={handleDownloadReport}
           onReAnalyze={handleReAnalyze}
+          onDownloadHistoryReport={handleDownloadHistoryReport}
           onBotFilterChange={(enabled) => {
             console.log("Bot filter changed:", enabled)
           }}

@@ -149,14 +149,14 @@ export const PreWatchPopover = ({
             style={{
               padding: "24px 24px 20px",
               borderBottom: `1px solid ${COLORS.ui.border}`,
-              background: `linear-gradient(135deg, ${COLORS[trustColor].light} 0%, white 100%)`
+              background: `linear-gradient(135deg, ${COLORS[verdictColor].light} 0%, white 100%)`
             }}>
             <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px" }}>
               <div
                 style={{
                   width: "40px",
                   height: "40px",
-                  backgroundColor: COLORS[trustColor].primary,
+                  backgroundColor: COLORS[verdictColor].primary,
                   borderRadius: "50%",
                   display: "flex",
                   alignItems: "center",
@@ -212,15 +212,15 @@ export const PreWatchPopover = ({
                     alignItems: "center",
                     gap: "8px",
                     padding: "8px 16px",
-                    backgroundColor: COLORS[trustColor].light,
+                    backgroundColor: COLORS[verdictColor].light,
                     borderRadius: "8px",
-                    border: `2px solid ${COLORS[trustColor].primary}`
+                    border: `2px solid ${COLORS[verdictColor].primary}`
                   }}>
-                  <span style={{ fontSize: "24px", fontWeight: "700", color: COLORS[trustColor].text }}>
-                    {analysis?.trustScore?.score ?? 0}
+                  <span style={{ fontSize: "24px", fontWeight: "700", color: COLORS[verdictColor].text }}>
+                    {(analysis?.trustScore?.score ?? 0).toFixed(1)}
                   </span>
-                  <span style={{ fontSize: "12px", fontWeight: "600", color: COLORS[trustColor].text }}>
-                    / 100
+                  <span style={{ fontSize: "12px", fontWeight: "600", color: COLORS[verdictColor].text }}>
+                    / 10
                   </span>
                 </div>
                 <div style={{ flex: 1 }}>
@@ -249,14 +249,15 @@ export const PreWatchPopover = ({
                   border: `1px solid ${COLORS[verdictColor].primary}`
                 }}>
                 <span style={{ fontSize: "16px" }}>
-                  {verdictStr === "not-clickbait" && "✅"}
-                  {verdictStr === "moderate-clickbait" && "⚠️"}
-                  {verdictStr === "highly-clickbait" && "🚨"}
+                  {verdictStr === "LEGIT" && "✅"}
+                  {verdictStr === "MISLEADING" && "⚠️"}
+                  {verdictStr === "CLICKBAIT" && "🚨"}
                 </span>
                 <span style={{ fontSize: "13px", fontWeight: "700", color: COLORS[verdictColor].text }}>
-                  {verdictStr === "not-clickbait" && "LEGIT"}
-                  {verdictStr === "moderate-clickbait" && "MODERATE CLICKBAIT"}
-                  {verdictStr === "highly-clickbait" && "HIGHLY CLICKBAIT"}
+                  { verdictStr }
+                  {/* {verdictStr === "LEGIT" && "LEGIT"}
+                  {verdictStr === "MISLEADING" && "MODERATE CLICKBAIT"}
+                  {verdictStr === "CLICKBAIT" && "HIGHLY CLICKBAIT"} */}
                 </span>
               </div>
             </div>
@@ -282,7 +283,7 @@ export const PreWatchPopover = ({
                       </div>
                       {insight.supportingComments?.length > 0 && (
                         <div style={{ marginTop: "6px", fontSize: "12px", color: COLORS.ui.textSecondary }}>
-                          {insight.supportingComments[0].votes.toLocaleString()} upvotes
+                          {insight.supportingComments.length} supporting comment{insight.supportingComments.length !== 1 ? 's' : ''}
                         </div>
                       )}
                     </div>
@@ -301,22 +302,69 @@ export const PreWatchPopover = ({
               <h4 style={{ margin: "0 0 12px", fontSize: "14px", fontWeight: "600", color: COLORS.ui.textPrimary }}>
                 Viewer Sentiment
               </h4>
-              <div style={{ display: "flex", gap: "8px" }}>
-                <div style={{ flex: analysis?.sentiment?.distribution?.positive ?? 0, height: "8px", backgroundColor: getColorSet("high").primary, borderRadius: "4px" }} />
-                <div style={{ flex: analysis?.sentiment?.distribution?.neutral ?? 0, height: "8px", backgroundColor: getColorSet("neutral").primary, borderRadius: "4px" }} />
-                <div style={{ flex: analysis?.sentiment?.distribution?.negative ?? 0, height: "8px", backgroundColor: getColorSet("low").primary, borderRadius: "4px" }} />
-              </div>
-              <div style={{ display: "flex", gap: "16px", marginTop: "8px", fontSize: "12px" }}>
-                <span>
-                  <span style={{ color: getColorSet("high").primary }}>●</span> {analysis?.sentiment?.distribution?.positive ?? 0}% Positive
-                </span>
-                <span>
-                  <span style={{ color: getColorSet("neutral").primary }}>●</span> {analysis?.sentiment?.distribution?.neutral ?? 0}% Neutral
-                </span>
-                <span>
-                  <span style={{ color: getColorSet("low").primary }}>●</span> {analysis?.sentiment?.distribution?.negative ?? 0}% Negative
-                </span>
-              </div>
+              {analysis?.sentiment?.distribution ? (
+                <>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <div style={{ flex: analysis.sentiment.distribution.positive || 0, height: "8px", backgroundColor: getColorSet("high").primary, borderRadius: "4px" }} />
+                    <div style={{ flex: analysis.sentiment.distribution.neutral || 0, height: "8px", backgroundColor: getColorSet("neutral").primary, borderRadius: "4px" }} />
+                    <div style={{ flex: analysis.sentiment.distribution.negative || 0, height: "8px", backgroundColor: getColorSet("low").primary, borderRadius: "4px" }} />
+                  </div>
+                  <div style={{ display: "flex", gap: "16px", marginTop: "8px", fontSize: "12px" }}>
+                    <span>
+                      <span style={{ color: getColorSet("high").primary }}>●</span> {Math.round(analysis.sentiment.distribution.positive || 0)}% Positive
+                    </span>
+                    <span>
+                      <span style={{ color: getColorSet("neutral").primary }}>●</span> {Math.round(analysis.sentiment.distribution.neutral || 0)}% Neutral
+                    </span>
+                    <span>
+                      <span style={{ color: getColorSet("low").primary }}>●</span> {Math.round(analysis.sentiment.distribution.negative || 0)}% Negative
+                    </span>
+                  </div>
+                  {analysis.sentiment.distribution.totalCommentsAnalyzed != null && analysis.sentiment.distribution.totalCommentsAnalyzed > 0 && (
+                    <div style={{ marginTop: "8px", fontSize: "11px", color: COLORS.ui.textSecondary }}>
+                      Based on {analysis.sentiment.distribution.totalCommentsAnalyzed.toLocaleString()} comments analyzed
+                    </div>
+                  )}
+                  {(analysis.sentiment.distribution as any).exampleComments && (
+                    <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                      {((analysis.sentiment.distribution as any).exampleComments.positive || []).slice(0, 2).map((comment: any, idx: number) => (
+                        <div
+                          key={`pos-${idx}`}
+                          style={{
+                            padding: "8px 12px",
+                            backgroundColor: COLORS.ui.surface,
+                            borderRadius: "6px",
+                            borderLeft: `3px solid ${getColorSet("high").primary}`,
+                            fontSize: "12px",
+                            color: COLORS.ui.textSecondary,
+                            lineHeight: "1.4"
+                          }}>
+                          "{comment.text}"
+                        </div>
+                      ))}
+                      {((analysis.sentiment.distribution as any).exampleComments.negative || []).slice(0, 1).map((comment: any, idx: number) => (
+                        <div
+                          key={`neg-${idx}`}
+                          style={{
+                            padding: "8px 12px",
+                            backgroundColor: COLORS.ui.surface,
+                            borderRadius: "6px",
+                            borderLeft: `3px solid ${getColorSet("low").primary}`,
+                            fontSize: "12px",
+                            color: COLORS.ui.textSecondary,
+                            lineHeight: "1.4"
+                          }}>
+                          "{comment.text}"
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div style={{ fontSize: "12px", color: COLORS.ui.textSecondary, fontStyle: "italic" }}>
+                  No sentiment data available
+                </div>
+              )}
             </div>
           </div>
 

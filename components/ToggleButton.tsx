@@ -12,11 +12,15 @@ interface ToggleButtonProps {
   onDockChange?: (pos: "left" | "right") => void
   // state: 'idle' = pre-analysis, 'analyzing' = in progress, 'complete' = results ready
   state?: "idle" | "analyzing" | "complete"
+  // Whether the video is cached (true = cached, false = not cached, null = unknown)
+  isCached?: boolean | null
+  // Error message to display when analysis fails
+  errorMessage?: string | null
 }
 
 type DockPosition = "left" | "right"
 
-export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", onDockChange, state = "complete" }: ToggleButtonProps) => {
+export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", onDockChange, state = "complete", isCached = null, errorMessage = null }: ToggleButtonProps) => {
   const [isDragging, setIsDragging] = useState(false)
   const movedRef = useRef(false)
   const [dockPosition, setDockPosition] = useState<DockPosition>(dock)
@@ -97,8 +101,10 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
 
   // Calculate position based on dock
   const getPositionStyle = (): React.CSSProperties => {
-    // Use neutral color for idle/analyzing states
-    const bgColor = state === "complete" ? COLORS[trustColor].primary : COLORS.neutral.primary
+    // Use error color for error state, neutral for idle/analyzing, verdict color for complete
+    const bgColor = errorMessage ? COLORS.low.primary : 
+                    state === "complete" ? COLORS[verdictColor].primary : 
+                    COLORS.neutral.primary
     
     const baseStyle: React.CSSProperties = {
       position: "fixed",
@@ -145,7 +151,37 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
 
   // Render content based on state
   const renderContent = () => {
+    // Show error message if present
+    if (errorMessage) {
+      return (
+        <div style={{ 
+          display: "flex", 
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: "4px",
+          textAlign: "center",
+          padding: "4px 8px",
+          maxWidth: "100px"
+        }}>
+          <span style={{ fontSize: "20px" }}>⚠️</span>
+          <span style={{ 
+            fontSize: "11px", 
+            fontWeight: "600",
+            color: "white",
+            textShadow: "0 1px 2px rgba(0,0,0,0.3)",
+            lineHeight: 1.2
+          }}>
+            {errorMessage}
+          </span>
+        </div>
+      )
+    }
+
     if (state === "idle") {
+      // Show different text based on cache status
+      const buttonText = isCached === false ? "Generate Report" : "Analyze Comments"
+      
       return (
         <div style={{ 
           display: "flex", 
@@ -165,13 +201,16 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
             lineHeight: 1.2,
             maxWidth: "80px"
           }}>
-            Analyze Comments
+            {buttonText}
           </span>
         </div>
       )
     }
 
     if (state === "analyzing") {
+      // Check if we're in cache checking phase (no score yet) vs actual analysis
+      const isCheckingCache = !trustScore && isCached === null
+      
       return (
         <div style={{ 
           display: "flex", 
@@ -198,7 +237,7 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
             textShadow: "0 1px 2px rgba(0,0,0,0.3)",
             lineHeight: 1
           }}>
-            Analyzing...
+            {isCheckingCache ? "Checking..." : "Analyzing..."}
           </span>
           <style>
             {`
@@ -250,7 +289,8 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
       onClick={handleClick}
       style={getPositionStyle()}
       title={
-        state === "idle" ? "Click to analyze video comments" :
+        errorMessage ? "Analysis failed - Click to retry" :
+        state === "idle" ? (isCached === false ? "Click to generate report" : "Click to analyze video comments") :
         state === "analyzing" ? "Analysis in progress..." :
         "Drag to reposition • Click to open panel"
       }

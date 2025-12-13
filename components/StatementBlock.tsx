@@ -155,7 +155,7 @@ export const StatementBlock = ({ insight, showBotScores = false }: StatementBloc
                   </p>
 
                   {/* Bot Score Tag (Optional) */}
-                  {showBotScores && (
+                  {showBotScores && comment.humanLikenessScore != null && (
                     <div
                       style={{
                         flexShrink: 0,

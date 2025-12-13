@@ -1,7 +1,8 @@
 export interface UserAccount {
   isLoggedIn: boolean
   email?: string
-  tier: "starter" | "pro"
+  tier: "free" | "starter" | "pro"
+  dailySearchesLimit: number
   searchesUsedToday: number
   searchesRemaining: number
   resetTime: string
