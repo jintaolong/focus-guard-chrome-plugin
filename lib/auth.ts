@@ -132,12 +132,15 @@ export class AuthService {
 
   static async getAccessToken(): Promise<string | null> {
     try {
+      console.log("AuthService: Getting access token from storage...")
       const result = await this.storageGet([this.TOKEN_KEY])
       const token = result[this.TOKEN_KEY] || null
       if (token) {
-        console.log("AuthService: Found access token in storage")
+        console.log("AuthService: Found access token in storage:", token.substring(0, 30) + "...")
       } else {
         console.log("AuthService: No access token in storage")
+        console.log("AuthService: Storage result:", result)
+        console.log("AuthService: TOKEN_KEY:", this.TOKEN_KEY)
       }
       return token
     } catch (error) {
@@ -359,14 +362,138 @@ export class AuthService {
    * Logout (client-side token removal)
    */
   static async logout(): Promise<void> {
+    // Clear local tokens first
+    await this.clearTokens()
+    
+    // Try to call the backend logout endpoint (best effort, ignore errors)
     try {
-      // Try to call the backend logout endpoint (best effort)
       await this.fetchWithAuth("/auth/logout", { method: "POST" })
     } catch (error) {
-      console.warn("Backend logout failed:", error)
-    } finally {
-      // Always clear local tokens
-      await this.clearTokens()
+      // Ignore backend logout errors - tokens already cleared
+      console.log("Backend logout skipped or failed (tokens already cleared):", error)
+    }
+    
+    // Notify web portal to clear its tokens too
+    try {
+      await this.notifyWebPortalLogout()
+    } catch (error) {
+      console.warn("Failed to notify web portal of logout:", error)
+    }
+  }
+
+  // ============================================================================
+  // Google OAuth Methods
+  // ============================================================================
+
+  /**
+   * Initiate Google OAuth login flow
+   * Opens the Google OAuth URL in a new tab and returns the tab ID for monitoring
+   */
+  static async initiateGoogleLogin(): Promise<{ tabId: number; state: string }> {
+    console.log("AuthService: Initiating Google OAuth login")
+    
+    try {
+      // Step 1: Get the Google OAuth URL from backend
+      const response = await this.fetchAPI<{ auth_url: string; state: string }>(
+        "/auth/google/login",
+        { method: "GET" }
+      )
+
+      console.log("AuthService: Got OAuth URL from backend")
+
+      // Step 2: Open the auth URL in a new tab
+      const tab = await chrome.tabs.create({ url: response.auth_url })
+      
+      if (!tab.id) {
+        throw new Error("Failed to create tab for OAuth")
+      }
+
+      console.log("AuthService: Opened OAuth tab:", tab.id)
+
+      return {
+        tabId: tab.id,
+        state: response.state
+      }
+    } catch (error) {
+      console.error("AuthService: Failed to initiate Google login:", error)
+      throw error
+    }
+  }
+
+  /**
+   * Extract tokens from OAuth callback URL
+   */
+  static extractTokensFromUrl(url: string): { accessToken: string; refreshToken: string } | null {
+    try {
+      const urlObj = new URL(url)
+      const accessToken = urlObj.searchParams.get("access_token")
+      const refreshToken = urlObj.searchParams.get("refresh_token")
+
+      if (accessToken && refreshToken) {
+        return { accessToken, refreshToken }
+      }
+      
+      return null
+    } catch (error) {
+      console.error("AuthService: Failed to parse callback URL:", error)
+      return null
+    }
+  }
+
+  /**
+   * Handle OAuth callback - store tokens and fetch user info
+   */
+  static async handleOAuthCallback(accessToken: string, refreshToken: string): Promise<void> {
+    console.log("AuthService: Handling OAuth callback")
+
+    // Store tokens
+    await this.setTokens(accessToken, refreshToken)
+    console.log("AuthService: OAuth tokens stored")
+
+    // Fetch and store user info
+    try {
+      const user = await this.getMe()
+      await this.setCurrentUser(user)
+      console.log("AuthService: User info stored:", user.email)
+    } catch (error) {
+      console.warn("AuthService: Failed to fetch user info after OAuth:", error)
+    }
+  }
+
+  /**
+   * Sync tokens from web portal to extension
+   * Called when extension detects user is logged in on web portal
+   */
+  static async syncTokensFromWebPortal(accessToken: string, refreshToken: string): Promise<void> {
+    console.log("AuthService: Syncing tokens from web portal")
+    await this.handleOAuthCallback(accessToken, refreshToken)
+  }
+
+  /**
+   * Notify web portal of logout (via content script message)
+   */
+  private static async notifyWebPortalLogout(): Promise<void> {
+    const portalUrl = process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"
+    
+    // Query for tabs matching the portal URL
+    const tabs = await chrome.tabs.query({ url: `${portalUrl}/*` })
+    
+    if (tabs.length > 0) {
+      // Send logout message to all portal tabs
+      for (const tab of tabs) {
+        if (tab.id) {
+          try {
+            await chrome.tabs.sendMessage(tab.id, {
+              type: "FG_EXTENSION_LOGOUT"
+            })
+            console.log("AuthService: Notified portal tab of logout:", tab.id)
+          } catch (error) {
+            console.warn("AuthService: Failed to notify portal tab:", tab.id, error)
+          }
+        }
+      }
+    } else {
+      console.log("AuthService: No portal tabs open to notify")
     }
   }
 

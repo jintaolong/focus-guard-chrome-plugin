@@ -27,7 +27,10 @@ import type {
   JobSubmitResponse,
   JobStatusResponse,
   JobResultResponse,
-  SummaryJobRequest
+  SummaryJobRequest,
+  RunningJobInfo,
+  JobType,
+  JobStatus
 } from "~types/backend"
 
 const API_BASE_URL = process.env.PLASMO_PUBLIC_API_URL || "https://test.commentverdict.com/api/v1"
@@ -91,6 +94,70 @@ export class FocusGuardAPI {
    */
   static async getCacheStatus(videoId: string): Promise<CacheStatusResponse> {
     return this.fetchWithAuth<CacheStatusResponse>(`/videos/cache-status/${videoId}`)
+  }
+
+  /**
+   * Check if there's an existing running job that matches the given criteria
+   * @param cacheStatus - Cache status response containing running jobs
+   * @param jobType - Type of job to match (summary, report)
+   * @param queryContext - Optional query context to match
+   * @returns The matching running job or null if none found
+   */
+  static findMatchingRunningJob(
+    cacheStatus: CacheStatusResponse,
+    jobType: JobType,
+    queryContext?: string | null
+  ): RunningJobInfo | null {
+    if (!cacheStatus.has_running_jobs || cacheStatus.running_jobs.length === 0) {
+      return null
+    }
+
+    // Find a job that matches both job_type and query_context
+    return cacheStatus.running_jobs.find(job => 
+      job.job_type === jobType && 
+      job.query_context === (queryContext || null)
+    ) || null
+  }
+
+  /**
+   * Check if we should submit a new job or wait for an existing one
+   * @param videoId - Video ID to check
+   * @param jobType - Type of job (summary, report)
+   * @param queryContext - Optional query context
+   * @returns Object indicating whether to wait and which job to monitor
+   */
+  static async checkForRunningJobs(
+    videoId: string,
+    jobType: JobType,
+    queryContext?: string | null
+  ): Promise<{ shouldWait: boolean; existingJobId: string | null; existingJob: RunningJobInfo | null }> {
+    try {
+      const cacheStatus = await this.getCacheStatus(videoId)
+      const matchingJob = this.findMatchingRunningJob(cacheStatus, jobType, queryContext)
+
+      if (matchingJob) {
+        console.log(`Found existing ${jobType} job for video ${videoId}:`, matchingJob.job_id)
+        return {
+          shouldWait: true,
+          existingJobId: matchingJob.job_id,
+          existingJob: matchingJob
+        }
+      }
+
+      return {
+        shouldWait: false,
+        existingJobId: null,
+        existingJob: null
+      }
+    } catch (error) {
+      console.error("Error checking for running jobs:", error)
+      // On error, proceed with submitting new job
+      return {
+        shouldWait: false,
+        existingJobId: null,
+        existingJob: null
+      }
+    }
   }
 
   /**
@@ -231,9 +298,29 @@ export class FocusGuardAPI {
   // ============================================================================
 
   /**
-   * Submit summary job (async)
+   * Submit summary job (async) - checks for existing running jobs first
    */
   static async submitSummaryJob(request: SummaryJobRequest): Promise<JobSubmitResponse> {
+    // Check if there's already a running job for this video and query context
+    const { shouldWait, existingJobId, existingJob } = await this.checkForRunningJobs(
+      request.video_id,
+      "summary",
+      request.query_context
+    )
+
+    if (shouldWait && existingJobId && existingJob) {
+      console.log(`Using existing summary job ${existingJobId} instead of creating new one`)
+      // Return a response that looks like a job submission but references the existing job
+      return {
+        job_id: existingJobId,
+        status: existingJob.status as JobStatus,
+        status_url: `/jobs/${existingJobId}/status`,
+        result_url: `/jobs/${existingJobId}/result`,
+        message: `Job already running (${existingJob.progress_percent}% complete)`
+      }
+    }
+
+    // No matching job found, submit new one
     return this.fetchWithAuth<JobSubmitResponse>("/jobs/summary", {
       method: "POST",
       body: JSON.stringify(request)
@@ -241,9 +328,29 @@ export class FocusGuardAPI {
   }
 
   /**
-   * Submit report generation job (async)
+   * Submit report generation job (async) - checks for existing running jobs first
    */
   static async submitReportJob(request: ReportRequest): Promise<JobSubmitResponse> {
+    // Check if there's already a running job for this video and query context
+    const { shouldWait, existingJobId, existingJob } = await this.checkForRunningJobs(
+      request.video_id,
+      "report",
+      request.query_context
+    )
+
+    if (shouldWait && existingJobId && existingJob) {
+      console.log(`Using existing report job ${existingJobId} instead of creating new one`)
+      // Return a response that looks like a job submission but references the existing job
+      return {
+        job_id: existingJobId,
+        status: existingJob.status as JobStatus,
+        status_url: `/jobs/${existingJobId}/status`,
+        result_url: `/jobs/${existingJobId}/result`,
+        message: `Job already running (${existingJob.progress_percent}% complete)`
+      }
+    }
+
+    // No matching job found, submit new one
     return this.fetchWithAuth<JobSubmitResponse>("/jobs/report", {
       method: "POST",
       body: JSON.stringify(request)
