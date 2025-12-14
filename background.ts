@@ -248,6 +248,40 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true
   }
   
+  // Handle auth state changes from content script (portal sync)
+  if (request.type === 'AUTH_STATE_CHANGED') {
+    console.log('[Background] Auth state changed:', request.isAuthenticated)
+    
+    if (request.isAuthenticated) {
+      // User logged in - update UI
+      chrome.action.setBadgeText({ text: '✓' })
+      chrome.action.setBadgeBackgroundColor({ color: '#4CAF50' })
+      
+      // Update extension state
+      chrome.storage.sync.set({ isAuthenticated: true })
+      
+      // Optional: Show notification
+      try {
+        chrome.notifications.create({
+          type: 'basic',
+          iconUrl: 'icon.png',
+          title: 'Focus Guard',
+          message: 'Successfully logged in!'
+        })
+      } catch (err) {
+        console.log('[Background] Notification failed:', err)
+      }
+      
+    } else {
+      // User logged out - update UI
+      chrome.action.setBadgeText({ text: '' })
+      chrome.storage.sync.set({ isAuthenticated: false })
+    }
+    
+    sendResponse({ success: true })
+    return true
+  }
+  
   // Legacy getData support
   if (request.action === "getData") {
     chrome.storage.sync.get(["data"], (result) => {

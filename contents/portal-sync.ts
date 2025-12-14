@@ -219,12 +219,88 @@ async function handleTokensFromPortal(data: any) {
 async function handleAuthStateChanged(data: any) {
   try {
     const { accessToken, refreshToken, isAuthenticated } = data || {}
-    if (isAuthenticated) {
-      console.log('Portal sync: Portal reported login, storing tokens')
-      chrome.runtime.sendMessage({ type: 'SYNC_TOKENS_FROM_PORTAL', accessToken, refreshToken })
+    
+    console.log('[Extension] Auth state changed from portal:', { isAuthenticated })
+    
+    if (isAuthenticated && accessToken && refreshToken) {
+      // 🎯 User logged in on portal - store tokens in extension
+      console.log('[Extension] Storing tokens from portal login')
+      
+      await chrome.storage.sync.set({
+        focus_guard_access_token: accessToken,
+        focus_guard_refresh_token: refreshToken
+      })
+      
+      // Fetch and store user info
+      try {
+        const API_BASE_URL = process.env.PLASMO_PUBLIC_API_URL || 'https://test.commentverdict.com/api/v1'
+        
+        const response = await fetch(`${API_BASE_URL}/users/me`, {
+          headers: { 'Authorization': `Bearer ${accessToken}` }
+        })
+        
+        if (response.ok) {
+          const user = await response.json()
+          console.log('[Extension] Got user info:', user.email)
+          
+          // Fetch subscription data
+          const [subscriptionRes, usageRes] = await Promise.all([
+            fetch(`${API_BASE_URL}/subscriptions/`, {
+              headers: { 'Authorization': `Bearer ${accessToken}` }
+            }),
+            fetch(`${API_BASE_URL}/subscriptions/usage`, {
+              headers: { 'Authorization': `Bearer ${accessToken}` }
+            })
+          ])
+          
+          if (subscriptionRes.ok && usageRes.ok) {
+            const subscription = await subscriptionRes.json()
+            const usage = await usageRes.json()
+            
+            // Store complete account data
+            await chrome.storage.sync.set({
+              focus_guard_user: user,
+              account: {
+                email: user.email,
+                isLoggedIn: true,
+                tier: usage.tier.toLowerCase(), // 'free', 'starter', or 'pro'
+                searchesUsedToday: usage.daily_searches_used,
+                searchesRemaining: usage.searches_remaining,
+                resetTime: subscription.last_reset_date
+              }
+            })
+            
+            console.log('[Extension] User info and subscription synced from portal')
+          }
+        }
+      } catch (error) {
+        console.error('[Extension] Failed to fetch user info:', error)
+      }
+      
+      // Notify background script of login
+      chrome.runtime.sendMessage({
+        type: 'AUTH_STATE_CHANGED',
+        isAuthenticated: true,
+        accessToken,
+        refreshToken
+      })
+      
     } else {
-      console.log('Portal sync: Portal reported logout, clearing extension tokens')
-      chrome.runtime.sendMessage({ type: 'CLEAR_EXTENSION_TOKENS' })
+      // 🎯 User logged out on portal - clear extension storage
+      console.log('[Extension] Clearing tokens from portal logout')
+      
+      await chrome.storage.sync.remove([
+        'focus_guard_access_token',
+        'focus_guard_refresh_token',
+        'focus_guard_user',
+        'account'
+      ])
+      
+      // Notify background script of logout
+      chrome.runtime.sendMessage({
+        type: 'AUTH_STATE_CHANGED',
+        isAuthenticated: false
+      })
     }
   } catch (err) {
     console.error('Portal sync: handleAuthStateChanged error', err)
