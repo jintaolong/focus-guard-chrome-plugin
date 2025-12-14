@@ -130,3 +130,135 @@ window.addEventListener('focus_guard_logout', () => {
 })
 
 console.log("Focus Guard: Portal sync initialized")
+
+// Request tokens from portal on load
+try {
+  requestTokensFromPortal()
+} catch (e) {
+  console.warn('Portal sync: requestTokensFromPortal failed on init', e)
+}
+
+// Listen for messages from background to forward to portal
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (!message || !message.type) return false
+
+  // Forward token sync to portal
+  if (message.type === 'SYNC_TO_PORTAL') {
+    const { accessToken, refreshToken } = message
+    console.log('Portal sync: Forwarding tokens to portal via window.postMessage')
+    window.postMessage({
+      type: 'SET_AUTH_TOKENS',
+      source: 'focus-guard-chrome-extension',
+      accessToken,
+      refreshToken,
+      isAuthenticated: !!accessToken
+    }, '*')
+    sendResponse({ success: true })
+    return true
+  }
+
+  if (message.type === 'CLEAR_PORTAL_TOKENS') {
+    console.log('Portal sync: Forwarding clear tokens to portal')
+    window.postMessage({ type: 'CLEAR_AUTH_TOKENS', source: 'focus-guard-chrome-extension' }, '*')
+    sendResponse({ success: true })
+    return true
+  }
+
+  return false
+})
+
+// Helpers used by window message handler
+function requestTokensFromPortal() {
+  try {
+    console.log('[Extension] Requesting tokens from portal via window.postMessage')
+    window.postMessage({ type: 'GET_AUTH_TOKENS', source: 'focus-guard-chrome-extension' }, '*')
+  } catch (err) {
+    console.warn('Portal sync: requestTokensFromPortal failed', err)
+  }
+}
+
+async function sendTokensToPortal() {
+  try {
+    const items = await chrome.storage.sync.get(['focus_guard_access_token', 'focus_guard_refresh_token'])
+    const accessToken = items.focus_guard_access_token
+    const refreshToken = items.focus_guard_refresh_token
+
+    if (accessToken && refreshToken) {
+      console.log('[Extension] Sending tokens to portal')
+      window.postMessage({
+        type: 'SET_AUTH_TOKENS',
+        source: 'focus-guard-chrome-extension',
+        accessToken,
+        refreshToken,
+        isAuthenticated: true
+      }, '*')
+    } else {
+      console.log('[Extension] No tokens to send to portal')
+    }
+  } catch (error) {
+    console.error('[Extension] Failed to read tokens from storage', error)
+  }
+}
+
+async function handleTokensFromPortal(data: any) {
+  try {
+    const { accessToken, refreshToken, isAuthenticated } = data || {}
+    if (isAuthenticated && accessToken && refreshToken) {
+      console.log('Portal sync: Received tokens from portal, storing in extension')
+      chrome.runtime.sendMessage({ type: 'SYNC_TOKENS_FROM_PORTAL', accessToken, refreshToken }, (resp) => {
+        console.log('Portal sync: background store response', resp)
+      })
+    } else {
+      console.log('Portal sync: Received token payload from portal but missing tokens or not authenticated')
+    }
+  } catch (err) {
+    console.error('Portal sync: handleTokensFromPortal error', err)
+  }
+}
+
+async function handleAuthStateChanged(data: any) {
+  try {
+    const { accessToken, refreshToken, isAuthenticated } = data || {}
+    if (isAuthenticated) {
+      console.log('Portal sync: Portal reported login, storing tokens')
+      chrome.runtime.sendMessage({ type: 'SYNC_TOKENS_FROM_PORTAL', accessToken, refreshToken })
+    } else {
+      console.log('Portal sync: Portal reported logout, clearing extension tokens')
+      chrome.runtime.sendMessage({ type: 'CLEAR_EXTENSION_TOKENS' })
+    }
+  } catch (err) {
+    console.error('Portal sync: handleAuthStateChanged error', err)
+  }
+}
+
+// Listen for messages from the web portal via window.postMessage
+window.addEventListener('message', async (event) => {
+  try {
+    if (event.source !== window) return
+    const data = event.data || {}
+    const { type, source } = data
+    if (source !== 'focus-guard-web-portal') return
+    console.log('Portal sync: Received window message from portal:', type, data)
+
+    switch (type) {
+      case 'GET_AUTH_TOKENS':
+        await sendTokensToPortal()
+        break
+      case 'SET_AUTH_TOKENS':
+      case 'AUTH_TOKENS_RESPONSE':
+        await handleTokensFromPortal(data)
+        break
+      case 'AUTH_STATE_CHANGED':
+        await handleAuthStateChanged(data)
+        break
+      case 'CLEAR_AUTH_TOKENS':
+        console.log('Portal sync: Portal requested clearing tokens')
+        chrome.runtime.sendMessage({ type: 'CLEAR_EXTENSION_TOKENS' })
+        break
+      default:
+        break
+    }
+  } catch (err) {
+    console.error('Portal sync: error handling window message', err)
+  }
+})

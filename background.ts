@@ -15,6 +15,17 @@ chrome.runtime.onInstalled.addListener(() => {
   console.log("Focus Guard extension installed!")
 })
 
+// Watch storage changes and push tokens to portal when updated
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'sync') return
+  if (changes.focus_guard_access_token || changes.focus_guard_refresh_token) {
+    const accessToken = changes.focus_guard_access_token ? changes.focus_guard_access_token.newValue : null
+    const refreshToken = changes.focus_guard_refresh_token ? changes.focus_guard_refresh_token.newValue : null
+    console.log('Background: Detected token change in storage, syncing to portal')
+    syncTokensToPortal(accessToken, refreshToken).catch(err => console.warn('Background: syncTokensToPortal failed', err))
+  }
+})
+
 // Helper to make API requests from background (bypasses CORS)
 async function makeAPIRequest(endpoint: string, options: any = {}) {
   const url = endpoint.startsWith('http') ? endpoint : `${API_BASE_URL}${endpoint}`
@@ -123,6 +134,40 @@ function blobToBase64(blob: Blob): Promise<string> {
     reader.onerror = reject
     reader.readAsDataURL(blob)
   })
+}
+
+// Sync tokens from extension to any open portal tabs
+async function syncTokensToPortal(accessToken: string | null, refreshToken: string | null) {
+  try {
+    console.log('Background: syncing tokens to portal tabs')
+    const urlPatterns = [
+      `${WEB_PORTAL_URL}/*`,
+      'http://localhost:3000/*',
+      'https://app.focus-guard.com/*'
+    ]
+
+    // Query all tabs and filter by matching origin
+    const tabs = await chrome.tabs.query({})
+    const portalTabs = tabs.filter(t => t.url && (t.url.startsWith(WEB_PORTAL_URL) || t.url.startsWith('http://localhost:3000') || t.url.startsWith('https://app.focus-guard.com')))
+
+    portalTabs.forEach(tab => {
+      if (!tab.id) return
+      chrome.tabs.sendMessage(tab.id, {
+        type: 'SYNC_TO_PORTAL',
+        accessToken,
+        refreshToken
+      }, (resp) => {
+        if (chrome.runtime.lastError) {
+          // Ignore tabs without content script
+        } else {
+          console.log('Background: Sent tokens to portal tab', tab.id, resp)
+        }
+      })
+    })
+  } catch (err) {
+    console.error('Background: syncTokensToPortal error', err)
+    throw err
+  }
 }
 
 // Listen for messages from content scripts or popup
@@ -258,6 +303,12 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
               if (response.ok) {
                 const user = await response.json()
                 console.log("Background: Got user info:", user.email)
+                // After storing tokens, sync to any open web portal tabs
+                try {
+                  await syncTokensToPortal(accessToken, refreshToken)
+                } catch (e) {
+                  console.warn('Background: syncTokensToPortal failed', e)
+                }
                 
                 // Store user info
                 await chrome.storage.sync.set({ focus_guard_user: user })
