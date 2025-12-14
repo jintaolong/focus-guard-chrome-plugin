@@ -10,6 +10,9 @@ interface SummaryTabProps {
 }
 
 export const SummaryTab = ({ analysis }: SummaryTabProps) => {
+  // Feature flags: hide experimental features for initial launch
+  const SHOW_BOT_DETECTION = false
+
   const [showCredibilityFactors, setShowCredibilityFactors] = useState(false)
   const [isExecutiveSummaryExpanded, setIsExecutiveSummaryExpanded] = useState(false)
   
@@ -207,7 +210,7 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
         </div>
 
         {/* Confidence Bar */}
-        <div style={{ marginTop: "12px" }}>
+        {/* <div style={{ marginTop: "12px" }}>
           <div
             style={{
               display: "flex",
@@ -244,7 +247,7 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
               }}
             />
           </div>
-        </div>
+        </div> */}
       </div>
 
       {/* Channel Credibility */}
@@ -521,106 +524,107 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
         })()}
       </div>
 
-      {/* Bot Detection */}
-      <div>
-        <h3
-          style={{
-            margin: "0 0 16px 0",
-            fontSize: "16px",
-            fontWeight: "600",
-            color: COLORS.ui.textPrimary
-          }}>
-          Bot Detection
-        </h3>
+      {SHOW_BOT_DETECTION && (
+        <div>
+          <h3
+            style={{
+              margin: "0 0 16px 0",
+              fontSize: "16px",
+              fontWeight: "600",
+              color: COLORS.ui.textPrimary
+            }}>
+            Bot Detection
+          </h3>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
-          {/* Pie Chart */}
-          <div style={{ position: "relative", width: "120px", height: "120px", flexShrink: 0 }}>
-            <svg viewBox="0 0 120 120" style={{ width: "100%", height: "100%" }}>
-              {/* Background circle */}
-              <circle
-                cx="60"
-                cy="60"
-                r="50"
-                fill="none"
-                stroke={COLORS.ui.border}
-                strokeWidth="20"
-              />
-              {/* Bot percentage arc */}
-              <circle
-                cx="60"
-                cy="60"
-                r="50"
-                fill="none"
-                stroke={COLORS.low.primary}
-                strokeWidth="20"
-                strokeDasharray={`${(botPercentage / 100) * 314} 314`}
-                strokeDashoffset="0"
-                transform="rotate(-90 60 60)"
+          <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
+            {/* Pie Chart */}
+            <div style={{ position: "relative", width: "120px", height: "120px", flexShrink: 0 }}>
+              <svg viewBox="0 0 120 120" style={{ width: "100%", height: "100%" }}>
+                {/* Background circle */}
+                <circle
+                  cx="60"
+                  cy="60"
+                  r="50"
+                  fill="none"
+                  stroke={COLORS.ui.border}
+                  strokeWidth="20"
+                />
+                {/* Bot percentage arc */}
+                <circle
+                  cx="60"
+                  cy="60"
+                  r="50"
+                  fill="none"
+                  stroke={COLORS.low.primary}
+                  strokeWidth="20"
+                  strokeDasharray={`${(botPercentage / 100) * 314} 314`}
+                  strokeDashoffset="0"
+                  transform="rotate(-90 60 60)"
+                  style={{
+                    transition: "stroke-dasharray 1s ease-out"
+                  }}
+                />
+              </svg>
+              <div
                 style={{
-                  transition: "stroke-dasharray 1s ease-out"
-                }}
-              />
-            </svg>
-            <div
-              style={{
-                position: "absolute",
-                top: "50%",
-                left: "50%",
-                transform: "translate(-50%, -50%)",
-                textAlign: "center"
-              }}>
-              <div style={{ fontSize: "24px", fontWeight: "700", color: COLORS.low.primary }}>
-                {botPercentage}%
-              </div>
-              <div style={{ fontSize: "10px", color: COLORS.ui.textSecondary }}>
-                Bots
-              </div>
-            </div>
-          </div>
-
-          {/* Legend */}
-          <div style={{ flex: 1 }}>
-            <div style={{ marginBottom: "12px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-                <div
-                  style={{
-                    width: "16px",
-                    height: "16px",
-                    backgroundColor: COLORS.low.primary,
-                    borderRadius: "3px"
-                  }}
-                />
-                <span style={{ fontSize: "14px", fontWeight: "600", color: COLORS.ui.textPrimary }}>
-                  Bot Comments
-                </span>
-              </div>
-              <div style={{ fontSize: "20px", fontWeight: "700", color: COLORS.low.primary, marginLeft: "24px" }}>
-                {botPercentage}%
+                  position: "absolute",
+                  top: "50%",
+                  left: "50%",
+                  transform: "translate(-50%, -50%)",
+                  textAlign: "center"
+                }}>
+                <div style={{ fontSize: "24px", fontWeight: "700", color: COLORS.low.primary }}>
+                  {botPercentage}%
+                </div>
+                <div style={{ fontSize: "10px", color: COLORS.ui.textSecondary }}>
+                  Bots
+                </div>
               </div>
             </div>
 
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-                <div
-                  style={{
-                    width: "16px",
-                    height: "16px",
-                    backgroundColor: COLORS.high.primary,
-                    borderRadius: "3px"
-                  }}
-                />
-                <span style={{ fontSize: "14px", fontWeight: "600", color: COLORS.ui.textPrimary }}>
-                  Human Comments
-                </span>
+            {/* Legend */}
+            <div style={{ flex: 1 }}>
+              <div style={{ marginBottom: "12px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                  <div
+                    style={{
+                      width: "16px",
+                      height: "16px",
+                      backgroundColor: COLORS.low.primary,
+                      borderRadius: "3px"
+                    }}
+                  />
+                  <span style={{ fontSize: "14px", fontWeight: "600", color: COLORS.ui.textPrimary }}>
+                    Bot Comments
+                  </span>
+                </div>
+                <div style={{ fontSize: "20px", fontWeight: "700", color: COLORS.low.primary, marginLeft: "24px" }}>
+                  {botPercentage}%
+                </div>
               </div>
-              <div style={{ fontSize: "20px", fontWeight: "700", color: COLORS.high.primary, marginLeft: "24px" }}>
-                {humanPercentage}%
+
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                  <div
+                    style={{
+                      width: "16px",
+                      height: "16px",
+                      backgroundColor: COLORS.high.primary,
+                      borderRadius: "3px"
+                    }}
+                  />
+                  <span style={{ fontSize: "14px", fontWeight: "600", color: COLORS.ui.textPrimary }}>
+                    Human Comments
+                  </span>
+                </div>
+                <div style={{ fontSize: "20px", fontWeight: "700", color: COLORS.high.primary, marginLeft: "24px" }}>
+                  {humanPercentage}%
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

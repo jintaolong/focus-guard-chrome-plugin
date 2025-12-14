@@ -9,6 +9,7 @@ import { SidePanel } from "~components/SidePanel"
 import { PreWatchPopover } from "~components/PreWatchPopover"
 import { FocusGuardAPI } from "~lib/api"
 import { AuthService } from "~lib/auth"
+import { SubscriptionService } from "~lib/subscription"
 import { getRandomMockAnalysis } from "~lib/mockData"
 import type { VideoResult, UserStats } from "~types"
 import type {
@@ -354,6 +355,37 @@ const ContentScript = () => {
     return v
   }
 
+  // Helper: Get report tier restriction if user is not Pro
+  const getReportTierRestriction = async () => {
+    try {
+      const subscription = await SubscriptionService.getSubscription()
+      const userTier = subscription.tier?.toLowerCase() || 'free'
+      
+      // Report is Pro-only feature
+      if (userTier !== 'pro') {
+        const dashboardUrl = `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
+        return {
+          code: 'TIER_RESTRICTION' as const,
+          required_tier: 'pro' as const,
+          current_tier: userTier,
+          message: 'Report downloads are available for Pro users only. Upgrade to download detailed analysis reports.',
+          upgrade_url: dashboardUrl
+        }
+      }
+      return null
+    } catch (error) {
+      console.log("Focus Guard: Failed to get subscription tier:", error)
+      // Default to showing restriction if we can't determine tier
+      return {
+        code: 'TIER_RESTRICTION' as const,
+        required_tier: 'pro' as const,
+        current_tier: 'free',
+        message: 'Report downloads are available for Pro users only. Upgrade to download detailed analysis reports.',
+        upgrade_url: `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
+      }
+    }
+  }
+
   // Helper: check cache on landing and prefetch full analysis components
   const checkCacheAndPrefetch = async (videoId: string) => {
     setIsCheckingCache(true)
@@ -376,31 +408,50 @@ const ContentScript = () => {
       try {
         console.log("Focus Guard: Fetching analysis data for cached video...")
         // Fetch all analysis components in parallel
-        const [relevancyData, sentimentData, summaryData, credibilityData, humanLikenessData, topicClustersData, topicGapsData] = await Promise.all([
+        const results = await Promise.allSettled([
           FocusGuardAPI.analyzeRelevancyV2(videoId, false),
-          FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: false }).catch(err => {
-            console.error("Focus Guard: failed to fetch sentiment:", err)
-            return null
-          }),
-          FocusGuardAPI.analyzeSummaryV2({ video_id: videoId, force_refresh: false }).catch(err => {
-            console.error("Focus Guard: failed to fetch summary:", err)
-            return null
-          }),
-          FocusGuardAPI.analyzeChannelCredibilityV2(videoId, false).catch(err => {
-            console.error("Focus Guard: failed to fetch credibility:", err)
-            return null
-          }),
+          FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: false }),
+          FocusGuardAPI.analyzeSummaryV2({ video_id: videoId, force_refresh: false }),
+          FocusGuardAPI.analyzeChannelCredibilityV2(videoId, false),
           // Human-likeness excluded from general flow - load on-demand for advanced features
           Promise.resolve(null),
-          FocusGuardAPI.analyzeTopicClusteringV2(videoId, false).catch(err => {
-            console.error("Focus Guard: failed to fetch topic clusters:", err)
-            return null
-          }),
-          FocusGuardAPI.analyzeTopicGapV2(videoId, false).catch(err => {
-            console.error("Focus Guard: failed to fetch topic gaps:", err)
-            return null
-          })
+          FocusGuardAPI.analyzeTopicClusteringV2(videoId, false),
+          FocusGuardAPI.analyzeTopicGapV2(videoId, false)
         ])
+
+        // Extract results and tier restrictions
+        const relevancyData = results[0].status === 'fulfilled' ? results[0].value : null
+        const sentimentData = results[1].status === 'fulfilled' ? results[1].value : null
+        const summaryData = results[2].status === 'fulfilled' ? results[2].value : null
+        const credibilityData = results[3].status === 'fulfilled' ? results[3].value : null
+        const humanLikenessData = null
+        const topicClustersData = results[5].status === 'fulfilled' ? results[5].value : null
+        const topicGapsData = results[6].status === 'fulfilled' ? results[6].value : null
+
+        let sentimentTierRestriction = null
+        let topicClustersTierRestriction = null
+        let topicGapsTierRestriction = null
+
+        // Extract tier restrictions from failures
+        results.forEach((result, idx) => {
+          if (result.status === 'rejected') {
+            const endpoints = ['relevancy', 'sentiment', 'summary', 'credibility', 'humanLikeness', 'topicClusters', 'topicGaps']
+            console.error(`Focus Guard: failed to fetch ${endpoints[idx]}:`, result.reason)
+            
+            // Check if error contains tier restriction
+            const error = result.reason
+            if (error && typeof error === 'object') {
+              // Check multiple possible error structures
+              const detail = error.detail || (error.response && error.response.detail)
+              if (detail && detail.code === 'TIER_RESTRICTION') {
+                console.log(`Focus Guard: Tier restriction detected for ${endpoints[idx]}:`, detail)
+                if (idx === 1) sentimentTierRestriction = detail
+                if (idx === 5) topicClustersTierRestriction = detail
+                if (idx === 6) topicGapsTierRestriction = detail
+              }
+            }
+          }
+        })
         
         console.log("Focus Guard: Relevancy data on landing:", relevancyData)
         console.log("Focus Guard: Sentiment data on landing:", sentimentData)
@@ -410,8 +461,8 @@ const ContentScript = () => {
         console.log("Focus Guard: Topic Clusters data on landing:", topicClustersData)
         console.log("Focus Guard: Topic Gaps data on landing:", topicGapsData)
         
-        const verdictRaw = (relevancyData.data.verdict || "UNKNOWN").toUpperCase()
-        const confidenceRaw = typeof relevancyData.data.confidence_score === "number" ? relevancyData.data.confidence_score : 0
+        const verdictRaw = (relevancyData?.data.verdict || "UNKNOWN").toUpperCase()
+        const confidenceRaw = typeof relevancyData?.data.confidence_score === "number" ? relevancyData.data.confidence_score : 0
         console.log("Focus Guard: Raw confidence:", confidenceRaw)
         
         const confidenceNorm = normalizeConfidence(confidenceRaw)
@@ -503,6 +554,15 @@ const ContentScript = () => {
             isExpanded: false
           })) || []
 
+        console.log("Focus Guard: Setting video analysis with tier restrictions:", {
+          sentiment: sentimentTierRestriction,
+          viewerInsights: topicClustersTierRestriction,
+          contentGaps: topicGapsTierRestriction
+        })
+
+        // Check report tier restriction
+        const reportTierRestriction = await getReportTierRestriction()
+
         setVideoAnalysis({
           summary: minimalSummary,
           trustScore: { score: trustScoreNormalized },
@@ -522,17 +582,19 @@ const ContentScript = () => {
               const negativeCount = typeof sentimentData!.data.negative === 'number' ? sentimentData!.data.negative : (sentimentData!.data.negative?.count ?? 0)
               return positiveCount > negativeCount ? "positive" : negativeCount > positiveCount ? "negative" : "neutral"
             })(),
-            distribution: sentimentDistribution
-          } : null,
+            distribution: sentimentDistribution,
+            tierRestriction: sentimentTierRestriction
+          } : (sentimentTierRestriction ? { tierRestriction: sentimentTierRestriction } : null),
           credibility: null,
           topicClusters: null,
           contentGaps: {
-            botPercentage: (humanLikenessData && humanLikenessData.total_comments && humanLikenessData.total_comments > 0)
-              ? Math.round((humanLikenessData.bot_count / humanLikenessData.total_comments) * 100)
+            botPercentage: (humanLikenessData && (humanLikenessData as any).total_comments && (humanLikenessData as any).total_comments > 0)
+              ? Math.round(((humanLikenessData as any).bot_count / (humanLikenessData as any).total_comments) * 100)
               : 0,
             gapCoverageScore: topicGapsData?.topic_gaps ? Math.max(0, 100 - (topicGapsData.topic_gaps.length * 10)) : 100,
             botDetectionEnabled: true,
-            unansweredQuestions: unansweredQuestions
+            unansweredQuestions: unansweredQuestions,
+            tierRestriction: topicGapsTierRestriction
           },
           viewerInsights: sentimentData ? {
             sentimentBreakdown: {
@@ -548,11 +610,13 @@ const ContentScript = () => {
             },
             actionableInsights: {
               highValue: benefitInsights
-            }
-          } : null,
+            },
+            tierRestriction: topicClustersTierRestriction
+          } : (topicClustersTierRestriction ? { tierRestriction: topicClustersTierRestriction } : null),
           reportInfo: {
             availableFormats: ["PDF", "TXT"],
-            analysisDate: new Date().toISOString()
+            analysisDate: new Date().toISOString(),
+            tierRestriction: reportTierRestriction
           }
         } as any)
 
@@ -610,6 +674,9 @@ const ContentScript = () => {
       let humanLikenessData = null
       let topicClustersData = null
       let topicGapsData = null
+      let sentimentTierRestriction = null
+      let topicClustersTierRestriction = null
+      let topicGapsTierRestriction = null
 
       if (!cacheStatus.cached) {
         // Step 2a: Not cached - submit job and poll
@@ -650,7 +717,7 @@ const ContentScript = () => {
         const fetchDuration = ((Date.now() - fetchStartTime) / 1000).toFixed(1)
         console.log(`Analysis data fetched in ${fetchDuration}s`)
         
-        // Extract results, logging any failures
+        // Extract results, logging any failures and capturing tier restrictions
         relevancyData = results[0].status === 'fulfilled' ? results[0].value : null
         sentimentData = results[1].status === 'fulfilled' ? results[1].value : null
         summaryData = results[2].status === 'fulfilled' ? results[2].value : null
@@ -659,11 +726,23 @@ const ContentScript = () => {
         topicGapsData = results[5].status === 'fulfilled' ? results[5].value : null
         humanLikenessData = null // Not fetched in general flow - load on-demand for advanced features
         
-        // Log any failures
+        // Log any failures and extract tier restrictions
         results.forEach((result, idx) => {
           if (result.status === 'rejected') {
             const endpoints = ['relevancy', 'sentiment', 'summary', 'credibility', 'topicClusters', 'topicGaps']
             console.error(`Failed to fetch ${endpoints[idx]}:`, result.reason)
+            
+            // Check if the error is a tier restriction
+            const error = result.reason
+            if (error && typeof error === 'object' && 'response' in error && error.response) {
+              const responseData = error.response
+              if (responseData.detail && responseData.detail.code === 'TIER_RESTRICTION') {
+                console.log(`Tier restriction detected for ${endpoints[idx]}:`, responseData.detail)
+                if (idx === 1) sentimentTierRestriction = responseData.detail
+                if (idx === 4) topicClustersTierRestriction = responseData.detail
+                if (idx === 5) topicGapsTierRestriction = responseData.detail
+              }
+            }
           }
         })
         
@@ -713,6 +792,26 @@ const ContentScript = () => {
         
         const remainingFetchDuration = ((Date.now() - remainingFetchStart) / 1000).toFixed(1)
         console.log(`Remaining analysis data fetched in ${remainingFetchDuration}s`)
+        
+        // Check for tier restriction errors in remaining calls if not already captured
+        if (!sentimentTierRestriction && remainingResults[0].status === 'rejected') {
+          const error = remainingResults[0].reason
+          if (error && typeof error === 'object' && 'response' in error && error.response?.detail?.code === 'TIER_RESTRICTION') {
+            sentimentTierRestriction = error.response.detail
+          }
+        }
+        if (!topicClustersTierRestriction && remainingResults[3].status === 'rejected') {
+          const error = remainingResults[3].reason
+          if (error && typeof error === 'object' && 'response' in error && error.response?.detail?.code === 'TIER_RESTRICTION') {
+            topicClustersTierRestriction = error.response.detail
+          }
+        }
+        if (!topicGapsTierRestriction && remainingResults[4].status === 'rejected') {
+          const error = remainingResults[4].reason
+          if (error && typeof error === 'object' && 'response' in error && error.response?.detail?.code === 'TIER_RESTRICTION') {
+            topicGapsTierRestriction = error.response.detail
+          }
+        }
         
         // Log any failures
         remainingResults.forEach((result, idx) => {
@@ -838,6 +937,9 @@ const ContentScript = () => {
           isExpanded: false
         })) || []
 
+      // Check report tier restriction
+      const reportTierRestriction = await getReportTierRestriction()
+
       setVideoAnalysis({
         // Legacy shape support
         summary: minimalSummary,
@@ -859,17 +961,19 @@ const ContentScript = () => {
             const negativeCount = typeof sentimentData!.data.negative === 'number' ? sentimentData!.data.negative : (sentimentData!.data.negative?.count ?? 0)
             return positiveCount > negativeCount ? "positive" : negativeCount > positiveCount ? "negative" : "neutral"
           })(),
-          distribution: sentimentDistribution
-        } : null,
+          distribution: sentimentDistribution,
+          tierRestriction: sentimentTierRestriction
+        } : (sentimentTierRestriction ? { tierRestriction: sentimentTierRestriction } : null),
         credibility: null,
         topicClusters: null,
         contentGaps: {
-          botPercentage: (humanLikenessData && humanLikenessData.total_comments && humanLikenessData.total_comments > 0)
-            ? Math.round((humanLikenessData.bot_count / humanLikenessData.total_comments) * 100)
+          botPercentage: (humanLikenessData && (humanLikenessData as any).total_comments && (humanLikenessData as any).total_comments > 0)
+            ? Math.round(((humanLikenessData as any).bot_count / (humanLikenessData as any).total_comments) * 100)
             : 0,
-          gapCoverageScore: topicGapsData?.topic_gaps ? Math.max(0, 100 - (topicGapsData.topic_gaps.length * 10)) : 100,
+          gapCoverageScore: topicGapsData?.topic_gaps ? Math.max(0, 100 - (topicGapsData.topic_gaps.length * 10)) : (topicGapsTierRestriction ? undefined : 100),
           botDetectionEnabled: true,
-          unansweredQuestions: unansweredQuestions
+          unansweredQuestions: unansweredQuestions,
+          tierRestriction: topicGapsTierRestriction
         },
         viewerInsights: sentimentData ? {
           sentimentBreakdown: {
@@ -885,11 +989,13 @@ const ContentScript = () => {
           },
           actionableInsights: {
             highValue: benefitInsights
-          }
-        } : null,
+          },
+          tierRestriction: topicClustersTierRestriction
+        } : (topicClustersTierRestriction ? { tierRestriction: topicClustersTierRestriction } : null),
         reportInfo: {
           availableFormats: ["PDF", "TXT"],
-          analysisDate: new Date().toISOString()
+          analysisDate: new Date().toISOString(),
+          tierRestriction: reportTierRestriction
         }
       } as any)
 

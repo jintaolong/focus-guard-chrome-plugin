@@ -1,5 +1,6 @@
 // API utilities and error handling
 import { AuthService } from "./auth"
+import type { TierRestriction } from "~types/tierRestriction"
 
 export interface APIErrorDetails {
   message: string
@@ -8,6 +9,8 @@ export interface APIErrorDetails {
   isAuthError: boolean
   isRateLimitError: boolean
   isNetworkError: boolean
+  isTierRestriction: boolean
+  tierRestriction?: TierRestriction
 }
 
 export class APIError extends Error {
@@ -16,6 +19,8 @@ export class APIError extends Error {
   public isAuthError: boolean
   public isRateLimitError: boolean
   public isNetworkError: boolean
+  public isTierRestriction: boolean
+  public tierRestriction?: TierRestriction
 
   constructor(details: APIErrorDetails) {
     super(details.message)
@@ -25,6 +30,8 @@ export class APIError extends Error {
     this.isAuthError = details.isAuthError
     this.isRateLimitError = details.isRateLimitError
     this.isNetworkError = details.isNetworkError
+    this.isTierRestriction = details.isTierRestriction
+    this.tierRestriction = details.tierRestriction
   }
 }
 
@@ -36,11 +43,26 @@ export async function parseAPIError(response: Response): Promise<APIError> {
   let code: string | undefined
   let isAuthError = false
   let isRateLimitError = false
+  let isTierRestriction = false
+  let tierRestriction: TierRestriction | undefined
 
   try {
     const data = await response.json()
     
-    if (typeof data.detail === "string") {
+    // Check for tier restriction first
+    if (data.code === "TIER_RESTRICTION" || data.detail?.code === "TIER_RESTRICTION") {
+      const restriction = data.detail || data
+      isTierRestriction = true
+      tierRestriction = {
+        code: "TIER_RESTRICTION",
+        required_tier: restriction.required_tier,
+        current_tier: restriction.current_tier,
+        message: restriction.message,
+        upgrade_url: restriction.upgrade_url
+      }
+      message = restriction.message
+      code = "TIER_RESTRICTION"
+    } else if (typeof data.detail === "string") {
       message = data.detail
     } else if (Array.isArray(data.detail)) {
       // Validation errors
@@ -49,20 +71,24 @@ export async function parseAPIError(response: Response): Promise<APIError> {
       message = data.message
     }
 
-    code = data.code || data.error_code
+    if (!code) {
+      code = data.code || data.error_code
+    }
   } catch (e) {
     // Response not JSON, use statusText
   }
 
-  // Check for specific error types
-  if (response.status === 401 || response.status === 403) {
-    isAuthError = true
-    if (response.status === 401) {
-      message = "Authentication required. Please log in."
+  // Check for specific error types (but not if it's a tier restriction)
+  if (!isTierRestriction) {
+    if (response.status === 401 || response.status === 403) {
+      isAuthError = true
+      if (response.status === 401) {
+        message = "Authentication required. Please log in."
+      }
+    } else if (response.status === 429) {
+      isRateLimitError = true
+      message = "Rate limit exceeded. Please try again later."
     }
-  } else if (response.status === 429) {
-    isRateLimitError = true
-    message = "Rate limit exceeded. Please try again later."
   }
 
   return new APIError({
@@ -71,7 +97,9 @@ export async function parseAPIError(response: Response): Promise<APIError> {
     code,
     isAuthError,
     isRateLimitError,
-    isNetworkError: false
+    isNetworkError: false,
+    isTierRestriction,
+    tierRestriction
   })
 }
 
@@ -125,7 +153,8 @@ export async function fetchWithRetry(
     message: lastError?.message || "Network request failed after retries",
     isAuthError: false,
     isRateLimitError: false,
-    isNetworkError: true
+    isNetworkError: true,
+    isTierRestriction: false
   })
 }
 
@@ -145,7 +174,8 @@ export async function fetchWithAuthRetry(
       status: 401,
       isAuthError: true,
       isRateLimitError: false,
-      isNetworkError: false
+      isNetworkError: false,
+      isTierRestriction: false
     })
   }
 
@@ -183,7 +213,8 @@ export async function fetchWithAuthRetry(
         status: 401,
         isAuthError: true,
         isRateLimitError: false,
-        isNetworkError: false
+        isNetworkError: false,
+        isTierRestriction: false
       })
     }
   }

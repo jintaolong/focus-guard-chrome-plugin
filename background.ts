@@ -34,6 +34,21 @@ async function makeAPIRequest(endpoint: string, options: any = {}) {
     if (!response.ok) {
       const error = await response.json().catch(() => ({ detail: response.statusText }))
       
+      // Check for tier restriction error (403 with TIER_RESTRICTION code)
+      if (response.status === 403) {
+        const detail = error.detail || error
+        if (typeof detail === 'object' && detail.code === 'TIER_RESTRICTION') {
+          console.log("Background: Tier restriction detected:", detail)
+          return { 
+            success: false, 
+            isTierRestriction: true,
+            tierRestriction: detail,
+            error: detail.message || 'Tier restriction',
+            status: response.status 
+          }
+        }
+      }
+      
       // Special cases: Some endpoints return 400 for "no data" scenarios (treat as success)
       
       // Topic gap analysis returns 400 when no gaps found
@@ -120,6 +135,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .then(result => sendResponse(result))
       .catch(error => sendResponse({ success: false, error: error.message }))
     return true // Keep channel open for async response
+  }
+  
+  // Handle opening new tab (for upgrade links)
+  if (request.type === 'OPEN_TAB') {
+    console.log("Background: Opening tab:", request.url)
+    chrome.tabs.create({ url: request.url }, (tab) => {
+      if (chrome.runtime.lastError) {
+        console.error("Background: Failed to create tab:", chrome.runtime.lastError)
+        sendResponse({ success: false, error: chrome.runtime.lastError.message })
+      } else {
+        console.log("Background: Tab created successfully:", tab.id)
+        sendResponse({ success: true, tabId: tab.id })
+      }
+    })
+    return true
   }
   
   // Handle OAuth initiation

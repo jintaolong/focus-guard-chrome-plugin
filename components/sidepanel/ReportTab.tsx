@@ -4,6 +4,7 @@
 import { useState } from "react"
 import type { VideoAnalysis, AnalysisHistoryItem } from "~types/analysis"
 import { COLORS, getTrustScoreColor } from "~lib/colors"
+import { BlurredContent } from "~components/UpgradePrompt"
 
 interface ReportTabProps {
   analysis: VideoAnalysis
@@ -33,8 +34,11 @@ export const ReportTab = ({
     }
   }
 
-  return (
-    <div style={{ padding: "24px" }}>
+  // Check for tier restriction (Report is Pro-only)
+  const reportTierRestriction = (analysis as any)?.reportInfo?.tierRestriction
+  
+  const content = (
+    <div>
       {/* Report Download Section */}
       <div style={{ marginBottom: "32px" }}>
         <h3
@@ -323,4 +327,15 @@ export const ReportTab = ({
       </style>
     </div>
   )
+
+  // Wrap with tier restriction UI if needed
+  if (reportTierRestriction) {
+    return (
+      <BlurredContent restriction={reportTierRestriction}>
+        {content}
+      </BlurredContent>
+    )
+  }
+
+  return <div style={{ padding: "24px" }}>{content}</div>
 }
