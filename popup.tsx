@@ -36,11 +36,14 @@ function IndexPopup() {
       .catch((err) => console.error("Storage test failed:", err))
     loadUserData()
     
-    // Listen for storage changes (e.g., OAuth completion in background)
+    // Listen for storage changes (e.g., OAuth completion in background or portal sync)
     const storageListener = (changes: any, areaName: string) => {
-      if (areaName === 'sync' && (changes.focus_guard_access_token || changes.focus_guard_user)) {
-        console.log("Popup: Detected token/user change in storage, reloading data")
-        loadUserData()
+      if (areaName === 'sync') {
+        // Check for token, user, or account changes
+        if (changes.focus_guard_access_token || changes.focus_guard_user || changes.account || changes.isAuthenticated) {
+          console.log("Popup: Detected auth change in storage, reloading data")
+          loadUserData()
+        }
       }
     }
     
@@ -170,6 +173,14 @@ function IndexPopup() {
     try {
       await AuthService.logout()
       setAccount(null)
+      
+      // Notify background to clear badge
+      chrome.runtime.sendMessage({
+        type: 'AUTH_STATE_CHANGED',
+        isAuthenticated: false
+      }).catch(err => {
+        console.log('Popup: Failed to notify background of logout:', err)
+      })
     } catch (error) {
       console.error("Logout failed:", error)
     }

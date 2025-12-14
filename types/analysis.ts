@@ -1,5 +1,7 @@
 // Type definitions for Focus Guard Video Analysis (FR-102, FR-103)
 
+import type { TierRestriction } from "./tierRestriction"
+
 // FR-204: Color coding levels
 export type TrustLevel = "high" | "medium" | "low"
 export type SentimentType = "positive" | "neutral" | "negative" | "mixed"
@@ -61,6 +63,7 @@ export interface VideoAnalysis {
           highValue: InsightWithComments[]
           improvements: InsightWithComments[]
         }
+        tierRestriction?: TierRestriction // Added for tier gating
       }
 
   // Some consumers expect `sentiment` at top level
@@ -72,7 +75,13 @@ export interface VideoAnalysis {
       negative: number
       mixed?: number
       totalCommentsAnalyzed?: number
+      exampleComments?: {
+        positive?: string[]
+        neutral?: string[]
+        negative?: string[]
+      }
     }
+    tierRestriction?: TierRestriction // Added for tier gating
   }
 
   // Content gaps (keep original name and shape)
@@ -81,6 +90,7 @@ export interface VideoAnalysis {
     botPercentage?: number // 0-100 percentage of bot comments detected
     unansweredQuestions?: InsightWithComments[]
     botDetectionEnabled?: boolean
+    tierRestriction?: TierRestriction // Added for tier gating
   }
 
   // Channel credibility (can appear at top level too)
@@ -95,6 +105,7 @@ export interface VideoAnalysis {
   reportInfo?: {
     availableFormats?: ("PDF" | "TXT")[]
     analysisDate?: string
+    tierRestriction?: TierRestriction
   }
 
   analyzedAt?: string

@@ -6,10 +6,11 @@ import type { VideoAnalysis, AnalysisHistoryItem } from "~types/analysis"
 import { COLORS } from "~lib/colors"
 import { SummaryTab } from "./sidepanel/SummaryTab"
 import { ViewerInsightsTab } from "./sidepanel/ViewerInsightsTab"
+import { CommentSentimentTab } from "./sidepanel/CommentSentimentTab"
 import { ContentGapsTab } from "./sidepanel/ContentGapsTab"
 import { ReportTab } from "./sidepanel/ReportTab"
 
-type TabId = "summary" | "insights" | "gaps" | "report"
+type TabId = "summary" | "sentiment" | "insights" | "gaps" | "report"
 
 interface SidePanelProps {
   analysis: VideoAnalysis | null
@@ -42,6 +43,7 @@ export const SidePanel = ({
 
   const tabs = [
     { id: "summary" as TabId, label: "Summary", icon: "📊" },
+    { id: "sentiment" as TabId, label: "Comment Sentiment", icon: "💭" },
     { id: "insights" as TabId, label: "Viewer Insights", icon: "💬" },
     { id: "gaps" as TabId, label: "Content Gaps", icon: "🔍" },
     { id: "report" as TabId, label: "Report", icon: "📄" }
@@ -264,6 +266,7 @@ export const SidePanel = ({
             ) : (
               <>
                 {activeTab === "summary" && <SummaryTab analysis={analysis} />}
+                {activeTab === "sentiment" && <CommentSentimentTab analysis={analysis} />}
                 {activeTab === "insights" && <ViewerInsightsTab analysis={analysis} />}
                 {activeTab === "gaps" && (
                   <ContentGapsTab

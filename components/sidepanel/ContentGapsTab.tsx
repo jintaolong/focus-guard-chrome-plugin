@@ -5,6 +5,7 @@ import { useState } from "react"
 import type { VideoAnalysis } from "~types/analysis"
 import { COLORS } from "~lib/colors"
 import { StatementBlock } from "~components/StatementBlock"
+import { BlurredContent } from "~components/UpgradePrompt"
 
 interface ContentGapsTabProps {
   analysis: VideoAnalysis
@@ -13,6 +14,7 @@ interface ContentGapsTabProps {
 
 export const ContentGapsTab = ({ analysis, onBotFilterChange }: ContentGapsTabProps) => {
   const contentGaps = analysis?.contentGaps
+  
   if (!contentGaps) return null
   const [botFilterEnabled, setBotFilterEnabled] = useState(contentGaps.botDetectionEnabled)
 
@@ -32,8 +34,8 @@ export const ContentGapsTab = ({ analysis, onBotFilterChange }: ContentGapsTabPr
   const coverageScore = contentGaps.gapCoverageScore ?? 0
   const coverageColor = getCoverageColor(coverageScore)
 
-  return (
-    <div style={{ padding: "24px" }}>
+  const content = (
+    <div>
       {/* Gap Coverage Score */}
       <div style={{ marginBottom: "32px" }}>
         <h3
@@ -224,4 +226,15 @@ export const ContentGapsTab = ({ analysis, onBotFilterChange }: ContentGapsTabPr
       </div>
     </div>
   )
+
+  // Check for tier restriction and wrap with blur overlay
+  if (contentGaps?.tierRestriction) {
+    return (
+      <BlurredContent restriction={contentGaps.tierRestriction}>
+        {content}
+      </BlurredContent>
+    )
+  }
+
+  return <div style={{ padding: "24px" }}>{content}</div>
 }

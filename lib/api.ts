@@ -57,6 +57,15 @@ export class FocusGuardAPI {
       console.log("FocusGuardAPI: Background response:", response?.success ? 'success' : 'failed')
 
       if (!response?.success) {
+        // Check for tier restriction
+        if (response?.isTierRestriction && response?.tierRestriction) {
+          const error = new Error(response.tierRestriction.message) as any
+          error.isTierRestriction = true
+          error.detail = response.tierRestriction
+          error.status = response.status
+          console.log("FocusGuardAPI: Throwing tier restriction error:", error)
+          throw error
+        }
         throw new Error(response?.error || 'API request failed')
       }
 
