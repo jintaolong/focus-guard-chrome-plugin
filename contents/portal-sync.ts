@@ -4,40 +4,33 @@
 import type { PlasmoCSConfig } from "plasmo"
 import { ConfigService } from "~lib/config"
 
-// Note: Content script matches must be defined at build time, so we use env vars here
-// The runtime config is loaded below for dynamic URL handling
-const WEB_PORTAL_URL = process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"
-
-// Extract domain patterns from URLs for content script matching
-const getPortalMatches = () => {
-  const matches = new Set<string>()
-  
-  // Add configured portal URL
-  try {
-    const webUrl = new URL(WEB_PORTAL_URL)
-    matches.add(`${webUrl.origin}/*`)
-  } catch (e) {
-    console.error("Invalid WEB_PORTAL_URL:", WEB_PORTAL_URL)
-  }
-  
-  // Always include localhost for development
-  matches.add("http://localhost:3000/*")
-  
-  return Array.from(matches)
-}
-
+// Note: Content script matches must be defined at build time as static values
+// Plasmo requires a static matches array for manifest generation at build time.
+// These are the domains where this content script will be injected.
+// Add all possible portal domains here (production, staging, localhost).
 export const config: PlasmoCSConfig = {
-  matches: getPortalMatches(),
+  matches: [
+    "http://localhost:3000/*",
+    "http://localhost:*/*",  // Allow any localhost port for flexibility
+    "https://app.commendverdict.com/*",
+    "https://staging.commendverdict.com/*",
+    "https://*.commendverdict.com/*"  // Wildcard for any subdomain
+  ],
   run_at: "document_start"
 }
 
-// Load runtime config for dynamic URL handling
+// Runtime config loading for dynamic URL handling
+// The static matches above determine WHERE the script runs (at build time).
+// The runtime config below determines HOW the script behaves (at runtime).
+const WEB_PORTAL_URL = process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"
+
+// Load config from remote source (or fallback to .env)
 let runtimePortalUrl: string = WEB_PORTAL_URL
 ConfigService.getConfig().then(config => {
   runtimePortalUrl = config.portal_url
-  console.log("Portal sync: Runtime config loaded", runtimePortalUrl)
+  console.log("Portal sync: Runtime config loaded, portal_url =", runtimePortalUrl)
 }).catch(err => {
-  console.warn("Portal sync: Failed to load config, using environment variables", err)
+  console.warn("Portal sync: Failed to load remote config, using .env fallback", err)
 })
 
 const PORTAL_STORAGE_KEYS = {
@@ -45,7 +38,7 @@ const PORTAL_STORAGE_KEYS = {
   REFRESH_TOKEN: 'focus_guard_refresh_token'
 }
 
-console.log("Focus Guard: Portal sync content script loaded")
+console.log("Comment Verdict: Portal sync content script loaded")
 
 // Listen for messages from the extension (background or popup)
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {

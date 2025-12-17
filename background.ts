@@ -2,7 +2,10 @@
 // Content scripts cannot make cross-origin requests due to CORS.
 // All API calls must go through the background worker.
 
+import { initConsole } from "~lib/console-manager"
 import { ConfigService } from "~lib/config"
+
+initConsole()
 
 export {}
 
@@ -24,7 +27,7 @@ ConfigService.getConfig().then(config => {
 })
 
 chrome.runtime.onInstalled.addListener(() => {
-  console.log("Focus Guard extension installed!")
+  console.log("Comment Verdict extension installed!")
   // Refresh config on install/update
   ConfigService.refreshConfig().catch(err => console.warn("Failed to refresh config on install", err))
 })

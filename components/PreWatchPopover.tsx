@@ -160,10 +160,18 @@ export const PreWatchPopover = ({
                   borderRadius: "50%",
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: "20px"
+                  justifyContent: "center"
                 }}>
-                🛡️
+                <img 
+                  src={chrome.runtime.getURL(`assets/${
+                    verdictColor === "high" ? "green" :
+                    verdictColor === "medium" ? "yellow" :
+                    verdictColor === "low" ? "red" :
+                    "blue"
+                  }.png`)} 
+                  alt="Comment Verdict" 
+                  style={{ width: "20px", height: "20px" }} 
+                />
               </div>
               <div style={{ flex: 1 }}>
                 <h2 style={{ margin: 0, fontSize: "20px", fontWeight: "700", color: COLORS.ui.textPrimary }}>
@@ -202,7 +210,7 @@ export const PreWatchPopover = ({
           </div>
 
           {/* Content */}
-          <div style={{ padding: "24px", maxHeight: "400px", overflowY: "auto" }}>
+          <div style={{ padding: "24px", maxHeight: "40vh", overflowY: "auto" }}>
             {/* Trust Score */}
             <div style={{ marginBottom: "20px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "8px" }}>
@@ -403,7 +411,7 @@ export const PreWatchPopover = ({
                 e.currentTarget.style.backgroundColor = COLORS.neutral.primary
                 e.currentTarget.style.transform = "translateY(0)"
               }}>
-              <span>🛡️</span>
+              <img src={chrome.runtime.getURL("assets/green.png")} alt="" style={{ width: "16px", height: "16px" }} />
               <span>View Full Report</span>
             </button>
             <button

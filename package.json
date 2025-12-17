@@ -1,13 +1,13 @@
 {
-  "name": "focus-guard-chrome-plugin",
-  "displayName": "Focus Guard",
+  "name": "comment-verdict-chrome-plugin",
+  "displayName": "Comment Verdict",
   "version": "0.0.1",
   "description": "A Chrome extension built with Plasmo, React, and Manifest V3",
   "author": "Your Name",
   "scripts": {
     "dev": "plasmo dev",
-    "dev:debug": "cross-env FOCUS_GUARD_DEBUG=1 plasmo dev",
-    "debug": "cross-env FOCUS_GUARD_DEBUG=1 plasmo dev",
+    "dev:debug": "cross-env COMMENT_VERDICT_DEBUG=1 plasmo dev",
+    "debug": "cross-env COMMENT_VERDICT_DEBUG=1 plasmo dev",
     "build": "plasmo build",
     "package": "plasmo package"
   },
@@ -39,6 +39,17 @@
     "permissions": [
       "storage",
       "tabs"
+    ],
+    "web_accessible_resources": [
+      {
+        "resources": [
+          "assets/*.png"
+        ],
+        "matches": [
+          "https://*/*",
+          "http://*/*"
+        ]
+      }
     ]
   }
 }

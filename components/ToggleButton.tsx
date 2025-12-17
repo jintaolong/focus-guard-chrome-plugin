@@ -192,7 +192,7 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
           textAlign: "center",
           padding: "4px 0"
         }}>
-          <span style={{ fontSize: "20px" }}>🛡️</span>
+          <img src={chrome.runtime.getURL("assets/grey.png")} alt="Comment Verdict" style={{ width: "20px", height: "20px" }} />
           <span style={{ 
             fontSize: "13px", 
             fontWeight: "700",

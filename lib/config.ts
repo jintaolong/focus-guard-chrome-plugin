@@ -13,7 +13,7 @@ const REMOTE_CONFIG_URL = "https://focus-guard.github.io/focus-guard-config/conf
 
 // Check if we're in debug/development mode
 const isDebugMode = () => {
-  const debugEnv = process.env.FOCUS_GUARD_DEBUG
+  const debugEnv = process.env.COMMENT_VERDICT_DEBUG
   return debugEnv === "1" || debugEnv === "true" || process.env.NODE_ENV === "development"
 }
 
