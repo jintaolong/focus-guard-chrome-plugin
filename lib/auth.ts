@@ -1,4 +1,5 @@
 // Authentication service for CommentVerdict API integration
+import { ConfigService } from "./config"
 import type {
   Token,
   TokenRefresh,
@@ -9,7 +10,15 @@ import type {
   ResendVerificationResponse
 } from "~types/backend"
 
-const API_BASE_URL = process.env.PLASMO_PUBLIC_API_URL || "https://test.commentverdict.com/api/v1"
+let API_BASE_URL = process.env.PLASMO_PUBLIC_API_URL || "https://test.commentverdict.com/api/v1"
+
+// Load config on module initialization
+ConfigService.getConfig().then(config => {
+  API_BASE_URL = config.api_url
+  console.log("AuthService: Config loaded, API_BASE_URL =", API_BASE_URL)
+}).catch(err => {
+  console.warn("AuthService: Failed to load config, using environment variable", err)
+})
 
 export class AuthService {
   private static TOKEN_KEY = "focus_guard_access_token"

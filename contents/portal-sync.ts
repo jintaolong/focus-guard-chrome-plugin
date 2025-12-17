@@ -2,14 +2,43 @@
 // This script runs on the web portal domain to enable bidirectional token sync
 
 import type { PlasmoCSConfig } from "plasmo"
+import { ConfigService } from "~lib/config"
+
+// Note: Content script matches must be defined at build time, so we use env vars here
+// The runtime config is loaded below for dynamic URL handling
+const WEB_PORTAL_URL = process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"
+
+// Extract domain patterns from URLs for content script matching
+const getPortalMatches = () => {
+  const matches = new Set<string>()
+  
+  // Add configured portal URL
+  try {
+    const webUrl = new URL(WEB_PORTAL_URL)
+    matches.add(`${webUrl.origin}/*`)
+  } catch (e) {
+    console.error("Invalid WEB_PORTAL_URL:", WEB_PORTAL_URL)
+  }
+  
+  // Always include localhost for development
+  matches.add("http://localhost:3000/*")
+  
+  return Array.from(matches)
+}
 
 export const config: PlasmoCSConfig = {
-  matches: [
-    "http://localhost:3000/*",
-    "https://app.focus-guard.com/*"
-  ],
+  matches: getPortalMatches(),
   run_at: "document_start"
 }
+
+// Load runtime config for dynamic URL handling
+let runtimePortalUrl: string = WEB_PORTAL_URL
+ConfigService.getConfig().then(config => {
+  runtimePortalUrl = config.portal_url
+  console.log("Portal sync: Runtime config loaded", runtimePortalUrl)
+}).catch(err => {
+  console.warn("Portal sync: Failed to load config, using environment variables", err)
+})
 
 const PORTAL_STORAGE_KEYS = {
   ACCESS_TOKEN: 'focus_guard_access_token',
@@ -233,7 +262,9 @@ async function handleAuthStateChanged(data: any) {
       
       // Fetch and store user info
       try {
-        const API_BASE_URL = process.env.PLASMO_PUBLIC_API_URL || 'https://test.commentverdict.com/api/v1'
+        // Get API URL from config
+        const config = await ConfigService.getConfig()
+        const API_BASE_URL = config.api_url
         
         const response = await fetch(`${API_BASE_URL}/users/me`, {
           headers: { 'Authorization': `Bearer ${accessToken}` }

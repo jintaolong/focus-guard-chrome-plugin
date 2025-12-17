@@ -5,14 +5,23 @@ import { LoginForm } from "~components/popup/LoginForm"
 import { ToggleSwitch } from "~components/popup/ToggleSwitch"
 import { AuthService } from "~lib/auth"
 import { SubscriptionService } from "~lib/subscription"
+import { ConfigService } from "~lib/config"
 import type { UserAccount, FocusGuardSettings } from "~types/popup"
 
 import "./style.css"
 
 console.log("🚀 Focus Guard Popup: Module loaded")
 
-// Portal URL (dev default -> localhost). Can be overridden with PLASMO_PUBLIC_PORTAL_URL
-const PORTAL_URL = process.env.PLASMO_PUBLIC_PORTAL_URL || "http://localhost:3000"
+// Portal URL - will be updated from config
+let PORTAL_URL = process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"
+
+// Load config on module initialization
+ConfigService.getConfig().then(config => {
+  PORTAL_URL = config.portal_url
+  console.log("Popup: Config loaded, PORTAL_URL =", PORTAL_URL)
+}).catch(err => {
+  console.warn("Popup: Failed to load config, using environment variable", err)
+})
 
 function IndexPopup() {
   console.log("🎯 Focus Guard Popup: Component initializing")

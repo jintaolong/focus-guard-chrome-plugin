@@ -2,17 +2,31 @@
 // Content scripts cannot make cross-origin requests due to CORS.
 // All API calls must go through the background worker.
 
+import { ConfigService } from "~lib/config"
+
 export {}
 
-const API_BASE_URL = process.env.PLASMO_PUBLIC_API_URL || "https://test.commentverdict.com/api/v1"
-const WEB_PORTAL_URL = process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"
+// Configuration loaded from remote or environment variables
+let API_BASE_URL = process.env.PLASMO_PUBLIC_API_URL || "https://test.commentverdict.com/api/v1"
+let WEB_PORTAL_URL = process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"
 
 // Track OAuth flow
 let oauthTabId: number | null = null
 let oauthState: string | null = null
 
+// Initialize configuration on startup
+ConfigService.getConfig().then(config => {
+  API_BASE_URL = config.api_url
+  WEB_PORTAL_URL = config.portal_url
+  console.log("Background: Config loaded", { API_BASE_URL, WEB_PORTAL_URL })
+}).catch(err => {
+  console.warn("Background: Failed to load remote config, using environment variables", err)
+})
+
 chrome.runtime.onInstalled.addListener(() => {
   console.log("Focus Guard extension installed!")
+  // Refresh config on install/update
+  ConfigService.refreshConfig().catch(err => console.warn("Failed to refresh config on install", err))
 })
 
 // Watch storage changes and push tokens to portal when updated
@@ -140,15 +154,13 @@ function blobToBase64(blob: Blob): Promise<string> {
 async function syncTokensToPortal(accessToken: string | null, refreshToken: string | null) {
   try {
     console.log('Background: syncing tokens to portal tabs')
-    const urlPatterns = [
-      `${WEB_PORTAL_URL}/*`,
-      'http://localhost:3000/*',
-      'https://app.focus-guard.com/*'
-    ]
-
-    // Query all tabs and filter by matching origin
+    
+    // Query all tabs and filter by portal URL
     const tabs = await chrome.tabs.query({})
-    const portalTabs = tabs.filter(t => t.url && (t.url.startsWith(WEB_PORTAL_URL) || t.url.startsWith('http://localhost:3000') || t.url.startsWith('https://app.focus-guard.com')))
+    const portalTabs = tabs.filter(t => {
+      if (!t.url) return false
+      return t.url.startsWith(WEB_PORTAL_URL) || t.url.startsWith('http://localhost:3000')
+    })
 
     portalTabs.forEach(tab => {
       if (!tab.id) return
