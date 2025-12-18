@@ -33,8 +33,12 @@
   },
   "manifest": {
     "host_permissions": [
-      "https://*/*",
-      "http://localhost:*/*"
+      "https://*.youtube.com/*",
+      "https://youtube.com/*",
+      "https://youtu.be/*",
+      "https://*.commentverdict.com/*",
+      "https://commentverdict.com/*",
+      "https://focus-guard.github.io/*"
     ],
     "permissions": [
       "storage",
@@ -46,8 +50,11 @@
           "assets/*.png"
         ],
         "matches": [
-          "https://*/*",
-          "http://*/*"
+          "https://*.youtube.com/*",
+          "https://youtube.com/*",
+          "https://youtu.be/*",
+          "https://*.commentverdict.com/*",
+          "https://commentverdict.com/*"
         ]
       }
     ]
