@@ -115,8 +115,14 @@ function IndexPopup() {
             tier,
             dailySearchesLimit: usage.daily_searches_limit,
             searchesUsedToday: usage.daily_searches_used,
-            searchesRemaining: usage.searches_remaining
+            searchesRemaining: usage.searches_remaining,
+            calculatedRemaining: Math.max(0, usage.daily_searches_limit - usage.daily_searches_used)
           })
+
+          // Use the backend's searches_remaining value
+          // For PRO users, this will be -1 (unlimited)
+          // For FREE/STARTER, it's calculated as limit - used
+          const searchesRemaining = usage.searches_remaining
 
           const newAccount: UserAccount = {
             isLoggedIn: true,
@@ -124,7 +130,7 @@ function IndexPopup() {
             tier,
             dailySearchesLimit: usage.daily_searches_limit,
             searchesUsedToday: usage.daily_searches_used,
-            searchesRemaining: usage.searches_remaining,
+            searchesRemaining: searchesRemaining,
             resetTime: subscription.last_reset_date
           }
           console.log("📊 Popup: Setting account state:", newAccount)

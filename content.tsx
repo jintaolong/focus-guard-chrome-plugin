@@ -1112,7 +1112,14 @@ const ContentScript = () => {
       if (error instanceof Error) {
         const msg = error.message.toLowerCase()
         if (msg.includes("daily limit") || msg.includes("rate limit") || msg.includes("quota") || msg.includes("429")) {
-          errorMessage = "Daily limit reached"
+          // Check user tier for custom message
+          try {
+            const subscription = await SubscriptionService.getSubscription()
+            const userTier = subscription.tier?.toLowerCase() || 'free'
+            errorMessage = userTier === 'pro' ? "Quota will be reset soon" : "Daily limit reached"
+          } catch {
+            errorMessage = "Daily limit reached"
+          }
         } else if (msg.includes("auth") || msg.includes("login") || msg.includes("401")) {
           errorMessage = "Please log in"
         } else if (msg.includes("network") || msg.includes("connection")) {

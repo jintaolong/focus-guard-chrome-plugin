@@ -101,8 +101,8 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
 
   // Calculate position based on dock
   const getPositionStyle = (): React.CSSProperties => {
-    // Use error color for error state, neutral for idle/analyzing, verdict color for complete
-    const bgColor = errorMessage ? COLORS.low.primary : 
+    // Use amber (medium) color for error state (milder than red), neutral for idle/analyzing, verdict color for complete
+    const bgColor = errorMessage ? COLORS.medium.primary : 
                     state === "complete" ? COLORS[verdictColor].primary : 
                     COLORS.neutral.primary
     
