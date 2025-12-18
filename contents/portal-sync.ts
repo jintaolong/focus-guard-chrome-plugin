@@ -10,11 +10,9 @@ import { ConfigService } from "~lib/config"
 // Add all possible portal domains here (production, staging, localhost).
 export const config: PlasmoCSConfig = {
   matches: [
-    "http://localhost:3000/*",
-    "http://localhost:*/*",  // Allow any localhost port for flexibility
-    "https://app.commendverdict.com/*",
-    "https://staging.commendverdict.com/*",
-    "https://*.commendverdict.com/*"  // Wildcard for any subdomain
+    "https://app.commentverdict.com/*",
+    "https://staging.commentverdict.com/*",
+    "https://*.commentverdict.com/*"  // Wildcard for any subdomain
   ],
   run_at: "document_start"
 }
