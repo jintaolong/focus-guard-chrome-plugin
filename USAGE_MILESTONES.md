@@ -14,7 +14,7 @@ The popup now displays smart usage milestone notifications to inform users about
 **Visual**: Red alert-style notification  
 **Title**: "You're a Power User!"  
 **Message**: "You've analyzed 100 videos in the last 24 hours. To protect our systems from automated activity, we've placed a temporary pause on your reports. Your quota will reset at midnight UTC."  
-**CTA**: "Need more? Contact us for Enterprise access." (button opens Manage Plan)  
+**CTA**: "Need more? Contact us <commentverdict@gmail.com> for Enterprise access." (button opens Manage Plan)  
 **Purpose**: Explain rate limit, offer Enterprise option
 
 ## FREE & STARTER Users

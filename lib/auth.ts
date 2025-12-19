@@ -72,13 +72,24 @@ export class AuthService {
         chrome.storage.sync.get(keysToGet, (items) => {
           const err = chrome.runtime?.lastError
           if (err) {
+            // Check if it's an extension context invalidation error
+            const errorMsg = err.message || String(err)
+            if (errorMsg.includes("Extension context invalidated")) {
+              // Silent fail - extension was reloaded, return empty
+              return resolve({})
+            }
             console.error("Storage get error:", err)
             return reject(err)
           }
-          console.log("Storage get success for keys:", keys, "items:", items ? Object.keys(items) : "null")
           resolve(items || {})
         })
       } catch (e) {
+        // Check if it's an extension context invalidation error
+        const errorMsg = e instanceof Error ? e.message : String(e)
+        if (errorMsg.includes("Extension context invalidated")) {
+          // Silent fail - extension was reloaded, return empty
+          return resolve({})
+        }
         console.error("Storage get exception:", e)
         reject(e)
       }

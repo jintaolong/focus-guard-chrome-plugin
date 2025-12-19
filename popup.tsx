@@ -74,6 +74,19 @@ function IndexPopup() {
       const result = await chrome.storage.sync.get(["settings"])
       if (result.settings) {
         setSettings(result.settings)
+      } else {
+        // If no settings exist, initialize defaults and save them
+        const defaultSettings: FocusGuardSettings = {
+          isEnabled: true,
+          videoAnalysis: {
+            showPreWatchPopover: true,
+            autoAnalyze: false,
+            botDetectionEnabled: true
+          }
+        }
+        setSettings(defaultSettings)
+        await chrome.storage.sync.set({ settings: defaultSettings })
+        console.log("Popup: Initialized default settings")
       }
 
       // Check if user is authenticated

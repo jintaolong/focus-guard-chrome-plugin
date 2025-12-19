@@ -47,7 +47,7 @@ export class ConfigService {
     console.warn("ConfigService: Remote config failed, using .env fallback")
     return {
       api_url: process.env.PLASMO_PUBLIC_API_URL || "https://commentverdict.com/api/v1",
-      portal_url: process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "https://app.focus-guard.com"
+      portal_url: process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "https://app.commentverdict.com"
     }
   }
 

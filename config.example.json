@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
   "api_url": "https://commentverdict.com/api/v1",
-  "portal_url": "https://app.focus-guard.com",
+  "portal_url": "https://app.commentverdict.com",
   "features": {
     "video_analysis": true,
     "bot_detection": true,

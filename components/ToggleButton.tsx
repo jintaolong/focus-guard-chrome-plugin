@@ -182,6 +182,15 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
       // Show different text based on cache status
       const buttonText = isCached === false ? "Generate Report" : "Analyze Comments"
       
+      // Get icon URL safely - handle extension context invalidation
+      let iconUrl: string | null = null
+      try {
+        iconUrl = chrome.runtime.getURL("assets/grey.png")
+      } catch (error) {
+        // Extension context invalidated - will show emoji instead
+        console.warn("ToggleButton: Extension context invalidated, using emoji fallback")
+      }
+      
       return (
         <div style={{ 
           display: "flex", 
@@ -192,7 +201,11 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
           textAlign: "center",
           padding: "4px 0"
         }}>
-          <img src={chrome.runtime.getURL("assets/grey.png")} alt="Comment Verdict" style={{ width: "20px", height: "20px" }} />
+          {iconUrl ? (
+            <img src={iconUrl} alt="Comment Verdict" style={{ width: "20px", height: "20px" }} />
+          ) : (
+            <span style={{ fontSize: "20px" }}>🛡️</span>
+          )}
           <span style={{ 
             fontSize: "13px", 
             fontWeight: "700",
