@@ -1,6 +1,7 @@
 // Reusable upgrade prompt component for tier-restricted content
 
 import { COLORS } from "~lib/colors"
+import { ConfigService } from "~lib/config"
 import type { TierRestriction } from "~types/tierRestriction"
 
 interface UpgradePromptProps {
@@ -20,8 +21,9 @@ export const UpgradePrompt = ({ restriction, blur = false, onUpgrade }: UpgradeP
     if (onUpgrade) {
       onUpgrade()
     } else {
-      // Open web portal dashboard in new tab via background script
-      const dashboardUrl = `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
+      // Get portal URL from config service (supports dynamic remote config)
+      const config = await ConfigService.getConfig()
+      const dashboardUrl = `${config.portal_url}/dashboard`
       console.log("Opening dashboard:", dashboardUrl)
       try {
         await chrome.runtime.sendMessage({
