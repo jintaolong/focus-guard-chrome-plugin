@@ -352,6 +352,15 @@ export class AuthService {
       console.warn("AuthService: Failed to fetch user info:", e)
       // ignore; user will be fetched lazily later
     }
+    
+    // Notify background to start token refresh mechanism
+    try {
+      chrome.runtime.sendMessage({ type: 'START_TOKEN_REFRESH' }).catch(() => {
+        // Ignore if background isn't ready
+      })
+    } catch (e) {
+      // Ignore messaging errors
+    }
 
     console.log("AuthService: login() completed successfully")
     return token

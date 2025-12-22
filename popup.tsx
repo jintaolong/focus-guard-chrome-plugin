@@ -59,10 +59,21 @@ function IndexPopup() {
       }
     }
     
+    // Listen for runtime messages (e.g., SESSION_EXPIRED from background)
+    const messageListener = (message: any) => {
+      if (message.type === 'SESSION_EXPIRED') {
+        console.log("Popup: Session expired, logging out")
+        setAccount(null)
+        setError("Your session has expired. Please log in again.")
+      }
+    }
+    
     chrome.storage.onChanged.addListener(storageListener)
+    chrome.runtime.onMessage.addListener(messageListener)
     
     return () => {
       chrome.storage.onChanged.removeListener(storageListener)
+      chrome.runtime.onMessage.removeListener(messageListener)
     }
   }, [])
 
