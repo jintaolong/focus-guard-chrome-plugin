@@ -1,9 +1,9 @@
 name: Production Release
 
 on:
-  push: "**" # Trigger on all pushes to any branch
-    # branches:
-    #   - main
+  push:
+    branches:
+      - '**' # Trigger on all pushes to any branch
   workflow_dispatch:
     inputs:
       skip-version-bump:
