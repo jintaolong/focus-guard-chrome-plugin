@@ -153,13 +153,12 @@ jobs:
       - name: Commit version bump
         run: |
           git add package.json package-lock.json 2>/dev/null || true
-          git commit -m "chore: bump version to ${{ steps.bump.outputs.new-version }} [skip ci]" || echo "No changes to commit"
-          git push origin main
-
+          git commit -m "chore: bump version to ${{ steps.bump.outputs.new-version }} [skip ci]"
+          
       - name: Create and push tag
         run: |
           git tag ${{ steps.bump.outputs.new-tag }}
-          git push origin ${{ steps.bump.outputs.new-tag }}
+          git push origin main --tags
 
   build-and-release:
     name: Build and Release
