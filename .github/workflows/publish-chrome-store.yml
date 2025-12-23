@@ -150,8 +150,8 @@ jobs:
         with:
           extension_id: ${{ secrets.CHROME_EXTENSION_ID }}
           client_id:    ${{ secrets.CHROME_CLIENT_ID }}
-          client_secret:${{ secrets.CHROME_CLIENT_SECRET }}
-          refresh_token:${{ secrets.CHROME_REFRESH_TOKEN }}
+          client_secret: ${{ secrets.CHROME_CLIENT_SECRET }}
+          refresh_token: ${{ secrets.CHROME_REFRESH_TOKEN }}
           zip_file:     comment-verdict-chrome-extension-v${{ github.event.inputs.version }}.zip
 
       - name: Publishing Success
