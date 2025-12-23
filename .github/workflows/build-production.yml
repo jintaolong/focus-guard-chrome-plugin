@@ -3,7 +3,7 @@ name: Production Release
 on:
   push:
     branches:
-      - '**' # Trigger on all pushes to any branch
+      - main
   workflow_dispatch:
     inputs:
       skip-version-bump:
@@ -57,7 +57,7 @@ jobs:
     name: Version Bump
     needs: test
     runs-on: ubuntu-latest
-    if: github.event.inputs.skip-version-bump != 'true'
+    if: github.ref == 'refs/heads/main' && github.event.inputs.skip-version-bump != 'true'
     outputs:
       new-version: ${{ steps.bump.outputs.new-version }}
       new-tag: ${{ steps.bump.outputs.new-tag }}
@@ -154,7 +154,7 @@ jobs:
         run: |
           git add package.json package-lock.json 2>/dev/null || true
           git commit -m "chore: bump version to ${{ steps.bump.outputs.new-version }} [skip ci]" || echo "No changes to commit"
-          git push origin HEAD:${{ github.ref_name }}
+          git push origin main
 
       - name: Create and push tag
         run: |
@@ -165,7 +165,7 @@ jobs:
     name: Build and Release
     needs: [test, version-bump]
     runs-on: ubuntu-latest
-    if: always() && needs.test.result == 'success'
+    if: always() && needs.test.result == 'success' && github.ref == 'refs/heads/main'
     
     steps:
       - name: Checkout code
