@@ -1,0 +1,166 @@
+name: Publish to Chrome Web Store
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g., 1.2.3)'
+        required: true
+        type: string
+      download-from:
+        description: 'Download source'
+        required: false
+        type: choice
+        options:
+          - release
+          - artifact
+        default: release
+
+jobs:
+  publish:
+    name: Publish Extension
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Validate inputs
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "❌ Error: Invalid version format. Expected format: X.Y.Z (e.g., 1.2.3)"
+            exit 1
+          fi
+          echo "✅ Version format valid: $VERSION"
+
+      - name: Check Chrome Web Store credentials
+        run: |
+          if [ -z "${{ secrets.CHROME_EXTENSION_ID }}" ]; then
+            echo "❌ Error: CHROME_EXTENSION_ID secret not configured"
+            echo ""
+            echo "Required secrets:"
+            echo "  - CHROME_EXTENSION_ID"
+            echo "  - CHROME_CLIENT_ID"
+            echo "  - CHROME_CLIENT_SECRET"
+            echo "  - CHROME_REFRESH_TOKEN"
+            echo ""
+            echo "See .github/CHROME_WEB_STORE_SETUP.md for setup instructions"
+            exit 1
+          fi
+          echo "✅ Chrome Web Store credentials configured"
+
+      - name: Download from GitHub Release
+        if: github.event.inputs.download-from == 'release'
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          FILENAME="comment-verdict-chrome-extension-v${VERSION}.zip"
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/${FILENAME}"
+          
+          echo "Downloading from release v${VERSION}..."
+          echo "URL: $DOWNLOAD_URL"
+          
+          if ! curl -fL -o "${FILENAME}" "${DOWNLOAD_URL}"; then
+            echo "❌ Error: Failed to download release v${VERSION}"
+            echo ""
+            echo "Possible issues:"
+            echo "  - Release v${VERSION} does not exist"
+            echo "  - ZIP file not attached to release"
+            echo "  - Release is a draft or private"
+            echo ""
+            echo "Available releases: https://github.com/${{ github.repository }}/releases"
+            exit 1
+          fi
+          
+          echo "✅ Downloaded: ${FILENAME}"
+          ls -lh "${FILENAME}"
+
+      - name: Download from Artifact
+        if: github.event.inputs.download-from == 'artifact'
+        uses: actions/download-artifact@v4
+        with:
+          name: chrome-extension-v${{ github.event.inputs.version }}
+          path: ./download
+
+      - name: Prepare ZIP from Artifact
+        if: github.event.inputs.download-from == 'artifact'
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          FILENAME="comment-verdict-chrome-extension-v${VERSION}.zip"
+          
+          if [ -f "download/${FILENAME}" ]; then
+            mv "download/${FILENAME}" .
+          else
+            echo "❌ Error: ZIP file not found in artifact"
+            echo "Looking for: ${FILENAME}"
+            echo "Found files:"
+            ls -la download/
+            exit 1
+          fi
+          
+          echo "✅ Prepared: ${FILENAME}"
+          ls -lh "${FILENAME}"
+
+      - name: Verify ZIP file
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          FILENAME="comment-verdict-chrome-extension-v${VERSION}.zip"
+          
+          if [ ! -f "${FILENAME}" ]; then
+            echo "❌ Error: ZIP file not found: ${FILENAME}"
+            exit 1
+          fi
+          
+          # Check file size (should be > 1KB)
+          SIZE=$(stat -f%z "${FILENAME}" 2>/dev/null || stat -c%s "${FILENAME}" 2>/dev/null)
+          if [ "$SIZE" -lt 1024 ]; then
+            echo "❌ Error: ZIP file too small (${SIZE} bytes). May be corrupted."
+            exit 1
+          fi
+          
+          # Try to list ZIP contents
+          echo "ZIP contents:"
+          unzip -l "${FILENAME}" | head -20
+          
+          # Verify manifest.json exists
+          if ! unzip -l "${FILENAME}" | grep -q "manifest.json"; then
+            echo "❌ Error: manifest.json not found in ZIP. Invalid extension package."
+            exit 1
+          fi
+          
+          echo "✅ ZIP file verified (${SIZE} bytes)"
+
+      - name: Publish to Chrome Web Store
+        uses: mobilefirstllc/cws-publish@latest
+        with:
+          extension-id: ${{ secrets.CHROME_EXTENSION_ID }}
+          client-id: ${{ secrets.CHROME_CLIENT_ID }}
+          client-secret: ${{ secrets.CHROME_CLIENT_SECRET }}
+          refresh-token: ${{ secrets.CHROME_REFRESH_TOKEN }}
+          zip-path: comment-verdict-chrome-extension-v${{ github.event.inputs.version }}.zip
+
+      - name: Publishing Success
+        if: success()
+        run: |
+          echo "✅ Successfully published v${{ github.event.inputs.version }} to Chrome Web Store!"
+          echo ""
+          echo "📋 Next steps:"
+          echo "  1. Go to Chrome Web Store Developer Dashboard"
+          echo "  2. Verify the upload completed successfully"
+          echo "  3. Submit for review if not auto-published"
+          echo ""
+          echo "🔗 Dashboard: https://chrome.google.com/webstore/devconsole"
+
+      - name: Publishing Failed
+        if: failure()
+        run: |
+          echo "❌ Failed to publish v${{ github.event.inputs.version }} to Chrome Web Store"
+          echo ""
+          echo "🔧 Troubleshooting:"
+          echo "  1. Check Chrome Web Store credentials are valid"
+          echo "  2. Verify extension ID matches your extension"
+          echo "  3. Ensure OAuth tokens haven't expired"
+          echo "  4. Check Chrome Web Store Developer Dashboard for errors"
+          echo ""
+          echo "📖 Setup guide: .github/CHROME_WEB_STORE_SETUP.md"
+          echo "🔗 Dashboard: https://chrome.google.com/webstore/devconsole"
+          echo ""
+          echo "📦 Manual upload fallback:"
+          echo "  Download: https://github.com/${{ github.repository }}/releases/download/v${{ github.event.inputs.version }}/comment-verdict-chrome-extension-v${{ github.event.inputs.version }}.zip"

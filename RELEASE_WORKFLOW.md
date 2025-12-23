@@ -13,25 +13,38 @@ A complete GitHub Actions workflow that handles:
 
 ## 🚀 How to Use
 
-### Option 1: Automatic (Recommended)
+### Option 1: Automatic Release (Recommended)
 
 **Simply merge to main:**
 ```bash
 git commit -m "feat: add new analytics feature"
 git push origin your-branch
 # Create PR → Merge to main
-# → Workflow runs automatically
-# → v1.1.0 released!
+# → Production Release workflow runs
+# → v1.1.0 released on GitHub!
 ```
+
+**Then publish to Chrome Web Store:**
+1. Go to **Actions** → **Publish to Chrome Web Store**
+2. Click **Run workflow**
+3. Enter version: `1.1.0`
+4. Click **Run workflow**
+5. ✅ Published!
 
 ### Option 2: Manual Trigger
 
+**Build and Release:**
 1. Go to **Actions** > **Production Release**
 2. Click **Run workflow**
 3. Configure:
    - Skip version bump? ☐ No
    - Version type: `auto`
-   - Skip Chrome Web Store? ☐ No
+4. Click **Run workflow**
+
+**Then Publish (when ready):**
+1. Go to **Actions** > **Publish to Chrome Web Store**
+2. Click **Run workflow**
+3. Enter the version number
 4. Click **Run workflow**
 
 ## 📋 Version Bumping Rules
@@ -49,11 +62,11 @@ After merging to main, you get:
 1. **Git Tag**: `v1.2.3` pushed to repository
 2. **GitHub Release**: With release notes and changelog
 3. **Downloadable ZIP**: `comment-verdict-chrome-extension-v1.2.3.zip`
-4. **Chrome Web Store Upload**: Automatic (if configured)
 
-## ⚙️ Chrome Web Store Setup (Optional)
-
-To enable automated Chrome Web Store publishing:
+**Then manually publish when ready:**
+- Use the "Publish to Chrome Web Store" workflow
+- Or download ZIP and upload manually
+the "Publish to Chrome Web Store" workflow:
 
 1. **Read the guide**: [.github/CHROME_WEB_STORE_SETUP.md](.github/CHROME_WEB_STORE_SETUP.md)
 2. **Add GitHub Secrets**:
@@ -62,32 +75,37 @@ To enable automated Chrome Web Store publishing:
    - `CHROME_CLIENT_SECRET`
    - `CHROME_REFRESH_TOKEN`
 
+**Without setup:** You can still download the .zip from GitHub releases
+   - `CHROME_REFRESH_TOKEN`
+
 **Without setup:** Workflow still works! You just download the .zip and upload manually.
 
 ## 🔍 Example Workflow Run
 
 ```
-1. Test Job
-   ✅ Checkout code
-   ✅ Install dependencies
-   ✅ Run tests (if any)
+1. Production Release Workflow
+   ├─ Test Job
+   │  ✅ Run tests (if any)
+   ├─ Version Bump Job
+   │  ✅ Analyze commits: "feat: add analytics"
+   │  ✅ Determine bump type: MINOR
+   │  ✅ Update package.json: 1.0.0 → 1.1.0
+   │  ✅ Create tag: v1.1.0
+   │  └─ Push tag to repository
+   └─ Build & Release Job
+      ✅ Build production bundle
+      ✅ Create ZIP file
+      ✅ Create GitHub release
+      └─ Upload artifacts
 
-2. Version Bump Job
-   ✅ Analyze commits: "feat: add analytics"
-   ✅ Determine bump type: MINOR
-   ✅ Update package.json: 1.0.0 → 1.1.0
-   ✅ Create tag: v1.1.0
-   ✅ Push tag to repository
+   Result: v1.1.0 ready on GitHub! 🎉
 
-3. Build & Release Job
-   ✅ Checkout at tag v1.1.0
-   ✅ Build production bundle
-   ✅ Create ZIP file
-   ✅ Create GitHub release
-   ✅ Upload to Chrome Web Store (if configured)
-   ✅ Upload artifacts
-
-Result: v1.1.0 released! 🎉
+2. Publish to Chrome Web Store Workflow (Manual)
+   ├─ Download ZIP from GitHub release
+   ├─ Verify extension package
+   └─ Publish to Chrome Web Store
+   
+   Result: v1.1.0 published to CWS! 🚀
 ```
 
 ## 🛠️ Files Added

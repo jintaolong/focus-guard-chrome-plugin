@@ -21,11 +21,6 @@ on:
           - minor
           - major
         default: auto
-      skip-publish:
-        description: 'Skip Chrome Web Store publishing'
-        required: false
-        type: boolean
-        default: false
 
 jobs:
   test:
@@ -250,7 +245,12 @@ jobs:
             4. Enable "Developer mode"
             5. Click "Load unpacked" and select the extracted folder
             
-            ### For Chrome Web Store Publishing
+            ### Publishing to Chrome Web Store
+            
+            **Option 1: Automated Publishing**
+            Go to Actions → "Publish to Chrome Web Store" → Run workflow with version `${{ steps.version.outputs.version }}`
+            
+            **Option 2: Manual Upload**
             Upload the ZIP file directly to the [Chrome Web Store Developer Dashboard](https://chrome.google.com/webstore/devconsole)
             
             ---
@@ -258,39 +258,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload to Chrome Web Store
-        if: |
-          needs.version-bump.outputs.new-tag != '' && 
-          github.event.inputs.skip-publish != 'true' &&
-          secrets.CHROME_EXTENSION_ID != '' &&
-          secrets.CHROME_CLIENT_ID != ''
-        continue-on-error: true
-        uses: mobilefirstllc/cws-publish@latest
-        with:
-          extension-id: ${{ secrets.CHROME_EXTENSION_ID }}
-          client-id: ${{ secrets.CHROME_CLIENT_ID }}
-          client-secret: ${{ secrets.CHROME_CLIENT_SECRET }}
-          refresh-token: ${{ secrets.CHROME_REFRESH_TOKEN }}
-          zip-path: comment-verdict-chrome-extension-v${{ steps.version.outputs.version }}.zip
-
-      - name: Chrome Web Store Publishing Status
+      - name: Publishing Instructions
         if: needs.version-bump.outputs.new-tag != ''
         run: |
-          if [ "${{ github.event.inputs.skip-publish }}" = "true" ]; then
-            echo "✅ Chrome Web Store publishing skipped (manual upload required)"
-            echo "📦 Download the artifact and upload manually to:"
-            echo "   https://chrome.google.com/webstore/devconsole"
-          elif [ -z "${{ secrets.CHROME_EXTENSION_ID }}" ]; then
-            echo "⚠️  Chrome Web Store credentials not configured"
-            echo "📦 To enable auto-publishing, add these secrets to your repository:"
-            echo "   - CHROME_EXTENSION_ID"
-            echo "   - CHROME_CLIENT_ID"
-            echo "   - CHROME_CLIENT_SECRET"
-            echo "   - CHROME_REFRESH_TOKEN"
-            echo ""
-            echo "📦 For now, download the artifact and upload manually to:"
-            echo "   https://chrome.google.com/webstore/devconsole"
-          else
-            echo "✅ Chrome Web Store publishing attempted"
-            echo "   Check the step above for results"
-          fi
+          echo "✅ Release v${{ steps.version.outputs.version }} created successfully!"
+          echo ""
+          echo "📦 To publish to Chrome Web Store:"
+          echo "   1. Go to: Actions → 'Publish to Chrome Web Store'"
+          echo "   2. Click 'Run workflow'"
+          echo "   3. Enter version: ${{ steps.version.outputs.version }}"
+          echo "   4. Click 'Run workflow'"
+          echo ""
+          echo "📋 Or download and upload manually:"
+          echo "   Download: comment-verdict-chrome-extension-v${{ steps.version.outputs.version }}.zip"
+          echo "   Upload to: https://chrome.google.com/webstore/devconsole"

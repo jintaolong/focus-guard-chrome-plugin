@@ -21,16 +21,42 @@ This directory contains automated CI/CD workflows for the Comment Verdict Chrome
 3. **Tag** - Creates and pushes git tag (e.g., `v1.2.3`)
 4. **Build** - Compiles production extension bundle
 5. **Release** - Creates GitHub release with downloadable .zip
-6. **Publish** - Uploads to Chrome Web Store (if configured)
 
 **Manual Options:**
 - Skip version bump (use current version)
 - Override version type (patch/minor/major)
-- Skip Chrome Web Store publishing
 
 **Artifacts:**
 - GitHub Release with `comment-verdict-chrome-extension-vX.X.X.zip`
 - Build artifacts retained for 90 days
+
+**Note:** This workflow does NOT publish to Chrome Web Store. Use the separate "Publish to Chrome Web Store" workflow for that.
+
+---
+
+### 2. Publish to Chrome Web Store (`publish-chrome-store.yml`)
+
+**Purpose:** Publish a specific version to Chrome Web Store
+
+**Trigger:** Manual dispatch only
+
+**What it does:**
+1. **Download** - Gets the ZIP file from GitHub Release or build artifact
+2. **Verify** - Validates the extension package
+3. **Publish** - Uploads to Chrome Web Store
+
+**Required Inputs:**
+- **Version** - The version to publish (e.g., `1.2.3`)
+- **Download source** - Choose `release` (default) or `artifact`
+
+**Prerequisites:**
+- Version must already be built (via Production Release workflow)
+- Chrome Web Store credentials must be configured (see [CHROME_WEB_STORE_SETUP.md](../CHROME_WEB_STORE_SETUP.md))
+
+**When to use:**
+- After creating a release, when you're ready to publish
+- To re-publish a version if initial publish failed
+- To publish to Chrome Web Store on-demand
 
 ## Quick Start
 
@@ -43,9 +69,21 @@ git commit -m "feat: add new feature"
 git push origin your-branch
 
 # Create PR and merge to main
-# → Workflow automatically triggers
-# → Version bump, build, and release created
+# → Production Release workflow triggers
+# → Version bump, build, and GitHub release created
+# → Ready for Chrome Web Store publishing
 ```
+
+### Manual Chrome Web Store Publishing
+
+After a release is created:
+
+1. Go to **Actions** tab in GitHub
+2. Select **Publish to Chrome Web Store** workflow
+3. Click **Run workflow**
+4. Enter the version number (e.g., `1.2.3`)
+5. Choose download source: `release` (recommended)
+6. Click **Run workflow**
 
 ### Manual Release Flow
 
@@ -56,27 +94,30 @@ git push origin your-branch
    - Branch: `main`
    - Skip version bump: ☐
    - Version type: `auto`
-   - Skip publish: ☐
 5. Click **Run workflow**
 
 ## Setup Instructions
 
 ### Basic Setup (GitHub Releases only)
 
-No additional setup required! The workflow will:
+No additional setup required! The Production Release workflow will:
 - Create releases on GitHub
 - Generate downloadable .zip files
-- You manually upload to Chrome Web Store
+- You publish to Chrome Web Store when ready (manually or via workflow)
 
-### Advanced Setup (Automated Chrome Web Store Publishing)
+### Chrome Web Store Publishing Setup
 
-See [CHROME_WEB_STORE_SETUP.md](./CHROME_WEB_STORE_SETUP.md) for detailed instructions.
+To enable the "Publish to Chrome Web Store" workflow:
+
+See [CHROME_WEB_STORE_SETUP.md](../CHROME_WEB_STORE_SETUP.md) for detailed instructions.
 
 **Required secrets:**
 - `CHROME_EXTENSION_ID` - Your Chrome extension ID
 - `CHROME_CLIENT_ID` - Google OAuth client ID
 - `CHROME_CLIENT_SECRET` - Google OAuth client secret
 - `CHROME_REFRESH_TOKEN` - Google OAuth refresh token
+
+Once configured, you can publish any version on-demand via the workflow.
 
 ## Workflow Status
 
