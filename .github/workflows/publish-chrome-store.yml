@@ -49,23 +49,41 @@ jobs:
 
       - name: Download from GitHub Release
         if: github.event.inputs.download-from == 'release'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ github.event.inputs.version }}"
           FILENAME="comment-verdict-chrome-extension-v${VERSION}.zip"
-          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/${FILENAME}"
           
           echo "Downloading from release v${VERSION}..."
-          echo "URL: $DOWNLOAD_URL"
           
-          if ! curl -fL -o "${FILENAME}" "${DOWNLOAD_URL}"; then
-            echo "❌ Error: Failed to download release v${VERSION}"
+          # Use GitHub API to get release asset download URL (works for draft releases too)
+          ASSET_URL=$(curl -sL \
+            -H "Authorization: token ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/v${VERSION}" \
+            | jq -r ".assets[] | select(.name == \"${FILENAME}\") | .url")
+          
+          if [ -z "$ASSET_URL" ] || [ "$ASSET_URL" = "null" ]; then
+            echo "❌ Error: Failed to find asset ${FILENAME} in release v${VERSION}"
             echo ""
             echo "Possible issues:"
             echo "  - Release v${VERSION} does not exist"
-            echo "  - ZIP file not attached to release"
-            echo "  - Release is a draft or private"
+            echo "  - ZIP file '${FILENAME}' not attached to release"
             echo ""
             echo "Available releases: https://github.com/${{ github.repository }}/releases"
+            exit 1
+          fi
+          
+          echo "Found asset URL: ${ASSET_URL}"
+          
+          # Download the asset using the API
+          if ! curl -fL \
+            -H "Authorization: token ${GITHUB_TOKEN}" \
+            -H "Accept: application/octet-stream" \
+            -o "${FILENAME}" \
+            "${ASSET_URL}"; then
+            echo "❌ Error: Failed to download ${FILENAME}"
             exit 1
           fi
           
