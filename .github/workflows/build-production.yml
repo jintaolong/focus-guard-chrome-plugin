@@ -154,7 +154,7 @@ jobs:
         run: |
           git add package.json package-lock.json 2>/dev/null || true
           git commit -m "chore: bump version to ${{ steps.bump.outputs.new-version }} [skip ci]" || echo "No changes to commit"
-          git push origin main
+          git push origin HEAD:${{ github.ref_name }}
 
       - name: Create and push tag
         run: |
