@@ -39,101 +39,61 @@ This guide explains how to configure automated Chrome Web Store publishing for t
 
 ### 1.3 Get Refresh Token
 
-You need to obtain a refresh token by going through the OAuth flow once. Use this Node.js script:
+You need to obtain a refresh token by authorizing the OAuth client once. Below are two recommended methods: the local-redirect (recommended) and the OAuth 2.0 Playground.
 
-```javascript
-// get-refresh-token.js
-const https = require('https');
-const { exec } = require('child_process');
+Local redirect (recommended)
 
-const CLIENT_ID = 'YOUR_CLIENT_ID';
-const CLIENT_SECRET = 'YOUR_CLIENT_SECRET';
-const REDIRECT_URI = 'urn:ietf:wg:oauth:2.0:oob';
+1. In Google Cloud Console → APIs & Services → Credentials → Edit your OAuth client and add an Authorized Redirect URI, e.g.:
 
-// Step 1: Generate authorization URL
-const authUrl = `https://accounts.google.com/o/oauth2/auth?` +
-  `client_id=${CLIENT_ID}&` +
-  `redirect_uri=${REDIRECT_URI}&` +
-  `response_type=code&` +
-  `scope=https://www.googleapis.com/auth/chromewebstore`;
+   `http://localhost:8080/oauth2callback`
 
-console.log('\n1. Open this URL in your browser:\n');
-console.log(authUrl);
-console.log('\n2. Authorize the application');
-console.log('3. Copy the authorization code from the response\n');
+2. Build this authorization URL (exactly matching the redirect URI):
 
-// Open browser automatically (works on most systems)
-const open = process.platform === 'darwin' ? 'open' :
-             process.platform === 'win32' ? 'start' : 'xdg-open';
-exec(`${open} "${authUrl}"`);
-
-// Step 2: Exchange code for tokens
-const readline = require('readline').createInterface({
-  input: process.stdin,
-  output: process.stdout
-});
-
-readline.question('Enter the authorization code: ', (code) => {
-  const postData = `code=${code}&` +
-    `client_id=${CLIENT_ID}&` +
-    `client_secret=${CLIENT_SECRET}&` +
-    `redirect_uri=${REDIRECT_URI}&` +
-    `grant_type=authorization_code`;
-
-  const options = {
-    hostname: 'oauth2.googleapis.com',
-    path: '/token',
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Content-Length': postData.length
-    }
-  };
-
-  const req = https.request(options, (res) => {
-    let data = '';
-    res.on('data', (chunk) => data += chunk);
-    res.on('end', () => {
-      const tokens = JSON.parse(data);
-      console.log('\n✅ Success! Your credentials:\n');
-      console.log('CHROME_CLIENT_ID:', CLIENT_ID);
-      console.log('CHROME_CLIENT_SECRET:', CLIENT_SECRET);
-      console.log('CHROME_REFRESH_TOKEN:', tokens.refresh_token);
-      console.log('\nAdd these as GitHub Secrets in your repository.\n');
-      readline.close();
-    });
-  });
-
-  req.on('error', (e) => {
-    console.error('Error:', e);
-    readline.close();
-  });
-
-  req.write(postData);
-  req.end();
-});
+```
+https://accounts.google.com/o/oauth2/v2/auth?client_id=YOUR_CLIENT_ID&redirect_uri=http://localhost:8080/oauth2callback&response_type=code&scope=https://www.googleapis.com/auth/chromewebstore&access_type=offline&prompt=consent
 ```
 
-**Or use this simpler curl method:**
+3. Open the URL in your browser and sign in using the Google account that owns (or is a developer on) your Chrome extension. After approval Google will redirect to the local URL, for example:
 
-1. Open this URL in your browser (replace `YOUR_CLIENT_ID`):
 ```
-https://accounts.google.com/o/oauth2/auth?client_id=YOUR_CLIENT_ID&redirect_uri=urn:ietf:wg:oauth:2.0:oob&response_type=code&scope=https://www.googleapis.com/auth/chromewebstore
+http://localhost:8080/oauth2callback?code=AUTH_CODE
 ```
 
-2. Authorize and copy the authorization code
+4. Capture `AUTH_CODE` (copy from the browser address bar or run a tiny local HTTP listener to print the query string). Then exchange the code for tokens (make sure `redirect_uri` matches exactly):
 
-3. Exchange the code for a refresh token:
 ```bash
-curl -X POST https://oauth2.googleapis.com/token \
-  -d "code=YOUR_AUTH_CODE" \
-  -d "client_id=YOUR_CLIENT_ID" \
-  -d "client_secret=YOUR_CLIENT_SECRET" \
-  -d "redirect_uri=urn:ietf:wg:oauth:2.0:oob" \
-  -d "grant_type=authorization_code"
+curl -s -X POST https://oauth2.googleapis.com/token \
+  -d client_id=YOUR_CLIENT_ID \
+  -d client_secret=YOUR_CLIENT_SECRET \
+  -d code=AUTH_CODE \
+  -d redirect_uri=http://localhost:8080/oauth2callback \
+  -d grant_type=authorization_code | jq .
 ```
 
-4. Save the `refresh_token` from the response
+5. Save the `refresh_token` from the JSON response and add it to GitHub Secrets as `CHROME_REFRESH_TOKEN`.
+
+OAuth 2.0 Playground (no local server)
+
+1. Open the OAuth 2.0 Playground: https://developers.google.com/oauthplayground
+2. Click settings (gear) in the top-right and enable “Use your own OAuth credentials” — paste your `CLIENT ID` and `CLIENT SECRET`.
+3. In Step 1, check the scope: `https://www.googleapis.com/auth/chromewebstore` then click “Authorize APIs”.
+4. Sign in with the extension-owner account, then click “Exchange authorization code for tokens”. Copy the `refresh_token` from the response.
+
+Notes and troubleshooting
+
+- Use `access_type=offline&prompt=consent` to ensure a `refresh_token` is returned.
+- If you see: "Access blocked: ... not completed the Google verification process" → add the publishing account as an OAuth test user or publish the consent screen.
+- If you see `redirect_uri_mismatch` → make sure the `redirect_uri` in the authorization URL exactly matches one of the authorized redirect URIs on the OAuth client.
+- Always use the Google account that is an owner/developer of the Chrome Web Store extension when generating the refresh token; otherwise CWS API calls will return 403.
+
+Token expiry and rotation
+
+- Refresh tokens may be revoked or expire. If the refresh token becomes invalid, the publish workflow will fail with a clear message pointing you to this document to re-run the steps above.
+- We recommend rotating the publishing refresh token periodically (e.g. every 90 days) and storing the new token in `CHROME_REFRESH_TOKEN`.
+
+Where to look when the pipeline fails
+
+- If the publish workflow fails due to token issues it will include a link to this document (`.github/CHROME_WEB_STORE_SETUP.md`) in the logs and/or create a reminder issue (see the scheduled monitor workflow). Follow the "Local redirect" or "OAuth Playground" steps above to regenerate the refresh token.
 
 ## Step 2: Configure GitHub Secrets
 

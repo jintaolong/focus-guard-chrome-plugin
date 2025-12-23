@@ -1,0 +1,77 @@
+name: CWS Refresh Token Monitor
+
+# Runs weekly to verify the publishing refresh token is still valid.
+on:
+  schedule:
+    - cron: '0 9 * * 1' # Every Monday at 09:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  check-token:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate required secrets
+        run: |
+          missing=false
+          for s in CHROME_CLIENT_ID CHROME_CLIENT_SECRET CHROME_REFRESH_TOKEN CHROME_EXTENSION_ID; do
+            if [ -z "${{ secrets[$s] }}" ]; then
+              echo "Missing secret: $s"
+              missing=true
+            fi
+          done
+          if [ "$missing" = true ]; then
+            echo "One or more required secrets are missing; cannot validate refresh token."
+            exit 1
+          fi
+
+      - name: Exchange refresh token for access token
+        id: get_token
+        env:
+          CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN }}
+        run: |
+          echo "Exchanging refresh token..."
+          resp=$(curl -s -X POST https://oauth2.googleapis.com/token \
+            -d client_id="$CLIENT_ID" \
+            -d client_secret="$CLIENT_SECRET" \
+            -d refresh_token="$REFRESH_TOKEN" \
+            -d grant_type=refresh_token)
+          echo "$resp" > token_response.json
+          access_token=$(jq -r .access_token token_response.json || true)
+          if [ -z "$access_token" ] || [ "$access_token" = "null" ]; then
+            echo "::error::Failed to exchange refresh token. Response:" 
+            cat token_response.json
+            echo "See .github/CHROME_WEB_STORE_SETUP.md to regenerate the refresh token."
+            echo "expired=true" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          echo "access_token=$access_token" >> $GITHUB_OUTPUT
+
+      - name: Query extension (draft projection)
+        env:
+          ACCESS_TOKEN: ${{ steps.get_token.outputs.access_token }}
+          EXT_ID: ${{ secrets.CHROME_EXTENSION_ID }}
+        run: |
+          echo "Checking extension metadata..."
+          resp=$(curl -s -H "Authorization: Bearer ${ACCESS_TOKEN}" -H "x-goog-api-version: 2" "https://www.googleapis.com/chromewebstore/v1.1/items/${EXT_ID}?projection=DRAFT")
+          echo "$resp" | jq . > cws_item.json || true
+          # If forbidden or error -> exit non-zero
+          if echo "$resp" | jq -e '.error' >/dev/null; then
+            echo "::error::Chrome Web Store API returned an error when checking the extension:"
+            echo "$resp" | jq .
+            echo "See .github/CHROME_WEB_STORE_SETUP.md to verify the correct publishing account and scopes."
+            # Create an issue to remind maintainers
+            TITLE="[CWS] Refresh token or access problem for extension ${{ secrets.CHROME_EXTENSION_ID }}"
+            BODY=$(jq -n --arg e "$resp" --arg doc "https://github.com/${{ github.repository }}/blob/${{ github.ref }}/.github/CHROME_WEB_STORE_SETUP.md" '{body: ("Automated check detected a problem with the Chrome Web Store publishing credentials.\n\nAPI response:\n" + $e + "\n\nFollow the setup guide: " + $doc)}')
+            # Create issue
+            curl -s -X POST -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -H "Accept: application/vnd.github+json" \
+              -d "{\"title\": ${TITLE@Q}, \"body\": $(echo "$BODY" | jq -r .body)}" \
+              "https://api.github.com/repos/${{ github.repository }}/issues" || true
+            exit 1
+          fi
+          echo "CWS check successful."
+
+      - name: Success note
+        if: success()
+        run: echo "Chrome Web Store publishing credentials appear valid."
