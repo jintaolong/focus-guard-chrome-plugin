@@ -39,7 +39,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v2
         with:
-          version: 8
+          version: 10
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -57,7 +57,7 @@ jobs:
     name: Version Bump
     needs: test
     runs-on: ubuntu-latest
-    if: github.event.inputs.skip-version-bump != 'true'
+    if: github.ref == 'refs/heads/main' && github.event.inputs.skip-version-bump != 'true'
     outputs:
       new-version: ${{ steps.bump.outputs.new-version }}
       new-tag: ${{ steps.bump.outputs.new-tag }}
@@ -165,7 +165,7 @@ jobs:
     name: Build and Release
     needs: [test, version-bump]
     runs-on: ubuntu-latest
-    if: always() && needs.test.result == 'success'
+    if: always() && needs.test.result == 'success' && github.ref == 'refs/heads/main'
     
     steps:
       - name: Checkout code
@@ -181,7 +181,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v2
         with:
-          version: 8
+          version: 10
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

@@ -13,7 +13,10 @@
     "build:dev": "node scripts/swap-portal-sync.js dev && cross-env NODE_ENV=development COMMENT_VERDICT_DEBUG=1 plasmo build --tag=dev --target=chrome-mv3",
     "package": "plasmo package",
     "package:prod": "node scripts/swap-portal-sync.js prod && cross-env NODE_ENV=production COMMENT_VERDICT_DEBUG=0 plasmo build --tag=prod --zip && node scripts/swap-portal-sync.js dev",
-    "test": "echo 'No tests configured yet' && exit 0"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "plasmo": "^0.89.3",
@@ -26,9 +29,12 @@
     "@types/node": "^20.12.7",
     "@types/react": "^18.2.79",
     "@types/react-dom": "^18.2.25",
+    "@vitest/ui": "^4.0.16",
     "cross-env": "7.0.3",
+    "jsdom": "^27.3.0",
     "prettier": "3.2.5",
-    "typescript": "^5.4.5"
+    "typescript": "^5.4.5",
+    "vitest": "^4.0.16"
   },
   "pnpm": {
     "overrides": {
