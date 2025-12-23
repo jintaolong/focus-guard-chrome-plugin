@@ -1,26 +1,26 @@
 name: Production Release
 
 on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:
-    inputs:
-      skip-version-bump:
-        description: 'Skip version bump (use current version)'
-        required: false
-        type: boolean
-        default: false
-      version-type:
-        description: 'Version bump type (if not skipping)'
-        required: false
-        type: choice
-        options:
-          - auto
-          - patch
-          - minor
-          - major
-        default: auto
+  push: "**" # Trigger on all pushes to any branch
+  #   branches:
+  #     - main
+  # workflow_dispatch:
+  #   inputs:
+  #     skip-version-bump:
+  #       description: 'Skip version bump (use current version)'
+  #       required: false
+  #       type: boolean
+  #       default: false
+  #     version-type:
+  #       description: 'Version bump type (if not skipping)'
+  #       required: false
+  #       type: choice
+  #       options:
+  #         - auto
+  #         - patch
+  #         - minor
+  #         - major
+  #       default: auto
 
 jobs:
   test:
