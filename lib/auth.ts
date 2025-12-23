@@ -1,4 +1,5 @@
 // Authentication service for CommentVerdict API integration
+import { ConfigService } from "./config"
 import type {
   Token,
   TokenRefresh,
@@ -9,7 +10,15 @@ import type {
   ResendVerificationResponse
 } from "~types/backend"
 
-const API_BASE_URL = process.env.PLASMO_PUBLIC_API_URL || "https://test.commentverdict.com/api/v1"
+let API_BASE_URL = process.env.PLASMO_PUBLIC_API_URL || "https://test.commentverdict.com/api/v1"
+
+// Load config on module initialization
+ConfigService.getConfig().then(config => {
+  API_BASE_URL = config.api_url
+  console.log("AuthService: Config loaded, API_BASE_URL =", API_BASE_URL)
+}).catch(err => {
+  console.warn("AuthService: Failed to load config, using environment variable", err)
+})
 
 export class AuthService {
   private static TOKEN_KEY = "focus_guard_access_token"
@@ -63,13 +72,24 @@ export class AuthService {
         chrome.storage.sync.get(keysToGet, (items) => {
           const err = chrome.runtime?.lastError
           if (err) {
+            // Check if it's an extension context invalidation error
+            const errorMsg = err.message || String(err)
+            if (errorMsg.includes("Extension context invalidated")) {
+              // Silent fail - extension was reloaded, return empty
+              return resolve({})
+            }
             console.error("Storage get error:", err)
             return reject(err)
           }
-          console.log("Storage get success for keys:", keys, "items:", items ? Object.keys(items) : "null")
           resolve(items || {})
         })
       } catch (e) {
+        // Check if it's an extension context invalidation error
+        const errorMsg = e instanceof Error ? e.message : String(e)
+        if (errorMsg.includes("Extension context invalidated")) {
+          // Silent fail - extension was reloaded, return empty
+          return resolve({})
+        }
         console.error("Storage get exception:", e)
         reject(e)
       }
@@ -132,15 +152,10 @@ export class AuthService {
 
   static async getAccessToken(): Promise<string | null> {
     try {
-      console.log("AuthService: Getting access token from storage...")
       const result = await this.storageGet([this.TOKEN_KEY])
       const token = result[this.TOKEN_KEY] || null
-      if (token) {
-        console.log("AuthService: Found access token in storage:", token.substring(0, 30) + "...")
-      } else {
+      if (!token) {
         console.log("AuthService: No access token in storage")
-        console.log("AuthService: Storage result:", result)
-        console.log("AuthService: TOKEN_KEY:", this.TOKEN_KEY)
       }
       return token
     } catch (error) {
@@ -331,6 +346,15 @@ export class AuthService {
     } catch (e) {
       console.warn("AuthService: Failed to fetch user info:", e)
       // ignore; user will be fetched lazily later
+    }
+    
+    // Notify background to start token refresh mechanism
+    try {
+      chrome.runtime.sendMessage({ type: 'START_TOKEN_REFRESH' }).catch(() => {
+        // Ignore if background isn't ready
+      })
+    } catch (e) {
+      // Ignore messaging errors
     }
 
     console.log("AuthService: login() completed successfully")

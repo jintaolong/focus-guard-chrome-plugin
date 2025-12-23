@@ -80,7 +80,7 @@ export const SidePanel = ({
         }}>
         {!isCollapsed && (
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <span style={{ fontSize: "24px" }}>🛡️</span>
+            <img src={chrome.runtime.getURL("assets/blue.png")} alt="Comment Verdict" style={{ width: "24px", height: "24px" }} />
             <h2
               style={{
                 margin: 0,
@@ -88,7 +88,7 @@ export const SidePanel = ({
                 fontWeight: "700",
                 color: COLORS.ui.text.primary
               }}>
-              Focus Guard
+              Comment Verdict
             </h2>
           </div>
         )}

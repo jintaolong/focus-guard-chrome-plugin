@@ -3,25 +3,37 @@ import { useState, useEffect } from "react"
 import { AccountInfo } from "~components/popup/AccountInfo"
 import { LoginForm } from "~components/popup/LoginForm"
 import { ToggleSwitch } from "~components/popup/ToggleSwitch"
+import { initConsole } from "~lib/console-manager"
 import { AuthService } from "~lib/auth"
 import { SubscriptionService } from "~lib/subscription"
+import { ConfigService } from "~lib/config"
 import type { UserAccount, FocusGuardSettings } from "~types/popup"
 
 import "./style.css"
 
-console.log("🚀 Focus Guard Popup: Module loaded")
+initConsole()
 
-// Portal URL (dev default -> localhost). Can be overridden with PLASMO_PUBLIC_PORTAL_URL
-const PORTAL_URL = process.env.PLASMO_PUBLIC_PORTAL_URL || "http://localhost:3000"
+console.log("🚀 Comment Verdict Popup: Module loaded")
+
+// Portal URL - will be updated from config
+let PORTAL_URL = process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"
+
+// Load config on module initialization
+ConfigService.getConfig().then(config => {
+  PORTAL_URL = config.portal_url
+  console.log("Popup: Config loaded, PORTAL_URL =", PORTAL_URL)
+}).catch(err => {
+  console.warn("Popup: Failed to load config, using environment variable", err)
+})
 
 function IndexPopup() {
-  console.log("🎯 Focus Guard Popup: Component initializing")
+  console.log("🎯 Comment Verdict Popup: Component initializing")
   const [account, setAccount] = useState<UserAccount | null>(null)
   const [settings, setSettings] = useState<FocusGuardSettings>({
     isEnabled: true,
     videoAnalysis: {
       showPreWatchPopover: true,
-      autoAnalyze: true,
+      autoAnalyze: false,
       botDetectionEnabled: true
     }
   })
@@ -29,7 +41,7 @@ function IndexPopup() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    console.log("Focus Guard popup loaded");
+    console.log("Comment Verdict popup loaded");
     // Test storage first
     AuthService.testStorage()
       .then(() => console.log("Storage test passed"))
@@ -47,10 +59,21 @@ function IndexPopup() {
       }
     }
     
+    // Listen for runtime messages (e.g., SESSION_EXPIRED from background)
+    const messageListener = (message: any) => {
+      if (message.type === 'SESSION_EXPIRED') {
+        console.log("Popup: Session expired, logging out")
+        setAccount(null)
+        setError("Your session has expired. Please log in again.")
+      }
+    }
+    
     chrome.storage.onChanged.addListener(storageListener)
+    chrome.runtime.onMessage.addListener(messageListener)
     
     return () => {
       chrome.storage.onChanged.removeListener(storageListener)
+      chrome.runtime.onMessage.removeListener(messageListener)
     }
   }, [])
 
@@ -62,6 +85,19 @@ function IndexPopup() {
       const result = await chrome.storage.sync.get(["settings"])
       if (result.settings) {
         setSettings(result.settings)
+      } else {
+        // If no settings exist, initialize defaults and save them
+        const defaultSettings: FocusGuardSettings = {
+          isEnabled: true,
+          videoAnalysis: {
+            showPreWatchPopover: true,
+            autoAnalyze: false,
+            botDetectionEnabled: true
+          }
+        }
+        setSettings(defaultSettings)
+        await chrome.storage.sync.set({ settings: defaultSettings })
+        console.log("Popup: Initialized default settings")
       }
 
       // Check if user is authenticated
@@ -103,8 +139,14 @@ function IndexPopup() {
             tier,
             dailySearchesLimit: usage.daily_searches_limit,
             searchesUsedToday: usage.daily_searches_used,
-            searchesRemaining: usage.searches_remaining
+            searchesRemaining: usage.searches_remaining,
+            calculatedRemaining: Math.max(0, usage.daily_searches_limit - usage.daily_searches_used)
           })
+
+          // Use the backend's searches_remaining value
+          // For PRO users, this will be -1 (unlimited)
+          // For FREE/STARTER, it's calculated as limit - used
+          const searchesRemaining = usage.searches_remaining
 
           const newAccount: UserAccount = {
             isLoggedIn: true,
@@ -112,7 +154,7 @@ function IndexPopup() {
             tier,
             dailySearchesLimit: usage.daily_searches_limit,
             searchesUsedToday: usage.daily_searches_used,
-            searchesRemaining: usage.searches_remaining,
+            searchesRemaining: searchesRemaining,
             resetTime: subscription.last_reset_date
           }
           console.log("📊 Popup: Setting account state:", newAccount)
@@ -141,6 +183,9 @@ function IndexPopup() {
       // Try to login first - if successful, we're done
       try {
         await AuthService.login(email, password)
+        
+        // Give storage a moment to propagate (Chrome storage API quirk)
+        await new Promise(resolve => setTimeout(resolve, 100))
       } catch (loginError) {
         // If login fails, it might be a new user, try registration
         // However, the LoginForm should handle this by having separate modes
@@ -255,8 +300,8 @@ function IndexPopup() {
             alignItems: "center",
             gap: "8px"
           }}>
-          <span>🛡️</span>
-          Focus Guard
+          <img src={chrome.runtime.getURL("assets/blue.png")} alt="Comment Verdict" style={{ width: "24px", height: "24px" }} />
+          Comment Verdict
         </h1>
       </div>
 
@@ -267,133 +312,13 @@ function IndexPopup() {
       <ToggleSwitch
         enabled={settings.isEnabled}
         onToggle={handleToggle}
-        label="Focus Guard Active"
+        label="Comment Verdict Active"
         description={
           settings.isEnabled
-            ? "YouTube feed is being filtered"
-            : "Using default YouTube experience"
+            ? "You can analyze comments on YouTube videos"
+            : "Comment Verdict is paused"
         }
       />
-
-      {/* Video Analysis Settings */}
-      {settings.isEnabled && (
-        <div
-          style={{
-            marginTop: "16px",
-            padding: "16px",
-            backgroundColor: "#f9fafb",
-            borderRadius: "10px",
-            border: "1px solid #e5e5e5"
-          }}>
-          <h3
-            style={{
-              fontSize: "13px",
-              fontWeight: "600",
-              color: "#1a1a1a",
-              marginBottom: "12px"
-            }}>
-            Analysis Preferences
-          </h3>
-          
-          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            <label
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                cursor: "pointer"
-              }}>
-              <span style={{ fontSize: "13px", color: "#4b5563" }}>
-                Show pre-watch popover
-              </span>
-              <input
-                type="checkbox"
-                checked={settings.videoAnalysis?.showPreWatchPopover ?? true}
-                onChange={async (e) => {
-                  const newSettings = {
-                    ...settings,
-                    videoAnalysis: {
-                      ...settings.videoAnalysis!,
-                      showPreWatchPopover: e.target.checked
-                    }
-                  }
-                  setSettings(newSettings)
-                  await chrome.storage.sync.set({ settings: newSettings })
-                }}
-                style={{
-                  width: "16px",
-                  height: "16px",
-                  cursor: "pointer"
-                }}
-              />
-            </label>
-
-            <label
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                cursor: "pointer"
-              }}>
-              <span style={{ fontSize: "13px", color: "#4b5563" }}>
-                Auto-analyze on page load
-              </span>
-              <input
-                type="checkbox"
-                checked={settings.videoAnalysis?.autoAnalyze ?? true}
-                onChange={async (e) => {
-                  const newSettings = {
-                    ...settings,
-                    videoAnalysis: {
-                      ...settings.videoAnalysis!,
-                      autoAnalyze: e.target.checked
-                    }
-                  }
-                  setSettings(newSettings)
-                  await chrome.storage.sync.set({ settings: newSettings })
-                }}
-                style={{
-                  width: "16px",
-                  height: "16px",
-                  cursor: "pointer"
-                }}
-              />
-            </label>
-
-            <label
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                cursor: "pointer"
-              }}>
-              <span style={{ fontSize: "13px", color: "#4b5563" }}>
-                Filter bot comments
-              </span>
-              <input
-                type="checkbox"
-                checked={settings.videoAnalysis?.botDetectionEnabled ?? true}
-                onChange={async (e) => {
-                  const newSettings = {
-                    ...settings,
-                    videoAnalysis: {
-                      ...settings.videoAnalysis!,
-                      botDetectionEnabled: e.target.checked
-                    }
-                  }
-                  setSettings(newSettings)
-                  await chrome.storage.sync.set({ settings: newSettings })
-                }}
-                style={{
-                  width: "16px",
-                  height: "16px",
-                  cursor: "pointer"
-                }}
-              />
-            </label>
-          </div>
-        </div>
-      )}
 
       {/* Footer */}
       <div

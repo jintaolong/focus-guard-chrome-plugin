@@ -101,8 +101,8 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
 
   // Calculate position based on dock
   const getPositionStyle = (): React.CSSProperties => {
-    // Use error color for error state, neutral for idle/analyzing, verdict color for complete
-    const bgColor = errorMessage ? COLORS.low.primary : 
+    // Use amber (medium) color for error state (milder than red), neutral for idle/analyzing, verdict color for complete
+    const bgColor = errorMessage ? COLORS.medium.primary : 
                     state === "complete" ? COLORS[verdictColor].primary : 
                     COLORS.neutral.primary
     
@@ -182,6 +182,15 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
       // Show different text based on cache status
       const buttonText = isCached === false ? "Generate Report" : "Analyze Comments"
       
+      // Get icon URL safely - handle extension context invalidation
+      let iconUrl: string | null = null
+      try {
+        iconUrl = chrome.runtime.getURL("assets/blue.png")
+      } catch (error) {
+        // Extension context invalidated - will show emoji instead
+        console.warn("ToggleButton: Extension context invalidated, using emoji fallback")
+      }
+      
       return (
         <div style={{ 
           display: "flex", 
@@ -192,7 +201,11 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
           textAlign: "center",
           padding: "4px 0"
         }}>
-          <span style={{ fontSize: "20px" }}>🛡️</span>
+          {iconUrl ? (
+            <img src={iconUrl} alt="Comment Verdict" style={{ width: "20px", height: "20px" }} />
+          ) : (
+            <span style={{ fontSize: "20px" }}>🛡️</span>
+          )}
           <span style={{ 
             fontSize: "13px", 
             fontWeight: "700",

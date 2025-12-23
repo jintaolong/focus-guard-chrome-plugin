@@ -1,15 +1,19 @@
 {
-  "name": "focus-guard-chrome-plugin",
-  "displayName": "Focus Guard",
+  "name": "comment-verdict-chrome-plugin",
+  "displayName": "Comment Verdict",
   "version": "0.0.1",
   "description": "A Chrome extension built with Plasmo, React, and Manifest V3",
   "author": "Your Name",
   "scripts": {
     "dev": "plasmo dev",
-    "dev:debug": "cross-env FOCUS_GUARD_DEBUG=1 plasmo dev",
-    "debug": "cross-env FOCUS_GUARD_DEBUG=1 plasmo dev",
-    "build": "plasmo build",
-    "package": "plasmo package"
+    "dev:debug": "cross-env COMMENT_VERDICT_DEBUG=1 plasmo dev",
+    "debug": "cross-env COMMENT_VERDICT_DEBUG=1 plasmo dev",
+    "build": "node scripts/swap-portal-sync.js dev && plasmo build",
+    "build:prod": "node scripts/swap-portal-sync.js prod && cross-env NODE_ENV=production COMMENT_VERDICT_DEBUG=0 plasmo build --tag=prod --target=chrome-mv3 && node scripts/swap-portal-sync.js dev",
+    "build:dev": "node scripts/swap-portal-sync.js dev && cross-env NODE_ENV=development COMMENT_VERDICT_DEBUG=1 plasmo build --tag=dev --target=chrome-mv3",
+    "package": "plasmo package",
+    "package:prod": "node scripts/swap-portal-sync.js prod && cross-env NODE_ENV=production COMMENT_VERDICT_DEBUG=0 plasmo build --tag=prod --zip && node scripts/swap-portal-sync.js dev",
+    "test": "echo 'No tests configured yet' && exit 0"
   },
   "dependencies": {
     "plasmo": "^0.89.3",
@@ -33,12 +37,30 @@
   },
   "manifest": {
     "host_permissions": [
-      "https://*/*",
-      "http://localhost:3000/*"
+      "https://*.youtube.com/*",
+      "https://youtube.com/*",
+      "https://youtu.be/*",
+      "https://*.commentverdict.com/*",
+      "https://commentverdict.com/*",
+      "https://focus-guard.github.io/*"
     ],
     "permissions": [
       "storage",
       "tabs"
+    ],
+    "web_accessible_resources": [
+      {
+        "resources": [
+          "assets/*.png"
+        ],
+        "matches": [
+          "https://*.youtube.com/*",
+          "https://youtube.com/*",
+          "https://youtu.be/*",
+          "https://*.commentverdict.com/*",
+          "https://commentverdict.com/*"
+        ]
+      }
     ]
   }
 }

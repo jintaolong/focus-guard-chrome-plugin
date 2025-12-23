@@ -105,10 +105,9 @@ export const LoginForm = ({ onLogin, isLoading }: LoginFormProps) => {
             borderRadius: "12px",
             display: "flex",
             alignItems: "center",
-            justifyContent: "center",
-            fontSize: "24px"
+            justifyContent: "center"
           }}>
-          🛡️
+          <img src={chrome.runtime.getURL("assets/stroke.png")} alt="Comment Verdict" style={{ width: "32px", height: "32px" }} />
         </div>
         <h2
           style={{
@@ -122,7 +121,7 @@ export const LoginForm = ({ onLogin, isLoading }: LoginFormProps) => {
         <p style={{ fontSize: "14px", color: "#666" }}>
           {mode === "login" 
             ? "Sign in to continue" 
-            : "Join Focus Guard to start curating your YouTube experience"}
+            : "Join Comment Verdict to analyze YouTube video comments"}
         </p>
       </div>
 

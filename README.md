@@ -1,6 +1,6 @@
-# Focus Guard Chrome Extension
+# Comment Verdict Chrome Extension
 
-A Chrome extension built with **Plasmo**, **React**, and **Manifest V3**.
+A Chrome extension for analyzing YouTube video comments, built with **Plasmo**, **React**, and **Manifest V3**.
 
 ## 🚀 Getting Started
 

@@ -2,17 +2,49 @@
 // Content scripts cannot make cross-origin requests due to CORS.
 // All API calls must go through the background worker.
 
+import { initConsole } from "~lib/console-manager"
+import { ConfigService } from "~lib/config"
+
+initConsole()
+
 export {}
 
-const API_BASE_URL = process.env.PLASMO_PUBLIC_API_URL || "https://test.commentverdict.com/api/v1"
-const WEB_PORTAL_URL = process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"
+// Configuration loaded from remote or environment variables
+let API_BASE_URL = process.env.PLASMO_PUBLIC_API_URL || "https://test.commentverdict.com/api/v1"
+let WEB_PORTAL_URL = process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"
 
 // Track OAuth flow
 let oauthTabId: number | null = null
 let oauthState: string | null = null
 
+// Proactive token refresh - refresh token every 8 minutes to prevent expiration
+const TOKEN_REFRESH_INTERVAL_MS = 8 * 60 * 1000 // 8 minutes
+const MIN_TIME_BETWEEN_REFRESHES_MS = 60 * 1000 // Don't refresh more than once per minute
+let tokenRefreshAlarm: NodeJS.Timeout | null = null
+let lastTokenRefreshTime = 0
+let isRefreshing = false
+
+// Initialize configuration on startup
+ConfigService.getConfig().then(config => {
+  API_BASE_URL = config.api_url
+  WEB_PORTAL_URL = config.portal_url
+  console.log("Background: Config loaded", { API_BASE_URL, WEB_PORTAL_URL })
+}).catch(err => {
+  console.warn("Background: Failed to load remote config, using environment variables", err)
+})
+
 chrome.runtime.onInstalled.addListener(() => {
-  console.log("Focus Guard extension installed!")
+  console.log("Comment Verdict extension installed!")
+  // Refresh config on install/update
+  ConfigService.refreshConfig().catch(err => console.warn("Failed to refresh config on install", err))
+  // Start token refresh mechanism
+  startTokenRefreshMechanism()
+})
+
+// Start on extension load/reload
+chrome.runtime.onStartup.addListener(() => {
+  console.log("Comment Verdict extension started!")
+  startTokenRefreshMechanism()
 })
 
 // Watch storage changes and push tokens to portal when updated
@@ -99,7 +131,12 @@ async function makeAPIRequest(endpoint: string, options: any = {}) {
     const contentType = response.headers.get('content-type')
     
     // Check if response is a blob (for report downloads)
-    if (contentType && (contentType.includes('application/pdf') || contentType.includes('application/octet-stream'))) {
+    // Include text/plain for TXT reports
+    if (contentType && (
+        contentType.includes('application/pdf') || 
+        contentType.includes('application/octet-stream') ||
+        (contentType.includes('text/plain') && endpoint.includes('generate-report'))
+      )) {
       const blob = await response.blob()
       // Convert blob to base64 for message passing
       const base64 = await blobToBase64(blob)
@@ -140,15 +177,13 @@ function blobToBase64(blob: Blob): Promise<string> {
 async function syncTokensToPortal(accessToken: string | null, refreshToken: string | null) {
   try {
     console.log('Background: syncing tokens to portal tabs')
-    const urlPatterns = [
-      `${WEB_PORTAL_URL}/*`,
-      'http://localhost:3000/*',
-      'https://app.focus-guard.com/*'
-    ]
-
-    // Query all tabs and filter by matching origin
+    
+    // Query all tabs and filter by portal URL
     const tabs = await chrome.tabs.query({})
-    const portalTabs = tabs.filter(t => t.url && (t.url.startsWith(WEB_PORTAL_URL) || t.url.startsWith('http://localhost:3000') || t.url.startsWith('https://app.focus-guard.com')))
+    const portalTabs = tabs.filter(t => {
+      if (!t.url) return false
+      return t.url.startsWith(WEB_PORTAL_URL) || t.url.startsWith('http://localhost:3000')
+    })
 
     portalTabs.forEach(tab => {
       if (!tab.id) return
@@ -194,6 +229,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         sendResponse({ success: true, tabId: tab.id })
       }
     })
+    return true
+  }
+  
+  // Handle token refresh trigger (from login or other events)
+  if (request.type === 'START_TOKEN_REFRESH') {
+    console.log("Background: Received START_TOKEN_REFRESH request")
+    startTokenRefreshMechanism()
+    sendResponse({ success: true })
     return true
   }
   
@@ -377,6 +420,9 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
             }).catch(err => {
               console.log("Background: No receivers for OAUTH_COMPLETE (popup may be closed)")
             })
+            
+            // Start token refresh mechanism after successful OAuth login
+            startTokenRefreshMechanism()
           }
         })
         
@@ -391,3 +437,121 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     }
   }
 })
+
+// ============================================================================
+// Proactive Token Refresh Mechanism
+// ============================================================================
+
+/**
+ * Start periodic token refresh to prevent token expiration
+ * Tokens typically expire after 15-30 minutes, so we refresh every 8 minutes
+ */
+function startTokenRefreshMechanism() {
+  console.log("Background: startTokenRefreshMechanism called")
+  
+  // If already running, don't start another one
+  if (tokenRefreshAlarm) {
+    console.log("Background: Token refresh mechanism already running, skipping")
+    return
+  }
+  
+  console.log("Background: Starting token refresh mechanism")
+  
+  // Check immediately on start (but respect minimum time between refreshes)
+  const timeSinceLastRefresh = Date.now() - lastTokenRefreshTime
+  if (timeSinceLastRefresh >= MIN_TIME_BETWEEN_REFRESHES_MS) {
+    refreshTokenIfNeeded()
+  } else {
+    console.log(`Background: Skipping immediate refresh, last refresh was ${Math.round(timeSinceLastRefresh / 1000)}s ago`)
+  }
+  
+  // Then check periodically
+  tokenRefreshAlarm = setInterval(() => {
+    refreshTokenIfNeeded()
+  }, TOKEN_REFRESH_INTERVAL_MS)
+}
+
+/**
+ * Check if user is logged in and refresh token if needed
+ */
+async function refreshTokenIfNeeded() {
+  // Prevent concurrent refreshes
+  if (isRefreshing) {
+    console.log("Background: Token refresh already in progress, skipping")
+    return
+  }
+  
+  try {
+    isRefreshing = true
+    
+    // Check if we have tokens
+    const result = await chrome.storage.sync.get(['focus_guard_access_token', 'focus_guard_refresh_token'])
+    const hasAccessToken = !!result.focus_guard_access_token
+    const hasRefreshToken = !!result.focus_guard_refresh_token
+    
+    if (!hasAccessToken || !hasRefreshToken) {
+      console.log("Background: No tokens found, skipping refresh")
+      return
+    }
+    
+    console.log("Background: Proactively refreshing access token...")
+    
+    // Call the refresh endpoint
+    const refreshToken = result.focus_guard_refresh_token
+    const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ refresh_token: refreshToken })
+    })
+    
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: response.statusText }))
+      console.error("Background: Token refresh failed:", error)
+      
+      // If refresh token is invalid, clear tokens and log out
+      if (response.status === 401 || response.status === 403) {
+        console.log("Background: Refresh token invalid, clearing tokens")
+        await chrome.storage.sync.remove(['focus_guard_access_token', 'focus_guard_refresh_token', 'focus_guard_user', 'account'])
+        
+        // Stop the refresh mechanism
+        if (tokenRefreshAlarm) {
+          clearInterval(tokenRefreshAlarm)
+          tokenRefreshAlarm = null
+        }
+        
+        // Notify UI that session expired
+        chrome.runtime.sendMessage({
+          type: 'SESSION_EXPIRED'
+        }).catch(() => {
+          // Ignore if no receivers
+        })
+      }
+      return
+    }
+    
+    const token = await response.json()
+    console.log("Background: Token refreshed successfully")
+    
+    // Update last refresh time
+    lastTokenRefreshTime = Date.now()
+    
+    // Store new tokens
+    await chrome.storage.sync.set({
+      focus_guard_access_token: token.access_token,
+      focus_guard_refresh_token: token.refresh_token
+    })
+    
+    // Sync to portal tabs
+    await syncTokensToPortal(token.access_token, token.refresh_token)
+    
+  } catch (error) {
+    console.error("Background: Error in token refresh:", error)
+  } finally {
+    isRefreshing = false
+  }
+}
+
+// Start token refresh on initial load (for extension reload)
+startTokenRefreshMechanism()

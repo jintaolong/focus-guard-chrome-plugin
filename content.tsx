@@ -7,6 +7,7 @@ import { SearchInterface } from "~components/SearchInterface"
 import { ToggleButton } from "~components/ToggleButton"
 import { SidePanel } from "~components/SidePanel"
 import { PreWatchPopover } from "~components/PreWatchPopover"
+import { initConsole } from "~lib/console-manager"
 import { FocusGuardAPI } from "~lib/api"
 import { AuthService } from "~lib/auth"
 import { SubscriptionService } from "~lib/subscription"
@@ -18,6 +19,8 @@ import type {
   AnalysisHistoryItem
 } from "~types/analysis"
 import type { FocusGuardSettings } from "~types/popup"
+
+initConsole()
 
 // Configure content-script matches. Use a static literal so Plasmo can
 // generate a valid manifest. During development we accept broader matches
@@ -67,9 +70,9 @@ function isWatchPage(): boolean {
 
 // Debug mode: enable extended injection on any YouTube page when set.
 // Read debug flag from environment at build time (set by `dev:debug` script).
-// Use a direct `process.env.FOCUS_GUARD_DEBUG` access so the bundler can
+// Use a direct `process.env.COMMENT_VERDICT_DEBUG` access so the bundler can
 // statically replace the value during the build (avoid optional chaining).
-const BUILD_DEBUG = (process.env.FOCUS_GUARD_DEBUG === "1" || process.env.FOCUS_GUARD_DEBUG === "true")
+const BUILD_DEBUG = (process.env.COMMENT_VERDICT_DEBUG === "1" || process.env.COMMENT_VERDICT_DEBUG === "true")
 
 // Runtime debug fallback: allow enabling debug via URL param or
 // `localStorage.focusGuard.debug = '1'` so you can toggle on-the-fly
@@ -130,11 +133,11 @@ const ContentScript = () => {
 
   useEffect(() => {
     // Check if we're on YouTube home page or watch page
-    console.log("Focus Guard content script loaded");
+    console.log("Comment Verdict content script loaded");
     // Print build-time debug flag so we can confirm whether the bundle
-    // was built with `FOCUS_GUARD_DEBUG=1`.
-    console.log("Focus Guard BUILD_DEBUG=", BUILD_DEBUG)
-    console.log("Focus Guard RUNTIME_DEBUG=", RUNTIME_DEBUG, "DEBUG=", DEBUG)
+    // was built with `COMMENT_VERDICT_DEBUG=1`.
+    console.log("Comment Verdict BUILD_DEBUG=", BUILD_DEBUG)
+    console.log("Comment Verdict RUNTIME_DEBUG=", RUNTIME_DEBUG, "DEBUG=", DEBUG)
     
     // Load user stats and analysis history
     loadUserStats()
@@ -146,34 +149,42 @@ const ContentScript = () => {
         window.location.pathname === "/feed/subscriptions" ||
         window.location.pathname === "/feed/trending"
 
-      // Respect debug mode: if enabled via build-time flag, runtime localStorage,
-      // or URL param, treat any YouTube domain page as a watch page so the UI can
-      // be inspected on non-watch paths during development.
+      // Only show UI on actual watch pages in production
+      // In debug mode, allow showing UI on other YouTube pages for testing
       const debug = DEBUG && isYouTubeDomain()
-      // When debug is enabled, treat YouTube domain pages (including Home)
-      // as watch pages so the UI can be inspected. This makes it easy to
-      // view chips and the side panel on the Home feed during development.
-      const isWatch = isWatchPage() || debug || (DEBUG && isHome)
+      const isWatch = DEBUG ? (isWatchPage() || debug || isHome) : isWatchPage()
 
       setIsYouTubeHome(isHome)
       setOnWatchPage(isWatch)
-      console.log("Focus Guard checkPageType: isHome=", isHome, "isWatch=", isWatch, "debug=", debug, "href=", window.location.href)
+      console.log("Comment Verdict checkPageType: isHome=", isHome, "isWatch=", isWatch, "debug=", debug, "href=", window.location.href)
 
       // FR-202: Auto-activate analysis on watch page
       if (isWatch) {
         const videoId = getVideoIdFromUrl(window.location.href)
-        console.log("Focus Guard: detected videoId=", videoId, "currentVideoIdRef=", currentVideoIdRef.current)
+        console.log("Comment Verdict: detected videoId=", videoId, "currentVideoIdRef=", currentVideoIdRef.current)
         if (videoId && videoId !== currentVideoIdRef.current) {
-          console.log("Focus Guard: NEW VIDEO detected, resetting state")
+          console.log("Comment Verdict: NEW VIDEO detected, resetting state")
           currentVideoIdRef.current = videoId
           setCurrentVideoId(videoId)
-          // Don't auto-analyze; wait for user to click the button
-          setAnalysisState("idle")
-          setVideoAnalysis(null)
-          setAnalysisStatus(null)
-          setAnalysisError(null)
-          setIsCached(null)
-          setCurrentJobId(null)
+          // Check if auto-analyze is enabled
+          const shouldAutoAnalyze = settings?.videoAnalysis?.autoAnalyze ?? false
+          if (shouldAutoAnalyze) {
+            console.log("Comment Verdict: Auto-analyze enabled, starting analysis")
+            // Start analysis automatically
+            try {
+              checkCacheAndPrefetch(videoId)
+            } catch (e) {
+              console.error("Comment Verdict: Auto-analysis failed", e)
+            }
+          } else {
+            // Don't auto-analyze; wait for user to click the button
+            setAnalysisState("idle")
+            setVideoAnalysis(null)
+            setAnalysisStatus(null)
+            setAnalysisError(null)
+            setIsCached(null)
+            setCurrentJobId(null)
+          }
           // A new page is assumed to be unanalyzed for development. Reset
           // the pre-watch dismissed flag so the popover appears after
           // analysis completes on this new page.
@@ -244,7 +255,7 @@ const ContentScript = () => {
       const currentUrl = window.location.href
       const currentVidId = getVideoIdFromUrl(currentUrl)
       if (currentVidId && currentVidId !== currentVideoIdRef.current) {
-        console.log("Focus Guard: URL polling detected new video")
+        console.log("Comment Verdict: URL polling detected new video")
         checkPageType()
       }
     }, 500)
@@ -271,7 +282,7 @@ const ContentScript = () => {
         }
         // Reload user data when auth tokens change (user logs in/out)
         if (changes.focus_guard_access_token || changes.focus_guard_user) {
-          console.log("Focus Guard: Auth state changed, reloading user data")
+          console.log("Comment Verdict: Auth state changed, reloading user data")
           loadUserStats()
           loadAnalysisHistory()
         }
@@ -314,7 +325,7 @@ const ContentScript = () => {
       // Check if authenticated first
       const isAuth = await AuthService.isAuthenticated()
       if (!isAuth) {
-        console.log("Focus Guard: User not authenticated, skipping stats load")
+        console.log("Comment Verdict: User not authenticated, skipping stats load")
         setUserStats(null)
         return
       }
@@ -322,7 +333,7 @@ const ContentScript = () => {
       const stats = await FocusGuardAPI.getUserStats()
       setUserStats(stats)
     } catch (error) {
-      console.log("Focus Guard: Failed to load user stats (user may not be logged in):", (error as any)?.message || String(error))
+      console.log("Comment Verdict: Failed to load user stats (user may not be logged in):", (error as any)?.message || String(error))
       // Set null if not authenticated
       setUserStats(null)
     }
@@ -333,7 +344,7 @@ const ContentScript = () => {
       // Check if authenticated first
       const isAuth = await AuthService.isAuthenticated()
       if (!isAuth) {
-        console.log("Focus Guard: User not authenticated, skipping history load")
+        console.log("Comment Verdict: User not authenticated, skipping history load")
         setAnalysisHistory([])
         return
       }
@@ -341,7 +352,7 @@ const ContentScript = () => {
       const response = await FocusGuardAPI.getAnalysisHistory()
       setAnalysisHistory(response.history)
     } catch (error) {
-      console.log("Focus Guard: Failed to load analysis history (user may not be logged in):", (error as any)?.message || String(error))
+      console.log("Comment Verdict: Failed to load analysis history (user may not be logged in):", (error as any)?.message || String(error))
       setAnalysisHistory([])
     }
   }
@@ -374,7 +385,7 @@ const ContentScript = () => {
       }
       return null
     } catch (error) {
-      console.log("Focus Guard: Failed to get subscription tier:", error)
+      console.log("Comment Verdict: Failed to get subscription tier:", error)
       // Default to showing restriction if we can't determine tier
       return {
         code: 'TIER_RESTRICTION' as const,
@@ -390,9 +401,9 @@ const ContentScript = () => {
   const checkCacheAndPrefetch = async (videoId: string) => {
     setIsCheckingCache(true)
     try {
-      console.log("Focus Guard: checking cache on landing for video", videoId)
+      console.log("Comment Verdict: checking cache on landing for video", videoId)
       const cacheStatus = await FocusGuardAPI.getCacheStatus(videoId)
-      console.log("Focus Guard: cache status on landing:", cacheStatus)
+      console.log("Comment Verdict: cache status on landing:", cacheStatus)
       setIsCached(cacheStatus.cached)
 
       if (!cacheStatus.cached) {
@@ -406,7 +417,7 @@ const ContentScript = () => {
 
       // Cached - fetch relevancy and additional data for quick display
       try {
-        console.log("Focus Guard: Fetching analysis data for cached video...")
+        console.log("Comment Verdict: Fetching analysis data for cached video...")
         // Fetch all analysis components in parallel
         const results = await Promise.allSettled([
           FocusGuardAPI.analyzeRelevancyV2(videoId, false),
@@ -436,7 +447,7 @@ const ContentScript = () => {
         results.forEach((result, idx) => {
           if (result.status === 'rejected') {
             const endpoints = ['relevancy', 'sentiment', 'summary', 'credibility', 'humanLikeness', 'topicClusters', 'topicGaps']
-            console.error(`Focus Guard: failed to fetch ${endpoints[idx]}:`, result.reason)
+            console.error(`Comment Verdict: failed to fetch ${endpoints[idx]}:`, result.reason)
             
             // Check if error contains tier restriction
             const error = result.reason
@@ -444,7 +455,7 @@ const ContentScript = () => {
               // Check multiple possible error structures
               const detail = error.detail || (error.response && error.response.detail)
               if (detail && detail.code === 'TIER_RESTRICTION') {
-                console.log(`Focus Guard: Tier restriction detected for ${endpoints[idx]}:`, detail)
+                console.log(`Comment Verdict: Tier restriction detected for ${endpoints[idx]}:`, detail)
                 if (idx === 1) sentimentTierRestriction = detail
                 if (idx === 5) topicClustersTierRestriction = detail
                 if (idx === 6) topicGapsTierRestriction = detail
@@ -453,24 +464,24 @@ const ContentScript = () => {
           }
         })
         
-        console.log("Focus Guard: Relevancy data on landing:", relevancyData)
-        console.log("Focus Guard: Sentiment data on landing:", sentimentData)
-        console.log("Focus Guard: Summary data on landing:", summaryData)
-        console.log("Focus Guard: Credibility data on landing:", credibilityData)
-        console.log("Focus Guard: Human Likeness data on landing:", humanLikenessData)
-        console.log("Focus Guard: Topic Clusters data on landing:", topicClustersData)
-        console.log("Focus Guard: Topic Gaps data on landing:", topicGapsData)
+        console.log("Comment Verdict: Relevancy data on landing:", relevancyData)
+        console.log("Comment Verdict: Sentiment data on landing:", sentimentData)
+        console.log("Comment Verdict: Summary data on landing:", summaryData)
+        console.log("Comment Verdict: Credibility data on landing:", credibilityData)
+        console.log("Comment Verdict: Human Likeness data on landing:", humanLikenessData)
+        console.log("Comment Verdict: Topic Clusters data on landing:", topicClustersData)
+        console.log("Comment Verdict: Topic Gaps data on landing:", topicGapsData)
         
         const verdictRaw = (relevancyData?.data.verdict || "UNKNOWN").toUpperCase()
         const confidenceRaw = typeof relevancyData?.data.confidence_score === "number" ? relevancyData.data.confidence_score : 0
-        console.log("Focus Guard: Raw confidence:", confidenceRaw)
+        console.log("Comment Verdict: Raw confidence:", confidenceRaw)
         
         const confidenceNorm = normalizeConfidence(confidenceRaw)
-        console.log("Focus Guard: Normalized confidence:", confidenceNorm)
+        console.log("Comment Verdict: Normalized confidence:", confidenceNorm)
         
         const confidencePercent = Math.round(confidenceNorm * 100)
         const trustScoreNormalized = Math.round(confidenceNorm * 10 * 10) / 10
-        console.log("Focus Guard: Final trustScore:", trustScoreNormalized, "verdict:", verdictRaw)
+        console.log("Comment Verdict: Final trustScore:", trustScoreNormalized, "verdict:", verdictRaw)
 
         setAnalysisStatus({
           trustScore: trustScoreNormalized,
@@ -554,7 +565,7 @@ const ContentScript = () => {
             isExpanded: false
           })) || []
 
-        console.log("Focus Guard: Setting video analysis with tier restrictions:", {
+        console.log("Comment Verdict: Setting video analysis with tier restrictions:", {
           sentiment: sentimentTierRestriction,
           viewerInsights: topicClustersTierRestriction,
           contentGaps: topicGapsTierRestriction
@@ -562,6 +573,49 @@ const ContentScript = () => {
 
         // Check report tier restriction
         const reportTierRestriction = await getReportTierRestriction()
+        
+        // Get user tier and enforce tier restrictions on frontend
+        const subscription = await SubscriptionService.getSubscription()
+        const userTier = subscription.tier?.toLowerCase() || 'free'
+        const dashboardUrl = `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
+        
+        // Enforce tier restrictions based on feature access rules:
+        // - Comment Sentiment: Starter+ (block for Free)
+        // - Viewer Insights: Pro only (block for Free and Starter)
+        // - Content Gaps: Pro only (block for Free and Starter)
+        
+        // Block sentiment for free users only (Starter+ can access)
+        if (userTier === 'free' && !sentimentTierRestriction) {
+          sentimentTierRestriction = {
+            code: 'TIER_RESTRICTION' as const,
+            required_tier: 'starter' as const,
+            current_tier: userTier,
+            message: 'Comment Sentiment analysis requires a Starter subscription.',
+            upgrade_url: dashboardUrl
+          }
+        }
+        
+        // Block viewer insights for non-Pro users (Pro only)
+        if (userTier !== 'pro' && !topicClustersTierRestriction) {
+          topicClustersTierRestriction = {
+            code: 'TIER_RESTRICTION' as const,
+            required_tier: 'pro' as const,
+            current_tier: userTier,
+            message: 'Viewer Insights are available for Pro users only.',
+            upgrade_url: dashboardUrl
+          }
+        }
+        
+        // Block content gaps for non-Pro users (Pro only)
+        if (userTier !== 'pro' && !topicGapsTierRestriction) {
+          topicGapsTierRestriction = {
+            code: 'TIER_RESTRICTION' as const,
+            required_tier: 'pro' as const,
+            current_tier: userTier,
+            message: 'Content Gaps analysis is available for Pro users only.',
+            upgrade_url: dashboardUrl
+          }
+        }
 
         setVideoAnalysis({
           summary: minimalSummary,
@@ -623,14 +677,14 @@ const ContentScript = () => {
         setAnalysisState("complete")
         setIsCheckingCache(false)
       } catch (err) {
-        console.warn("Focus Guard: failed to fetch relevancy on landing:", (err as any)?.message || String(err))
+        console.warn("Comment Verdict: failed to fetch relevancy on landing:", (err as any)?.message || String(err))
         setAnalysisState("idle")
         setAnalysisStatus(null)
         setVideoAnalysis(null)
         setIsCheckingCache(false)
       }
     } catch (error) {
-      console.log("Focus Guard: cache check failed on landing (likely unauthenticated):", (error as any)?.message || String(error))
+      console.log("Comment Verdict: cache check failed on landing (likely unauthenticated):", (error as any)?.message || String(error))
       setIsCached(false)
       setAnalysisState("idle")
       setAnalysisStatus(null)
@@ -760,19 +814,19 @@ const ContentScript = () => {
       // Map relevancy verdict and confidence to our analysis status
       const verdictRaw = (relevancyData.data.verdict || "UNKNOWN").toUpperCase()
       const confidenceRaw = typeof relevancyData.data.confidence_score === "number" ? relevancyData.data.confidence_score : 0
-      console.log("Focus Guard: Raw confidence from API:", confidenceRaw)
+      console.log("Comment Verdict: Raw confidence from API:", confidenceRaw)
       const confidenceNorm = normalizeConfidence(confidenceRaw)
-      console.log("Focus Guard: Normalized confidence:", confidenceNorm)
+      console.log("Comment Verdict: Normalized confidence:", confidenceNorm)
 
       // Normalize confidence: convert to percent and 0-10 trust score.
       const confidencePercent = Math.round(confidenceNorm * 100)
       const trustScoreNormalized = Math.round(confidenceNorm * 10 * 10) / 10 // 0-10, one decimal
-      console.log("Focus Guard: Final trustScore for analysisStatus:", trustScoreNormalized, "confidencePercent:", confidencePercent)
+      console.log("Comment Verdict: Final trustScore for analysisStatus:", trustScoreNormalized, "confidencePercent:", confidencePercent)
 
       // Fetch additional analysis data for full report (only if we haven't already fetched it)
       // NOTE: Excluding human-likeness from general flow - will be loaded on-demand for advanced features
       if (!sentimentData || !summaryData || !credibilityData || !topicClustersData || !topicGapsData) {
-        console.log("Focus Guard: Fetching remaining analysis data for video:", videoId)
+        console.log("Comment Verdict: Fetching remaining analysis data for video:", videoId)
         const remainingFetchStart = Date.now()
         // Fetch data in parallel with resilient error handling (excluding human-likeness)
         const remainingResults = await Promise.allSettled([
@@ -823,22 +877,22 @@ const ContentScript = () => {
       }
       
       if (sentimentData) {
-        console.log("Focus Guard: Sentiment data received:", sentimentData)
+        console.log("Comment Verdict: Sentiment data received:", sentimentData)
       }
       if (summaryData) {
-        console.log("Focus Guard: Summary data received:", summaryData)
+        console.log("Comment Verdict: Summary data received:", summaryData)
       }
       if (credibilityData) {
-        console.log("Focus Guard: Credibility data received:", credibilityData)
+        console.log("Comment Verdict: Credibility data received:", credibilityData)
       }
       if (humanLikenessData) {
-        console.log("Focus Guard: Human Likeness data received:", humanLikenessData)
+        console.log("Comment Verdict: Human Likeness data received:", humanLikenessData)
       }
       if (topicClustersData) {
-        console.log("Focus Guard: Topic Clusters data received:", topicClustersData)
+        console.log("Comment Verdict: Topic Clusters data received:", topicClustersData)
       }
       if (topicGapsData) {
-        console.log("Focus Guard: Topic Gaps data received:", topicGapsData)
+        console.log("Comment Verdict: Topic Gaps data received:", topicGapsData)
       }
       
       // Extract counts from nested structure (if sentiment data exists)
@@ -847,7 +901,7 @@ const ContentScript = () => {
       const negativeCount = sentimentData ? (typeof sentimentData.data.negative === 'number' ? sentimentData.data.negative : (sentimentData.data.negative?.count ?? 0)) : 0
       const totalComments = sentimentData?.data.total_comments ?? (positiveCount + neutralCount + negativeCount)
       
-      console.log("Focus Guard: Sentiment counts:", {
+      console.log("Comment Verdict: Sentiment counts:", {
         positive: positiveCount,
         neutral: neutralCount,
         negative: negativeCount,
@@ -939,6 +993,49 @@ const ContentScript = () => {
 
       // Check report tier restriction
       const reportTierRestriction = await getReportTierRestriction()
+      
+      // Get user tier and enforce tier restrictions on frontend
+      const subscription = await SubscriptionService.getSubscription()
+      const userTier = subscription.tier?.toLowerCase() || 'free'
+      const dashboardUrl = `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
+      
+      // Enforce tier restrictions based on feature access rules:
+      // - Comment Sentiment: Starter+ (block for Free)
+      // - Viewer Insights: Pro only (block for Free and Starter)
+      // - Content Gaps: Pro only (block for Free and Starter)
+      
+      // Block sentiment for free users only (Starter+ can access)
+      if (userTier === 'free' && !sentimentTierRestriction) {
+        sentimentTierRestriction = {
+          code: 'TIER_RESTRICTION' as const,
+          required_tier: 'starter' as const,
+          current_tier: userTier,
+          message: 'Comment Sentiment analysis requires a Starter subscription.',
+          upgrade_url: dashboardUrl
+        }
+      }
+      
+      // Block viewer insights for non-Pro users (Pro only)
+      if (userTier !== 'pro' && !topicClustersTierRestriction) {
+        topicClustersTierRestriction = {
+          code: 'TIER_RESTRICTION' as const,
+          required_tier: 'pro' as const,
+          current_tier: userTier,
+          message: 'Viewer Insights are available for Pro users only.',
+          upgrade_url: dashboardUrl
+        }
+      }
+      
+      // Block content gaps for non-Pro users (Pro only)
+      if (userTier !== 'pro' && !topicGapsTierRestriction) {
+        topicGapsTierRestriction = {
+          code: 'TIER_RESTRICTION' as const,
+          required_tier: 'pro' as const,
+          current_tier: userTier,
+          message: 'Content Gaps analysis is available for Pro users only.',
+          upgrade_url: dashboardUrl
+        }
+      }
 
       setVideoAnalysis({
         // Legacy shape support
@@ -1009,7 +1106,29 @@ const ContentScript = () => {
       setShowPreWatchPopover(true)
     } catch (error) {
       console.error("Video analysis failed:", error)
-      const errorMessage = error instanceof Error ? error.message : "Analysis failed"
+      
+      // Simplify error messages for common cases
+      let errorMessage = "Analysis failed"
+      if (error instanceof Error) {
+        const msg = error.message.toLowerCase()
+        if (msg.includes("daily limit") || msg.includes("rate limit") || msg.includes("quota") || msg.includes("429")) {
+          // Check user tier for custom message
+          try {
+            const subscription = await SubscriptionService.getSubscription()
+            const userTier = subscription.tier?.toLowerCase() || 'free'
+            errorMessage = userTier === 'pro' ? "Quota will be reset soon" : "Daily limit reached"
+          } catch {
+            errorMessage = "Daily limit reached"
+          }
+        } else if (msg.includes("auth") || msg.includes("login") || msg.includes("401")) {
+          errorMessage = "Please log in"
+        } else if (msg.includes("network") || msg.includes("connection")) {
+          errorMessage = "Network error"
+        } else {
+          errorMessage = error.message
+        }
+      }
+      
       setAnalysisError(errorMessage)
       setAnalysisState("idle") // Return to idle so user can retry
       setCurrentJobId(null)
@@ -1095,7 +1214,8 @@ const ContentScript = () => {
   }
 
   // FR-102: Render Side Panel on watch page
-  if (onWatchPage) {
+  // Only render if Comment Verdict is enabled
+  if (onWatchPage && settings?.isEnabled) {
     return (
       <>
         {/* FR-101: Pre-Watch Popover */}
@@ -1122,7 +1242,7 @@ const ContentScript = () => {
         {/* New ToggleButton - visible when panel is closed */}
         {!isSidePanelOpen && (
           // Debug: log props sent to ToggleButton to verify shapes at runtime
-          console.log("Focus Guard: Toggle props", { analysisState, analysisStatus, videoAnalysisSummary: videoAnalysis?.summary, isCached, analysisError }),
+          console.log("Comment Verdict: Toggle props", { analysisState, analysisStatus, videoAnalysisSummary: videoAnalysis?.summary, isCached, analysisError }),
           <ToggleButton
             trustScore={analysisStatus?.trustScore}
             verdict={analysisStatus?.clickbaitVerdict}

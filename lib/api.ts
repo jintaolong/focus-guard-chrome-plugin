@@ -1,5 +1,6 @@
 import { AuthService } from "./auth"
 import { SubscriptionService } from "./subscription"
+import { ConfigService } from "./config"
 import type { SearchRequest, SearchResponse, UserStats } from "~types"
 import type {
   VideoAnalysisRequest,
@@ -33,7 +34,15 @@ import type {
   JobStatus
 } from "~types/backend"
 
-const API_BASE_URL = process.env.PLASMO_PUBLIC_API_URL || "https://test.commentverdict.com/api/v1"
+let API_BASE_URL = process.env.PLASMO_PUBLIC_API_URL || "https://test.commentverdict.com/api/v1"
+
+// Load config on module initialization
+ConfigService.getConfig().then(config => {
+  API_BASE_URL = config.api_url
+  console.log("FocusGuardAPI: Config loaded, API_BASE_URL =", API_BASE_URL)
+}).catch(err => {
+  console.warn("FocusGuardAPI: Failed to load config, using environment variable", err)
+})
 
 export class FocusGuardAPI {
   private static async fetchAPI<T>(
