@@ -106,7 +106,7 @@ export const ContentGapsTab = ({ analysis, onBotFilterChange }: ContentGapsTabPr
       </div>
 
       {/* Bot Detection Filter Toggle */}
-      <div
+      {/* <div
         style={{
           marginBottom: "24px",
           padding: "16px",
@@ -164,7 +164,7 @@ export const ContentGapsTab = ({ analysis, onBotFilterChange }: ContentGapsTabPr
             }}
           />
         </button>
-      </div>
+      </div> */}
 
       {/* Unanswered Questions */}
       <div>
