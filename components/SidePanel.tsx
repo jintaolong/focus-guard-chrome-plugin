@@ -80,7 +80,7 @@ export const SidePanel = ({
         }}>
         {!isCollapsed && (
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <img src={chrome.runtime.getURL("assets/green.png")} alt="Comment Verdict" style={{ width: "24px", height: "24px" }} />
+            <img src={chrome.runtime.getURL("assets/blue.png")} alt="Comment Verdict" style={{ width: "24px", height: "24px" }} />
             <h2
               style={{
                 margin: 0,

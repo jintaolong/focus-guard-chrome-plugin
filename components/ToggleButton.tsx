@@ -185,7 +185,7 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
       // Get icon URL safely - handle extension context invalidation
       let iconUrl: string | null = null
       try {
-        iconUrl = chrome.runtime.getURL("assets/green.png")
+        iconUrl = chrome.runtime.getURL("assets/blue.png")
       } catch (error) {
         // Extension context invalidated - will show emoji instead
         console.warn("ToggleButton: Extension context invalidated, using emoji fallback")

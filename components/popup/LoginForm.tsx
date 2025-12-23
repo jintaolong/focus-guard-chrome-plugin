@@ -107,7 +107,7 @@ export const LoginForm = ({ onLogin, isLoading }: LoginFormProps) => {
             alignItems: "center",
             justifyContent: "center"
           }}>
-          <img src={chrome.runtime.getURL("assets/green.png")} alt="Comment Verdict" style={{ width: "32px", height: "32px" }} />
+          <img src={chrome.runtime.getURL("assets/stroke.png")} alt="Comment Verdict" style={{ width: "32px", height: "32px" }} />
         </div>
         <h2
           style={{

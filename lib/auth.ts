@@ -152,15 +152,10 @@ export class AuthService {
 
   static async getAccessToken(): Promise<string | null> {
     try {
-      console.log("AuthService: Getting access token from storage...")
       const result = await this.storageGet([this.TOKEN_KEY])
       const token = result[this.TOKEN_KEY] || null
-      if (token) {
-        console.log("AuthService: Found access token in storage:", token.substring(0, 30) + "...")
-      } else {
+      if (!token) {
         console.log("AuthService: No access token in storage")
-        console.log("AuthService: Storage result:", result)
-        console.log("AuthService: TOKEN_KEY:", this.TOKEN_KEY)
       }
       return token
     } catch (error) {

@@ -1,0 +1,81 @@
+name: Build Production Extension
+
+on:
+  push:
+    branches:
+      - main
+      - production
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Create production .env
+        run: |
+          cat > .env << EOF
+          # Production environment variables
+          PLASMO_PUBLIC_API_URL=https://commentverdict.com/api/v1
+          PLASMO_PUBLIC_WEB_PORTAL_URL=https://app.commentverdict.com
+          COMMENT_VERDICT_DEBUG=0
+          EOF
+
+      - name: Build production extension
+        run: pnpm run build:prod
+        env:
+          NODE_ENV: production
+
+      - name: Create release package
+        run: |
+          cd build/chrome-mv3-prod
+          zip -r ../../focus-guard-chrome-extension-${{ github.sha }}.zip .
+          cd ../..
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: chrome-extension-production-${{ github.sha }}
+          path: |
+            build/chrome-mv3-prod/
+            focus-guard-chrome-extension-${{ github.sha }}.zip
+          retention-days: 30
+
+      - name: Create Release (on tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: focus-guard-chrome-extension-${{ github.sha }}.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload to Chrome Web Store (optional)
+        if: startsWith(github.ref, 'refs/tags/')
+        # Uncomment and configure when ready to auto-publish
+        # uses: mobilefirstllc/cws-publish@latest
+        # with:
+        #   extension-id: ${{ secrets.CHROME_EXTENSION_ID }}
+        #   client-id: ${{ secrets.CHROME_CLIENT_ID }}
+        #   client-secret: ${{ secrets.CHROME_CLIENT_SECRET }}
+        #   refresh-token: ${{ secrets.CHROME_REFRESH_TOKEN }}
+        #   zip-path: focus-guard-chrome-extension-${{ github.sha }}.zip
+        run: echo "Chrome Web Store publishing not configured yet"

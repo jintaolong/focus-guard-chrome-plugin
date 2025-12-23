@@ -8,8 +8,11 @@
     "dev": "plasmo dev",
     "dev:debug": "cross-env COMMENT_VERDICT_DEBUG=1 plasmo dev",
     "debug": "cross-env COMMENT_VERDICT_DEBUG=1 plasmo dev",
-    "build": "plasmo build",
-    "package": "plasmo package"
+    "build": "node scripts/swap-portal-sync.js dev && plasmo build",
+    "build:prod": "node scripts/swap-portal-sync.js prod && cross-env NODE_ENV=production COMMENT_VERDICT_DEBUG=0 plasmo build --tag=prod --target=chrome-mv3 && node scripts/swap-portal-sync.js dev",
+    "build:dev": "node scripts/swap-portal-sync.js dev && cross-env NODE_ENV=development COMMENT_VERDICT_DEBUG=1 plasmo build --tag=dev --target=chrome-mv3",
+    "package": "plasmo package",
+    "package:prod": "node scripts/swap-portal-sync.js prod && cross-env NODE_ENV=production COMMENT_VERDICT_DEBUG=0 plasmo build --tag=prod --zip && node scripts/swap-portal-sync.js dev"
   },
   "dependencies": {
     "plasmo": "^0.89.3",

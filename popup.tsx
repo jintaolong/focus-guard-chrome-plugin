@@ -183,6 +183,9 @@ function IndexPopup() {
       // Try to login first - if successful, we're done
       try {
         await AuthService.login(email, password)
+        
+        // Give storage a moment to propagate (Chrome storage API quirk)
+        await new Promise(resolve => setTimeout(resolve, 100))
       } catch (loginError) {
         // If login fails, it might be a new user, try registration
         // However, the LoginForm should handle this by having separate modes
@@ -297,7 +300,7 @@ function IndexPopup() {
             alignItems: "center",
             gap: "8px"
           }}>
-          <img src={chrome.runtime.getURL("assets/green.png")} alt="Comment Verdict" style={{ width: "24px", height: "24px" }} />
+          <img src={chrome.runtime.getURL("assets/blue.png")} alt="Comment Verdict" style={{ width: "24px", height: "24px" }} />
           Comment Verdict
         </h1>
       </div>

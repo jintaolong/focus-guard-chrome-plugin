@@ -411,7 +411,7 @@ export const PreWatchPopover = ({
                 e.currentTarget.style.backgroundColor = COLORS.neutral.primary
                 e.currentTarget.style.transform = "translateY(0)"
               }}>
-              <img src={chrome.runtime.getURL("assets/green.png")} alt="" style={{ width: "16px", height: "16px" }} />
+              <img src={chrome.runtime.getURL("assets/blue.png")} alt="" style={{ width: "16px", height: "16px" }} />
               <span>View Full Report</span>
             </button>
             <button
