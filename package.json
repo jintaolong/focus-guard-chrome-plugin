@@ -1,7 +1,7 @@
 {
   "name": "comment-verdict-chrome-plugin",
   "displayName": "Comment Verdict",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "A Chrome extension built with Plasmo, React, and Manifest V3",
   "author": "Your Name",
   "scripts": {
