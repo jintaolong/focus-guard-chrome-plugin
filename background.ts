@@ -131,7 +131,12 @@ async function makeAPIRequest(endpoint: string, options: any = {}) {
     const contentType = response.headers.get('content-type')
     
     // Check if response is a blob (for report downloads)
-    if (contentType && (contentType.includes('application/pdf') || contentType.includes('application/octet-stream'))) {
+    // Include text/plain for TXT reports
+    if (contentType && (
+        contentType.includes('application/pdf') || 
+        contentType.includes('application/octet-stream') ||
+        (contentType.includes('text/plain') && endpoint.includes('generate-report'))
+      )) {
       const blob = await response.blob()
       // Convert blob to base64 for message passing
       const base64 = await blobToBase64(blob)
