@@ -189,8 +189,8 @@ jobs:
         run: |
           cat > .env.production << EOF
           # Production environment variables
-          PLASMO_PUBLIC_API_URL=https://commentverdict.com/api/v1
-          PLASMO_PUBLIC_WEB_PORTAL_URL=https://app.commentverdict.com
+          PLASMO_PUBLIC_API_URL=${{ secrets.PROD_API_URL }}
+          PLASMO_PUBLIC_WEB_PORTAL_URL=${{ secrets.PROD_WEB_PORTAL_URL }}
           COMMENT_VERDICT_DEBUG=0
           EOF
 

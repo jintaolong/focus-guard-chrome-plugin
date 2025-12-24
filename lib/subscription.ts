@@ -7,7 +7,7 @@ import type {
   CheckoutResponse
 } from "~types/backend"
 
-const API_BASE_URL = process.env.PLASMO_PUBLIC_API_URL || "https://test.commentverdict.com/api/v1"
+const API_BASE_URL = process.env.PLASMO_PUBLIC_API_URL || "https://api.commentverdict.com/api/v1"
 
 export class SubscriptionService {
   private static async fetchWithAuth<T>(

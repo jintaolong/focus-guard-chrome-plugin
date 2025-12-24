@@ -1,5 +1,5 @@
 // Backend API type definitions for CommentVerdict API integration
-// Base URL: https://test.commentverdict.com/api/v1
+// Base URL: https://api.commentverdict.com/api/v1
 
 // ============================================================================
 // Authentication Types
