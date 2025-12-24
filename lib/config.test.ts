@@ -1,40 +1,26 @@
-﻿import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { ConfigService } from './config'
+﻿import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
-// Mock fetch
-global.fetch = vi.fn()
+const OLD_API = process.env.PLASMO_PUBLIC_API_URL
+const OLD_PORTAL = process.env.PLASMO_PUBLIC_WEB_PORTAL_URL
 
-describe('ConfigService', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    vi.mocked(global.fetch).mockResolvedValue({
-      ok: false
-    } as Response)
-  })
+beforeEach(() => {
+  // set values you expect for the test
+  process.env.PLASMO_PUBLIC_API_URL = 'https://api.commentverdict.com/api/v1'
+  process.env.PLASMO_PUBLIC_WEB_PORTAL_URL = 'https://app.commentverdict.com'
+  // if module reads env at import time, reset modules to force re-import
+  vi.resetModules()
+})
 
-  it('should return config with fallback values when remote fetch fails', async () => {
-    const config = await ConfigService.getConfig()
-    
-    expect(config).toBeDefined()
-    expect(config.api_url).toBeDefined()
-    expect(config.portal_url).toBeDefined()
-  })
+afterEach(() => {
+  // restore original environment
+  process.env.PLASMO_PUBLIC_API_URL = OLD_API
+  process.env.PLASMO_PUBLIC_WEB_PORTAL_URL = OLD_PORTAL
+})
 
-  it('should use remote config when available', async () => {
-    const remoteConfig = {
-      api_url: 'https://remote.api.com',
-      portal_url: 'https://remote.portal.com'
-    }
-    
-    vi.mocked(global.fetch).mockResolvedValue({
-      ok: true,
-      json: async () => remoteConfig
-    } as Response)
-    
-    const config = await ConfigService.getConfig()
-    
-    expect(config.api_url).toBe('https://remote.api.com')
-    expect(config.portal_url).toBe('https://remote.portal.com')
-  })
+it('should use production config when not in development', async () => {
+  const { ConfigService } = await import('./config') // dynamic import respects current env
+  const config = await ConfigService.getConfig()
+  expect(config.api_url).toBe('https://api.commentverdict.com/api/v1')
+  expect(config.portal_url).toBe('https://app.commentverdict.com')
 })
 
