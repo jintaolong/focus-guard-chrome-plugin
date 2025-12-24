@@ -34,7 +34,7 @@ import type {
   JobStatus
 } from "~types/backend"
 
-let API_BASE_URL = process.env.PLASMO_PUBLIC_API_URL || "https://test.commentverdict.com/api/v1"
+let API_BASE_URL = process.env.PLASMO_PUBLIC_API_URL || "https://api.commentverdict.com/api/v1"
 
 // Load config on module initialization
 ConfigService.getConfig().then(config => {
