@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+﻿import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { ConfigService } from './config'
 
 // Mock fetch
@@ -37,3 +37,4 @@ describe('ConfigService', () => {
     expect(config.portal_url).toBe('https://remote.portal.com')
   })
 })
+
