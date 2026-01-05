@@ -28,11 +28,20 @@ export interface VideoAnalysis {
     clickbaitVerdict?: {
       label?: "LEGIT" | "MISLEADING" | "CLICKBAIT"
       confidence?: number // 0-100%
+      onLineSummary?: string
+      claims?: Array<{
+        claim: string
+        verdict?: string
+        confidence?: number
+        supporting_evidence?: string[]
+      }>
     }
     channelCredibility?: {
       score?: number // 0-100
       factors?: Array<{ name: string; value: string; weight: number }>
     }
+    persona?: string // "viewer", "creator", or "analyst"
+    key_takeaways?: string[] | null
   }
 
   // Top-level (legacy) fields used by several components

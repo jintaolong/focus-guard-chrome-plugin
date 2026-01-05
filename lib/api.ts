@@ -646,7 +646,7 @@ export class FocusGuardAPI {
         statement: cluster.statement,
         type: "benefit" as const,
         commentCount: cluster.count,
-        supportingComments: cluster.supporting_quotes.map((quote, qIdx) => ({
+        supportingComments: (cluster.all_supporting_comments || cluster.supporting_quotes).map((quote, qIdx) => ({
           id: `comment-${idx}-${qIdx}`,
           text: quote,
           humanLikenessScore: 8, // Default, would need actual HLS data per comment
@@ -663,8 +663,8 @@ export class FocusGuardAPI {
         id: `gap-${idx}`,
         statement: gap.question_statement,
         type: "gap" as const,
-        commentCount: gap.supporting_comments.length,
-        supportingComments: gap.supporting_comments.map((comment, cIdx) => ({
+        commentCount: (gap.all_supporting_comments || gap.supporting_comments).length,
+        supportingComments: (gap.all_supporting_comments || gap.supporting_comments).map((comment, cIdx) => ({
           id: `gap-comment-${idx}-${cIdx}`,
           text: comment,
           humanLikenessScore: 8,
@@ -704,7 +704,14 @@ export class FocusGuardAPI {
         aiConfidence: Math.round(relevancyConfidenceNorm * 100),
         clickbaitVerdict: {
           label: (relevancyVerdictLabel || "UNKNOWN") as any,
-          confidence: Math.round(relevancyConfidenceNorm * 100)
+          confidence: Math.round(relevancyConfidenceNorm * 100),
+          onLineSummary: relevancy?.data?.one_line_summary,
+          claims: relevancy?.data?.claims?.map((c: any) => ({
+            claim: c.claim || c.claim_text || c.text || "",
+            verdict: c.verdict || c.status || undefined,
+            confidence: c.confidence,
+            supporting_evidence: c.supporting_evidence || c.evidence || (Array.isArray(c.evidence) ? c.evidence : undefined)
+          }))
         },
         channelCredibility: {
           score: credibility.score,
@@ -713,7 +720,9 @@ export class FocusGuardAPI {
             value: value.toString(),
             weight: value
           }))
-        }
+        },
+        persona: summary.persona,
+        key_takeaways: summary.key_takeaways
       },
 
       trustScore: {
@@ -810,8 +819,17 @@ export class FocusGuardAPI {
         aiConfidence: Math.round(confidenceNorm * 100),
         clickbaitVerdict: {
           label: (verdictLabel || "UNKNOWN") as any,
-          confidence: Math.round(confidenceNorm * 100)
-        }
+          confidence: Math.round(confidenceNorm * 100),
+          onLineSummary: relevancy?.data?.one_line_summary || resultData.one_line_summary || undefined,
+          claims: (relevancy?.data?.claims || resultData.claims || []).map((c: any) => ({
+            claim: c.claim || c.claim_text || c.text || "",
+            verdict: c.verdict || c.status || undefined,
+            confidence: c.confidence,
+            supporting_evidence: c.supporting_evidence || c.evidence || (Array.isArray(c.evidence) ? c.evidence : undefined)
+          }))
+        },
+        persona: resultData.persona || undefined,
+        key_takeaways: resultData.key_takeaways || resultData.key_takeaways || null
       },
 
       analyzedAt: new Date().toISOString(),

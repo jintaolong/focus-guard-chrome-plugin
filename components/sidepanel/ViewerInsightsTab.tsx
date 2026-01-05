@@ -25,11 +25,15 @@ export const ViewerInsightsTab = ({ analysis }: ViewerInsightsTabProps) => {
         <h3
           style={{
             margin: "0 0 16px 0",
-            fontSize: "16px",
+            fontSize: "18px",
             fontWeight: "600",
-            color: getColorSet("high").text
+            color: COLORS.ui.textPrimary,
+            display: "flex",
+            alignItems: "center",
+            gap: "8px"
           }}>
-          🌟 High-Value Insights
+          <span style={{ fontSize: "24px" }}>🌟</span>
+          <span>High-Value Insights</span>
         </h3>
         {((actionableInsights.highValue || []) as any[]).length === 0 ? (
           <p style={{ fontSize: "14px", color: COLORS.ui.textSecondary, fontStyle: "italic" }}>

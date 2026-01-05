@@ -33,6 +33,13 @@ export const ContentGapsTab = ({ analysis, onBotFilterChange }: ContentGapsTabPr
 
   const coverageScore = contentGaps.gapCoverageScore ?? 0
   const coverageColor = getCoverageColor(coverageScore)
+  
+  // Icon for coverage score
+  const getCoverageIcon = (score: number) => {
+    if (score >= 80) return "✅"
+    if (score >= 50) return "⚠️"
+    return "❌"
+  }
 
   const content = (
     <div>
@@ -50,22 +57,26 @@ export const ContentGapsTab = ({ analysis, onBotFilterChange }: ContentGapsTabPr
 
         <div
           style={{
-            padding: "20px",
-            backgroundColor: coverageColor.light,
-            border: `2px solid ${coverageColor.primary}`,
-            borderRadius: "12px"
+            padding: "24px",
+            background: `linear-gradient(135deg, ${coverageColor.light} 0%, ${coverageColor.light}ee 100%)`,
+            border: `3px solid ${coverageColor.primary}`,
+            borderRadius: "16px",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.08)"
           }}>
           <div
             style={{
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
-              marginBottom: "12px"
+              marginBottom: "16px"
             }}>
-            <span style={{ fontSize: "14px", fontWeight: "600", color: coverageColor.dark }}>
-              Coverage Score
-            </span>
-              <span style={{ fontSize: "32px", fontWeight: "700", color: coverageColor.primary }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span style={{ fontSize: "28px" }}>{getCoverageIcon(coverageScore)}</span>
+              <span style={{ fontSize: "15px", fontWeight: "600", color: coverageColor.dark }}>
+                Coverage Score
+              </span>
+            </div>
+            <span style={{ fontSize: "42px", fontWeight: "800", color: coverageColor.primary }}>
               {coverageScore}%
             </span>
           </div>
@@ -171,11 +182,15 @@ export const ContentGapsTab = ({ analysis, onBotFilterChange }: ContentGapsTabPr
           <h3
           style={{
             margin: "0 0 16px 0",
-            fontSize: "16px",
+            fontSize: "18px",
             fontWeight: "600",
-              color: COLORS.medium.text
+            color: COLORS.ui.textPrimary,
+            display: "flex",
+            alignItems: "center",
+            gap: "8px"
           }}>
-          ⚠️ Unanswered Questions
+          <span style={{ fontSize: "24px" }}>⚠️</span>
+          <span>Unanswered Questions</span>
         </h3>
         {(contentGaps.unansweredQuestions || []).length === 0 ? (
           <div

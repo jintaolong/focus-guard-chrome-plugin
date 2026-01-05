@@ -43,7 +43,7 @@ export const SidePanel = ({
 
   const tabs = [
     { id: "summary" as TabId, label: "Summary", icon: "📊" },
-    { id: "sentiment" as TabId, label: "Comment Sentiment", icon: "💭" },
+    { id: "sentiment" as TabId, label: "Content Satisfaction", icon: "💭" },
     { id: "insights" as TabId, label: "Viewer Insights", icon: "💬" },
     { id: "gaps" as TabId, label: "Content Gaps", icon: "🔍" },
     { id: "report" as TabId, label: "Report", icon: "📄" }
