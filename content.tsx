@@ -131,6 +131,17 @@ const ContentScript = () => {
   const [currentJobId, setCurrentJobId] = useState<string | null>(null)
   const [isCheckingCache, setIsCheckingCache] = useState(false)
 
+  // Expose the current analysis on the window for quick debugging in DevTools.
+  // Usage in page console: `__FG_VIDEO_ANALYSIS` or `__FG_VIDEO_ANALYSIS_SUMMARY`.
+  useEffect(() => {
+    try {
+      ;(window as any).__FG_VIDEO_ANALYSIS = videoAnalysis
+      ;(window as any).__FG_VIDEO_ANALYSIS_SUMMARY = videoAnalysis?.summary ?? null
+    } catch (e) {
+      // ignore
+    }
+  }, [videoAnalysis])
+
   useEffect(() => {
     // Check if we're on YouTube home page or watch page
     console.log("Comment Verdict content script loaded");
@@ -494,7 +505,10 @@ const ContentScript = () => {
           aiConfidence: confidencePercent,
           clickbaitVerdict: {
             label: verdictRaw,
-            confidence: confidencePercent
+            confidence: confidencePercent,
+            // Prefer claims from relevancy v2, fall back to summary payloads
+            claims: relevancyData?.data?.claims || (summaryData as any)?.clickbaitVerdict?.claims || (summaryData as any)?.claims || [],
+            onLineSummary: (summaryData as any)?.one_line_summary || (summaryData as any)?.onLineSummary
           },
           channelCredibility: credibilityData ? {
             score: credibilityData.score,
@@ -503,7 +517,8 @@ const ContentScript = () => {
               weight,
               value: credibilityData.factual_factors?.[name] ?? 'N/A'
             })) : []
-          } : undefined
+          } : undefined,
+          key_takeaways: (summaryData as any)?.key_takeaways || (summaryData as any)?.keyTakeaways || []
         }
 
         // Build sentiment distribution if available
@@ -756,14 +771,26 @@ const ContentScript = () => {
         const pollDuration = ((Date.now() - pollStartTime) / 1000).toFixed(1)
         console.log(`Job completed in ${pollDuration}s:`, jobResult)
 
-        // Step 3a: After job completes, fetch analysis endpoints in parallel (data is now cached)
+        // Step 3a: After job completes, fetch analysis endpoints
         // NOTE: Excluding human-likeness from general flow - will be loaded on-demand for advanced features
-        console.log("Fetching analysis data in parallel (post-job)...")
+        // IMPORTANT: Summary must be fetched FIRST because backend dependencies require it (e.g., credibility)
+        console.log("Fetching analysis data (post-job)...")
         const fetchStartTime = Date.now()
+        
+        // Step 3a.1: Fetch summary first (required by backend for other endpoints)
+        console.log("Fetching summary first (required by backend)...")
+        try {
+          summaryData = await FocusGuardAPI.analyzeSummaryV2({ video_id: videoId, force_refresh: false })
+          console.log("Summary data fetched")
+        } catch (error) {
+          console.error("Failed to fetch summary:", error)
+        }
+        
+        // Step 3a.2: Fetch remaining endpoints in parallel (after summary exists)
+        console.log("Fetching remaining analysis data in parallel...")
         const results = await Promise.allSettled([
           FocusGuardAPI.analyzeRelevancyV2(videoId, false),
           FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: false }),
-          FocusGuardAPI.analyzeSummaryV2({ video_id: videoId, force_refresh: false }),
           FocusGuardAPI.analyzeChannelCredibilityV2(videoId, false),
           FocusGuardAPI.analyzeTopicClusteringV2(videoId, false),
           FocusGuardAPI.analyzeTopicGapV2(videoId, false)
@@ -774,16 +801,15 @@ const ContentScript = () => {
         // Extract results, logging any failures and capturing tier restrictions
         relevancyData = results[0].status === 'fulfilled' ? results[0].value : null
         sentimentData = results[1].status === 'fulfilled' ? results[1].value : null
-        summaryData = results[2].status === 'fulfilled' ? results[2].value : null
-        credibilityData = results[3].status === 'fulfilled' ? results[3].value : null
-        topicClustersData = results[4].status === 'fulfilled' ? results[4].value : null
-        topicGapsData = results[5].status === 'fulfilled' ? results[5].value : null
+        credibilityData = results[2].status === 'fulfilled' ? results[2].value : null
+        topicClustersData = results[3].status === 'fulfilled' ? results[3].value : null
+        topicGapsData = results[4].status === 'fulfilled' ? results[4].value : null
         humanLikenessData = null // Not fetched in general flow - load on-demand for advanced features
         
         // Log any failures and extract tier restrictions
         results.forEach((result, idx) => {
           if (result.status === 'rejected') {
-            const endpoints = ['relevancy', 'sentiment', 'summary', 'credibility', 'topicClusters', 'topicGaps']
+            const endpoints = ['relevancy', 'sentiment', 'credibility', 'topicClusters', 'topicGaps']
             console.error(`Failed to fetch ${endpoints[idx]}:`, result.reason)
             
             // Check if the error is a tier restriction
@@ -793,8 +819,8 @@ const ContentScript = () => {
               if (responseData.detail && responseData.detail.code === 'TIER_RESTRICTION') {
                 console.log(`Tier restriction detected for ${endpoints[idx]}:`, responseData.detail)
                 if (idx === 1) sentimentTierRestriction = responseData.detail
-                if (idx === 4) topicClustersTierRestriction = responseData.detail
-                if (idx === 5) topicGapsTierRestriction = responseData.detail
+                if (idx === 3) topicClustersTierRestriction = responseData.detail
+                if (idx === 4) topicGapsTierRestriction = responseData.detail
               }
             }
           }
@@ -825,23 +851,34 @@ const ContentScript = () => {
 
       // Fetch additional analysis data for full report (only if we haven't already fetched it)
       // NOTE: Excluding human-likeness from general flow - will be loaded on-demand for advanced features
+      // IMPORTANT: Summary must be fetched FIRST because backend dependencies require it (e.g., credibility)
       if (!sentimentData || !summaryData || !credibilityData || !topicClustersData || !topicGapsData) {
         console.log("Comment Verdict: Fetching remaining analysis data for video:", videoId)
         const remainingFetchStart = Date.now()
-        // Fetch data in parallel with resilient error handling (excluding human-likeness)
+        
+        // Step 1: Ensure summary is fetched/completed first
+        if (!summaryData) {
+          console.log("Comment Verdict: Fetching summary first (required by backend)...")
+          try {
+            summaryData = await FocusGuardAPI.analyzeSummaryV2({ video_id: videoId, force_refresh: false })
+            console.log("Comment Verdict: Summary data received")
+          } catch (error) {
+            console.error("Failed to fetch summary:", error)
+          }
+        }
+        
+        // Step 2: Fetch remaining data in parallel (after summary is guaranteed to exist)
         const remainingResults = await Promise.allSettled([
-          FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: false }),
-          FocusGuardAPI.analyzeSummaryV2({ video_id: videoId, force_refresh: false }),
-          FocusGuardAPI.analyzeChannelCredibilityV2(videoId, false),
-          FocusGuardAPI.analyzeTopicClusteringV2(videoId, false),
-          FocusGuardAPI.analyzeTopicGapV2(videoId, false)
+          sentimentData ? Promise.resolve(sentimentData) : FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: false }),
+          credibilityData ? Promise.resolve(credibilityData) : FocusGuardAPI.analyzeChannelCredibilityV2(videoId, false),
+          topicClustersData ? Promise.resolve(topicClustersData) : FocusGuardAPI.analyzeTopicClusteringV2(videoId, false),
+          topicGapsData ? Promise.resolve(topicGapsData) : FocusGuardAPI.analyzeTopicGapV2(videoId, false)
         ])
         
         sentimentData = sentimentData || (remainingResults[0].status === 'fulfilled' ? remainingResults[0].value : null)
-        summaryData = summaryData || (remainingResults[1].status === 'fulfilled' ? remainingResults[1].value : null)
-        credibilityData = credibilityData || (remainingResults[2].status === 'fulfilled' ? remainingResults[2].value : null)
-        topicClustersData = topicClustersData || (remainingResults[3].status === 'fulfilled' ? remainingResults[3].value : null)
-        topicGapsData = topicGapsData || (remainingResults[4].status === 'fulfilled' ? remainingResults[4].value : null)
+        credibilityData = credibilityData || (remainingResults[1].status === 'fulfilled' ? remainingResults[1].value : null)
+        topicClustersData = topicClustersData || (remainingResults[2].status === 'fulfilled' ? remainingResults[2].value : null)
+        topicGapsData = topicGapsData || (remainingResults[3].status === 'fulfilled' ? remainingResults[3].value : null)
         humanLikenessData = null // Not fetched - load on-demand for advanced features
         
         const remainingFetchDuration = ((Date.now() - remainingFetchStart) / 1000).toFixed(1)
@@ -854,14 +891,14 @@ const ContentScript = () => {
             sentimentTierRestriction = error.response.detail
           }
         }
-        if (!topicClustersTierRestriction && remainingResults[3].status === 'rejected') {
-          const error = remainingResults[3].reason
+        if (!topicClustersTierRestriction && remainingResults[2].status === 'rejected') {
+          const error = remainingResults[2].reason
           if (error && typeof error === 'object' && 'response' in error && error.response?.detail?.code === 'TIER_RESTRICTION') {
             topicClustersTierRestriction = error.response.detail
           }
         }
-        if (!topicGapsTierRestriction && remainingResults[4].status === 'rejected') {
-          const error = remainingResults[4].reason
+        if (!topicGapsTierRestriction && remainingResults[3].status === 'rejected') {
+          const error = remainingResults[3].reason
           if (error && typeof error === 'object' && 'response' in error && error.response?.detail?.code === 'TIER_RESTRICTION') {
             topicGapsTierRestriction = error.response.detail
           }
@@ -870,7 +907,7 @@ const ContentScript = () => {
         // Log any failures
         remainingResults.forEach((result, idx) => {
           if (result.status === 'rejected') {
-            const endpoints = ['sentiment', 'summary', 'credibility', 'topicClusters', 'topicGaps']
+            const endpoints = ['sentiment', 'credibility', 'topicClusters', 'topicGaps']
             console.error(`Failed to fetch ${endpoints[idx]}:`, result.reason)
           }
         })
@@ -920,7 +957,10 @@ const ContentScript = () => {
         aiConfidence: confidencePercent,
         clickbaitVerdict: {
           label: verdictRaw,
-          confidence: confidencePercent
+          confidence: confidencePercent,
+          // Include claims from relevancy or summary responses when available
+          claims: relevancyData?.data?.claims || (summaryData as any)?.clickbaitVerdict?.claims || (summaryData as any)?.claims || [],
+          onLineSummary: (summaryData as any)?.one_line_summary || (summaryData as any)?.onLineSummary
         },
         channelCredibility: credibilityData ? {
           score: credibilityData.score,
@@ -929,7 +969,8 @@ const ContentScript = () => {
             weight,
             value: credibilityData.factual_factors?.[name] ?? 'N/A'
           })) : []
-        } : undefined
+        } : undefined,
+        key_takeaways: (summaryData as any)?.key_takeaways || (summaryData as any)?.keyTakeaways || []
       }
 
       // Build sentiment distribution if available
