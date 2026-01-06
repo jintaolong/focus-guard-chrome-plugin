@@ -13,7 +13,7 @@ interface SummaryTabProps {
 }
 
 export const SummaryTab = ({ analysis }: SummaryTabProps) => {
-  const [activeSubTab, setActiveSubTab] = useState<"overview" | "video" | "channel">("overview")
+  const [activeSubTab, setActiveSubTab] = useState<"overview" | "video" | "channel">("video")
   const [isExecutiveSummaryExpanded, setIsExecutiveSummaryExpanded] = useState(false)
   
   if (!analysis) return null
@@ -40,9 +40,9 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
 
   // Sub-tab navigation
   const subTabs = [
-    { id: "overview" as const, label: "Overview" },
-    { id: "video" as const, label: "Video Credibility" },
-    { id: "channel" as const, label: "Channel Credibility" }
+    { id: "overview" as const, label: "Summary" },
+    { id: "video" as const, label: "Video Trust" },
+    { id: "channel" as const, label: "Channel Trust" }
   ]
 
   return (
@@ -87,6 +87,7 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
             isExecutiveSummaryExpanded={isExecutiveSummaryExpanded}
             setIsExecutiveSummaryExpanded={setIsExecutiveSummaryExpanded}
             verdictColor={verdictColor}
+            verdictLabel={summary.clickbaitVerdict?.label}
             keyTakeaways={keyTakeaways}
           />
         )}

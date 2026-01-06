@@ -22,7 +22,7 @@ export const ChannelCredibilitySubTab = ({
             fontWeight: "600",
             color: COLORS.ui.textPrimary
           }}>
-          Channel Credibility
+          Channel Trust
         </h3>
 
         {/* Note: Factor scores are normalized percentages (0-100) representing relative weight/importance 
@@ -50,7 +50,7 @@ export const ChannelCredibilitySubTab = ({
             </div>
             <div style={{ textAlign: "left" }}>
               <div style={{ fontSize: "11px", color: COLORS.ui.textSecondary, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                Overall Score
+                Channel Trust
               </div>
               <div style={{ fontSize: "14px", fontWeight: "600", color: COLORS.ui.textPrimary }}>
                 out of 100
@@ -305,7 +305,7 @@ export const ChannelCredibilitySubTab = ({
                 textAlign: "center",
                 fontStyle: "italic"
               }}>
-                Scores represent normalized credibility metrics (0-100%).
+                Normalized Score shows how much each item contributes (0-100).
               </div>
 
               <div style={{
@@ -314,7 +314,7 @@ export const ChannelCredibilitySubTab = ({
                 color: COLORS.ui.textSecondary,
                 textAlign: "center"
               }}>
-                <em>Topic Consistency is decided by whether YouTube has assigned topic tags to this channel; 'True' means the channel has topic tags.</em>
+                <em>Topic Consistency is based on whether YouTube has assigned topic tags to this channel.</em>
               </div>
             </div>
           )

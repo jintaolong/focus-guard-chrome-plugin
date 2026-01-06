@@ -52,7 +52,7 @@ export const ContentGapsTab = ({ analysis, onBotFilterChange }: ContentGapsTabPr
             fontWeight: "600",
             color: COLORS.ui.textPrimary
           }}>
-          Content Gap Coverage
+          Viewer Needs Coverage
         </h3>
 
         <div
@@ -73,7 +73,7 @@ export const ContentGapsTab = ({ analysis, onBotFilterChange }: ContentGapsTabPr
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
               <span style={{ fontSize: "28px" }}>{getCoverageIcon(coverageScore)}</span>
               <span style={{ fontSize: "15px", fontWeight: "600", color: coverageColor.dark }}>
-                Coverage Score
+                Coverage
               </span>
             </div>
             <span style={{ fontSize: "42px", fontWeight: "800", color: coverageColor.primary }}>
@@ -108,10 +108,10 @@ export const ContentGapsTab = ({ analysis, onBotFilterChange }: ContentGapsTabPr
               color: coverageColor.dark
             }}>
             {coverageScore >= 80
-              ? "Excellent! Most viewer questions are addressed."
+              ? "Great! Most viewer requests and curiosities are covered."
               : coverageScore >= 50
-              ? "Good coverage, but some questions remain unanswered."
-              : "Many viewer questions are not addressed in the video."}
+              ? "Good coverage, but some viewer requests are still missing."
+              : "Many viewer requests are not covered in the video."}
           </p>
         </div>
       </div>
@@ -177,7 +177,7 @@ export const ContentGapsTab = ({ analysis, onBotFilterChange }: ContentGapsTabPr
         </button>
       </div> */}
 
-      {/* Unanswered Questions */}
+        {/* Unaddressed Viewer Requests */}
       <div>
           <h3
           style={{
@@ -190,7 +190,7 @@ export const ContentGapsTab = ({ analysis, onBotFilterChange }: ContentGapsTabPr
             gap: "8px"
           }}>
           <span style={{ fontSize: "24px" }}>⚠️</span>
-          <span>Unanswered Questions</span>
+          <span>Unaddressed Viewer Requests</span>
         </h3>
         {(contentGaps.unansweredQuestions || []).length === 0 ? (
           <div
@@ -208,7 +208,7 @@ export const ContentGapsTab = ({ analysis, onBotFilterChange }: ContentGapsTabPr
                 fontWeight: "600",
                 color: COLORS.high.dark
               }}>
-              🎉 No significant content gaps found!
+              🎉 Looks like the video covered most requests!
             </p>
             <p
               style={{
@@ -216,7 +216,7 @@ export const ContentGapsTab = ({ analysis, onBotFilterChange }: ContentGapsTabPr
                 fontSize: "14px",
                 color: COLORS.high.text
               }}>
-              The video appears to address most viewer questions.
+              The video appears to cover most common viewer requests.
             </p>
           </div>
         ) : (
@@ -227,7 +227,7 @@ export const ContentGapsTab = ({ analysis, onBotFilterChange }: ContentGapsTabPr
                 fontSize: "13px",
                     color: COLORS.ui.textSecondary
               }}>
-              These questions from viewers were not addressed in the video transcript:
+              These viewer requests weren't clearly covered in the video:
             </p>
             {(contentGaps.unansweredQuestions || []).map((gap: any) => (
               <StatementBlock

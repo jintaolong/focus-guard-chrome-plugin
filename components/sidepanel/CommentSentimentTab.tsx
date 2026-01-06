@@ -62,6 +62,12 @@ export const CommentSentimentTab = ({ analysis }: CommentSentimentTabProps) => {
     { type: "neutral" as const, value: percentages.neutral, count: sentimentBreakdown.neutral || 0 }
   ]
 
+  const sentimentLabels: Record<string, string> = {
+    positive: "Liked",
+    neutral: "Mixed",
+    negative: "Disliked"
+  }
+
   const content = (
     <div ref={contentRef}>
       {/* Sentiment Overview */}
@@ -83,7 +89,7 @@ export const CommentSentimentTab = ({ analysis }: CommentSentimentTabProps) => {
             transform: isDonutCollapsed ? "rotate(-90deg)" : "rotate(0deg)",
             display: "inline-block"
           }}>▼</span>
-          <span>Viewer Satisfaction</span>
+          <span>Comment Mood</span>
         </h3>
         <p style={{ 
           fontSize: "13px", 
@@ -91,7 +97,7 @@ export const CommentSentimentTab = ({ analysis }: CommentSentimentTabProps) => {
           margin: "0 0 16px 0",
           fontStyle: "italic"
         }}>
-          Are viewers happy they watched this video?
+          Overall vibe based on comment tone.
         </p>
 
         {!isDonutCollapsed && (
@@ -194,7 +200,7 @@ export const CommentSentimentTab = ({ analysis }: CommentSentimentTabProps) => {
                         color: COLORS.ui.textPrimary,
                         textTransform: "capitalize"
                       }}>
-                      {segment.type}
+                      {sentimentLabels[segment.type] ?? segment.type}
                     </span>
                     <span
                       style={{
@@ -261,9 +267,9 @@ function renderExampleComments(analysis: VideoAnalysis) {
   }
 
   const sentimentTypes = [
-    { type: "positive", label: "Positive", comments: exampleComments.positive || [] },
-    { type: "neutral", label: "Neutral", comments: exampleComments.neutral || [] },
-    { type: "negative", label: "Negative", comments: exampleComments.negative || [] }
+    { type: "positive", label: "Liked", comments: exampleComments.positive || [] },
+    { type: "neutral", label: "Mixed", comments: exampleComments.neutral || [] },
+    { type: "negative", label: "Disliked", comments: exampleComments.negative || [] }
   ]
 
   const toggleSection = (type: string) => {

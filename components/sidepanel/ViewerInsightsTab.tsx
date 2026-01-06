@@ -20,7 +20,7 @@ export const ViewerInsightsTab = ({ analysis }: ViewerInsightsTabProps) => {
 
   const content = (
     <div>
-      {/* Actionable Insights - High Value */}
+      {/* Actionable Insights */}
       <div style={{ marginBottom: "32px" }}>
         <h3
           style={{
@@ -32,12 +32,12 @@ export const ViewerInsightsTab = ({ analysis }: ViewerInsightsTabProps) => {
             alignItems: "center",
             gap: "8px"
           }}>
-          <span style={{ fontSize: "24px" }}>🌟</span>
-          <span>High-Value Insights</span>
+          <span style={{ fontSize: "24px" }}>💬</span>
+          <span>What Viewers Noticed</span>
         </h3>
         {((actionableInsights.highValue || []) as any[]).length === 0 ? (
           <p style={{ fontSize: "14px", color: COLORS.ui.textSecondary, fontStyle: "italic" }}>
-            No high-value insights identified
+            No common patterns found yet
           </p>
         ) : (
           (actionableInsights.highValue || []).map((insight: any, idx: number) => (

@@ -5,6 +5,7 @@ interface OverviewSubTabProps {
   isExecutiveSummaryExpanded: boolean
   setIsExecutiveSummaryExpanded: (expanded: boolean) => void
   verdictColor: "high" | "medium" | "low" | "neutral"
+  verdictLabel?: string
   keyTakeaways?: string[]
 }
 
@@ -13,6 +14,7 @@ export const OverviewSubTab = ({
   isExecutiveSummaryExpanded, 
   setIsExecutiveSummaryExpanded, 
   verdictColor,
+  verdictLabel,
   keyTakeaways 
 }: OverviewSubTabProps) => {
   const isLongSummary = executiveSummary.length > 200
@@ -22,7 +24,7 @@ export const OverviewSubTab = ({
 
   return (
     <div>
-      {/* Executive Summary */}
+      {/* Summary */}
       <div style={{ marginBottom: "32px" }}>
         <h3
           style={{
@@ -31,7 +33,7 @@ export const OverviewSubTab = ({
             fontWeight: "600",
             color: COLORS.ui.textPrimary
           }}>
-          Executive Summary
+          Summary
         </h3>
         <div
           style={{
@@ -77,7 +79,7 @@ export const OverviewSubTab = ({
             fontWeight: "600",
             color: COLORS.ui.textPrimary
           }}>
-          Key Takeaways
+          Key Takeaways From Comments
         </h3>
         {keyTakeaways && keyTakeaways.length > 0 ? (
           <div
@@ -110,7 +112,7 @@ export const OverviewSubTab = ({
               color: COLORS.ui.textSecondary,
               fontStyle: "italic"
             }}>
-            No key takeaways available for this video
+            No comment takeaways available for this video
           </div>
         )}
       </div>
