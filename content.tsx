@@ -130,6 +130,7 @@ const ContentScript = () => {
   const [isCached, setIsCached] = useState<boolean | null>(null)
   const [currentJobId, setCurrentJobId] = useState<string | null>(null)
   const [isCheckingCache, setIsCheckingCache] = useState(false)
+  const [progressPercent, setProgressPercent] = useState<number | null>(null)
 
   // Expose the current analysis on the window for quick debugging in DevTools.
   // Usage in page console: `__FG_VIDEO_ANALYSIS` or `__FG_VIDEO_ANALYSIS_SUMMARY`.
@@ -195,6 +196,7 @@ const ContentScript = () => {
             setAnalysisError(null)
             setIsCached(null)
             setCurrentJobId(null)
+            setProgressPercent(null)
           }
           // A new page is assumed to be unanalyzed for development. Reset
           // the pre-watch dismissed flag so the popover appears after
@@ -215,6 +217,7 @@ const ContentScript = () => {
           setAnalysisError(null)
           setIsCached(null)
           setCurrentJobId(null)
+          setProgressPercent(null)
         }
       } else {
         currentVideoIdRef.current = null
@@ -225,6 +228,7 @@ const ContentScript = () => {
         setAnalysisError(null)
         setIsCached(null)
         setCurrentJobId(null)
+        setProgressPercent(null)
         setIsSidePanelOpen(false)
         setShowPreWatchPopover(false)
         setPreWatchDismissed(false)
@@ -765,6 +769,8 @@ const ContentScript = () => {
           (status) => {
             const elapsed = ((Date.now() - pollStartTime) / 1000).toFixed(1)
             console.log(`[${elapsed}s] Job progress:`, status.progress_percent, "%", status.progress_message, "Status:", status.status)
+            // Update progress percentage for UI display
+            setProgressPercent(status.progress_percent)
           },
           500 // Poll every 500ms for faster response
         )
@@ -1291,6 +1297,7 @@ const ContentScript = () => {
             state={isCheckingCache ? "analyzing" : analysisState}
             isCached={isCached}
             errorMessage={analysisError}
+            progressPercent={progressPercent}
             onToggle={() => {
               if (isCheckingCache) {
                 // Do nothing while checking cache

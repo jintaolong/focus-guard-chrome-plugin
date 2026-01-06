@@ -16,11 +16,13 @@ interface ToggleButtonProps {
   isCached?: boolean | null
   // Error message to display when analysis fails
   errorMessage?: string | null
+  // Progress percentage (0-100) for async job tracking
+  progressPercent?: number | null
 }
 
 type DockPosition = "left" | "right"
 
-export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", onDockChange, state = "complete", isCached = null, errorMessage = null }: ToggleButtonProps) => {
+export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", onDockChange, state = "complete", isCached = null, errorMessage = null, progressPercent = null }: ToggleButtonProps) => {
   const [isDragging, setIsDragging] = useState(false)
   const movedRef = useRef(false)
   const [dockPosition, setDockPosition] = useState<DockPosition>(dock)
@@ -223,6 +225,7 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
     if (state === "analyzing") {
       // Check if we're in cache checking phase (no score yet) vs actual analysis
       const isCheckingCache = !trustScore && isCached === null
+      const hasProgress = progressPercent !== null && progressPercent !== undefined && progressPercent >= 0
       
       return (
         <div style={{ 
@@ -230,7 +233,7 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          gap: "6px",
+          gap: "4px",
           textAlign: "center"
         }}>
           <div
@@ -243,15 +246,38 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
               animation: "spin 0.8s linear infinite"
             }}
           />
-          <span style={{ 
-            fontSize: "8px", 
-            fontWeight: "600",
-            color: "white",
-            textShadow: "0 1px 2px rgba(0,0,0,0.3)",
-            lineHeight: 1
-          }}>
-            {isCheckingCache ? "Checking..." : "Analyzing..."}
-          </span>
+          {hasProgress ? (
+            <>
+              <span style={{ 
+                fontSize: "11px", 
+                fontWeight: "700",
+                color: "white",
+                textShadow: "0 1px 2px rgba(0,0,0,0.3)",
+                lineHeight: 1
+              }}>
+                {Math.round(progressPercent)}%
+              </span>
+              <span style={{ 
+                fontSize: "7px", 
+                fontWeight: "600",
+                color: "white",
+                textShadow: "0 1px 2px rgba(0,0,0,0.3)",
+                lineHeight: 1
+              }}>
+                Analyzing...
+              </span>
+            </>
+          ) : (
+            <span style={{ 
+              fontSize: "8px", 
+              fontWeight: "600",
+              color: "white",
+              textShadow: "0 1px 2px rgba(0,0,0,0.3)",
+              lineHeight: 1
+            }}>
+              {isCheckingCache ? "Checking..." : "Analyzing..."}
+            </span>
+          )}
           <style>
             {`
               @keyframes spin {
