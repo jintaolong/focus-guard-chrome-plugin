@@ -229,10 +229,31 @@ export class FocusGuardAPI {
    * Get topic gap analysis (V2 - cached-first)
    */
   static async analyzeTopicGapV2(videoId: string, forceRefresh = false): Promise<TopicGapResponseV2> {
-    return this.fetchWithAuth<TopicGapResponseV2>("/videos/topic-gap/v2", {
-      method: "POST",
-      body: JSON.stringify({ video_id: videoId, force_refresh: forceRefresh })
-    })
+    try {
+      return await this.fetchWithAuth<TopicGapResponseV2>("/videos/topic-gap/v2", {
+        method: "POST",
+        body: JSON.stringify({ video_id: videoId, force_refresh: forceRefresh })
+      })
+    } catch (error) {
+      // Backend returns an error when there are minimal/no topic gaps - treat this as success with empty gaps
+      if (error && typeof error === 'object' && 'message' in error) {
+        const errorMessage = (error as any).message || ''
+        if (errorMessage.includes('Minimal Topic Gaps Identified') || errorMessage.includes('Topic gap analysis failed')) {
+          // Return a valid response with no gaps
+          return {
+            status: 'SUCCESS',
+            video_id: videoId,
+            video_title: '',
+            topic_gaps: [],
+            processing_time: 0,
+            cache_hit: false,
+            cached_at: null
+          } as TopicGapResponseV2
+        }
+      }
+      // Re-throw other errors
+      throw error
+    }
   }
 
   /**
@@ -402,10 +423,21 @@ export class FocusGuardAPI {
   static async pollJob(
     jobId: string,
     onProgress?: (status: JobStatusResponse) => void,
-    pollInterval = 2000
+    pollInterval = 2000,
+    abortSignal?: AbortSignal
   ): Promise<JobResultResponse> {
     while (true) {
+      // Check if polling was aborted before each iteration
+      if (abortSignal?.aborted) {
+        throw new Error("Polling aborted")
+      }
+      
       const status = await this.getJobStatus(jobId)
+      
+      // Check again after async operation
+      if (abortSignal?.aborted) {
+        throw new Error("Polling aborted")
+      }
       
       if (onProgress) {
         onProgress(status)
@@ -413,6 +445,7 @@ export class FocusGuardAPI {
 
       if (status.is_terminal) {
         if (status.status === "completed") {
+          // Fetch result immediately without any delay
           return await this.getJobResult(jobId)
         } else if (status.status === "failed") {
           throw new Error(status.error_message || "Job failed")
@@ -421,8 +454,35 @@ export class FocusGuardAPI {
         }
       }
 
-      await new Promise(resolve => setTimeout(resolve, pollInterval))
+      // Only wait if job is not yet complete
+      // Use abortable sleep that can be interrupted
+      if (abortSignal) {
+        await this.abortableSleep(pollInterval, abortSignal)
+      } else {
+        await new Promise(resolve => setTimeout(resolve, pollInterval))
+      }
     }
+  }
+
+  /**
+   * Sleep that can be aborted via AbortSignal
+   */
+  private static async abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      if (signal.aborted) {
+        reject(new Error("Polling aborted"))
+        return
+      }
+
+      const timeout = setTimeout(resolve, ms)
+      
+      const abortHandler = () => {
+        clearTimeout(timeout)
+        reject(new Error("Polling aborted"))
+      }
+      
+      signal.addEventListener('abort', abortHandler, { once: true })
+    })
   }
 
   // ============================================================================

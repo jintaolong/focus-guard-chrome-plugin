@@ -93,6 +93,9 @@ function runtimeDebugEnabled(): boolean {
 const RUNTIME_DEBUG = runtimeDebugEnabled()
 const DEBUG = BUILD_DEBUG || RUNTIME_DEBUG
 
+// Max comments to analyze (for testing/development)
+const MAX_COMMENTS = parseInt(process.env.PLASMO_PUBLIC_MAX_COMMENTS || "20", 10)
+
 function isYouTubeDomain(): boolean {
   const host = window.location.hostname || ""
   return host.endsWith("youtube.com") || host === "youtu.be"
@@ -131,6 +134,8 @@ const ContentScript = () => {
   const [currentJobId, setCurrentJobId] = useState<string | null>(null)
   const [isCheckingCache, setIsCheckingCache] = useState(false)
   const [progressPercent, setProgressPercent] = useState<number | null>(null)
+  const [progressMessage, setProgressMessage] = useState<string | null>(null)
+  const abortPollingRef = useRef<(() => void) | null>(null)
 
   // Expose the current analysis on the window for quick debugging in DevTools.
   // Usage in page console: `__FG_VIDEO_ANALYSIS` or `__FG_VIDEO_ANALYSIS_SUMMARY`.
@@ -176,6 +181,12 @@ const ContentScript = () => {
         console.log("Comment Verdict: detected videoId=", videoId, "currentVideoIdRef=", currentVideoIdRef.current)
         if (videoId && videoId !== currentVideoIdRef.current) {
           console.log("Comment Verdict: NEW VIDEO detected, resetting state")
+          // Abort any ongoing polling from previous video
+          if (abortPollingRef.current) {
+            console.log("Aborting previous video's polling")
+            abortPollingRef.current()
+            abortPollingRef.current = null
+          }
           currentVideoIdRef.current = videoId
           setCurrentVideoId(videoId)
           // Check if auto-analyze is enabled
@@ -197,6 +208,7 @@ const ContentScript = () => {
             setIsCached(null)
             setCurrentJobId(null)
             setProgressPercent(null)
+            setProgressMessage(null)
           }
           // A new page is assumed to be unanalyzed for development. Reset
           // the pre-watch dismissed flag so the popover appears after
@@ -218,8 +230,15 @@ const ContentScript = () => {
           setIsCached(null)
           setCurrentJobId(null)
           setProgressPercent(null)
+          setProgressMessage(null)
         }
       } else {
+        // User left watch page - abort any ongoing polling
+        if (abortPollingRef.current) {
+          console.log("User left watch page - aborting polling")
+          abortPollingRef.current()
+          abortPollingRef.current = null
+        }
         currentVideoIdRef.current = null
         setCurrentVideoId(null)
         setVideoAnalysis(null)
@@ -229,6 +248,7 @@ const ContentScript = () => {
         setIsCached(null)
         setCurrentJobId(null)
         setProgressPercent(null)
+        setProgressMessage(null)
         setIsSidePanelOpen(false)
         setShowPreWatchPopover(false)
         setPreWatchDismissed(false)
@@ -752,48 +772,74 @@ const ContentScript = () => {
       let topicGapsTierRestriction = null
 
       if (!cacheStatus.cached) {
-        // Step 2a: Not cached - submit job and poll
-        console.log("Video not cached, submitting summary job...")
-        const jobResponse = await FocusGuardAPI.submitSummaryJob({
-          video_id: videoId,
-          force_refresh: false
-        })
-        console.log("Job submitted:", jobResponse)
-        setCurrentJobId(jobResponse.job_id)
+        // Step 2a: Not cached - check for existing job or submit new one
+        let jobId: string
+        
+        // Check if there's already a running job for this video
+        const runningJobCheck = await FocusGuardAPI.checkForRunningJobs(videoId, "summary")
+        
+        if (runningJobCheck.shouldWait && runningJobCheck.existingJobId) {
+          console.log("Found existing running job, resuming polling:", runningJobCheck.existingJobId)
+          jobId = runningJobCheck.existingJobId
+          setCurrentJobId(jobId)
+        } else {
+          console.log(`Video not cached, submitting summary job (max_comments: ${MAX_COMMENTS})...`)
+          const jobResponse = await FocusGuardAPI.submitSummaryJob({
+            video_id: videoId,
+            force_refresh: false,
+            max_comments: MAX_COMMENTS
+          })
+          console.log("Job submitted:", jobResponse)
+          jobId = jobResponse.job_id
+          setCurrentJobId(jobId)
+        }
+
+        // Create abort controller for this polling operation
+        const abortController = new AbortController()
+        abortPollingRef.current = () => abortController.abort()
 
         // Poll job status
         console.log("Polling job status...")
         const pollStartTime = Date.now()
         const jobResult = await FocusGuardAPI.pollJob(
-          jobResponse.job_id,
+          jobId,
           (status) => {
             const elapsed = ((Date.now() - pollStartTime) / 1000).toFixed(1)
             console.log(`[${elapsed}s] Job progress:`, status.progress_percent, "%", status.progress_message, "Status:", status.status)
-            // Update progress percentage for UI display
+            // Update progress percentage and message for UI display
             setProgressPercent(status.progress_percent)
+            setProgressMessage(status.progress_message || null)
           },
-          500 // Poll every 500ms for faster response
+          500, // Poll every 500ms for faster response
+          abortController.signal
         )
+        
+        // Clear abort reference after successful completion
+        abortPollingRef.current = null
+        
         const pollDuration = ((Date.now() - pollStartTime) / 1000).toFixed(1)
-        console.log(`Job completed in ${pollDuration}s:`, jobResult)
+        console.log(`✅ Job completed in ${pollDuration}s:`, jobResult)
 
         // Step 3a: After job completes, fetch analysis endpoints
         // NOTE: Excluding human-likeness from general flow - will be loaded on-demand for advanced features
         // IMPORTANT: Summary must be fetched FIRST because backend dependencies require it (e.g., credibility)
-        console.log("Fetching analysis data (post-job)...")
+        console.log("⏱️ Starting to fetch analysis data (post-job)...")
         const fetchStartTime = Date.now()
         
         // Step 3a.1: Fetch summary first (required by backend for other endpoints)
-        console.log("Fetching summary first (required by backend)...")
+        console.log("⏱️ Fetching summary first (required by backend)...")
+        const summaryFetchStart = Date.now()
         try {
           summaryData = await FocusGuardAPI.analyzeSummaryV2({ video_id: videoId, force_refresh: false })
-          console.log("Summary data fetched")
+          const summaryDuration = ((Date.now() - summaryFetchStart) / 1000).toFixed(1)
+          console.log(`✅ Summary data fetched in ${summaryDuration}s`)
         } catch (error) {
           console.error("Failed to fetch summary:", error)
         }
         
         // Step 3a.2: Fetch remaining endpoints in parallel (after summary exists)
-        console.log("Fetching remaining analysis data in parallel...")
+        console.log("⏱️ Fetching remaining analysis data in parallel...")
+        const parallelFetchStart = Date.now()
         const results = await Promise.allSettled([
           FocusGuardAPI.analyzeRelevancyV2(videoId, false),
           FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: false }),
@@ -801,8 +847,9 @@ const ContentScript = () => {
           FocusGuardAPI.analyzeTopicClusteringV2(videoId, false),
           FocusGuardAPI.analyzeTopicGapV2(videoId, false)
         ])
-        const fetchDuration = ((Date.now() - fetchStartTime) / 1000).toFixed(1)
-        console.log(`Analysis data fetched in ${fetchDuration}s`)
+        const parallelDuration = ((Date.now() - parallelFetchStart) / 1000).toFixed(1)
+        const totalFetchDuration = ((Date.now() - fetchStartTime) / 1000).toFixed(1)
+        console.log(`✅ Parallel endpoints fetched in ${parallelDuration}s (total post-job fetch: ${totalFetchDuration}s)`)
         
         // Extract results, logging any failures and capturing tier restrictions
         relevancyData = results[0].status === 'fulfilled' ? results[0].value : null
@@ -1154,6 +1201,15 @@ const ContentScript = () => {
     } catch (error) {
       console.error("Video analysis failed:", error)
       
+      // Check if polling was aborted (user switched videos)
+      if (error instanceof Error && error.message === "Polling aborted") {
+        console.log("Polling aborted due to video switch - this is expected")
+        // Don't set error state, just reset to idle
+        setAnalysisState("idle")
+        setCurrentJobId(null)
+        return
+      }
+      
       // Simplify error messages for common cases
       let errorMessage = "Analysis failed"
       if (error instanceof Error) {
@@ -1298,6 +1354,7 @@ const ContentScript = () => {
             isCached={isCached}
             errorMessage={analysisError}
             progressPercent={progressPercent}
+            progressMessage={progressMessage}
             onToggle={() => {
               if (isCheckingCache) {
                 // Do nothing while checking cache

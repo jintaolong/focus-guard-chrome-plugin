@@ -18,11 +18,13 @@ interface ToggleButtonProps {
   errorMessage?: string | null
   // Progress percentage (0-100) for async job tracking
   progressPercent?: number | null
+  // Progress message from backend (e.g., "Analyzing comments...")
+  progressMessage?: string | null
 }
 
 type DockPosition = "left" | "right"
 
-export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", onDockChange, state = "complete", isCached = null, errorMessage = null, progressPercent = null }: ToggleButtonProps) => {
+export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", onDockChange, state = "complete", isCached = null, errorMessage = null, progressPercent = null, progressMessage = null }: ToggleButtonProps) => {
   const [isDragging, setIsDragging] = useState(false)
   const movedRef = useRef(false)
   const [dockPosition, setDockPosition] = useState<DockPosition>(dock)
@@ -262,9 +264,10 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
                 fontWeight: "600",
                 color: "white",
                 textShadow: "0 1px 2px rgba(0,0,0,0.3)",
-                lineHeight: 1
+                lineHeight: 1,
+                maxWidth: "70px"
               }}>
-                Analyzing...
+                {progressMessage || "Analyzing..."}
               </span>
             </>
           ) : (
@@ -275,7 +278,7 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
               textShadow: "0 1px 2px rgba(0,0,0,0.3)",
               lineHeight: 1
             }}>
-              {isCheckingCache ? "Checking..." : "Analyzing..."}
+              {isCheckingCache ? "Checking..." : progressMessage || "Analyzing..."}
             </span>
           )}
           <style>
