@@ -110,6 +110,7 @@ export interface SummaryJobRequest {
   video_id: string // 11 characters
   query_context?: string | null
   force_refresh?: boolean
+  max_comments?: number // default 100, range 1-1000
 }
 
 export interface ReportJobRequest {
