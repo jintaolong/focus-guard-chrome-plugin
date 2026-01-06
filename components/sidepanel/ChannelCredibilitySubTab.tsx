@@ -83,8 +83,8 @@ export const ChannelCredibilitySubTab = ({
           
           console.log("SummaryTab: Visual factors for radar chart:", visualFactors)
           
-          const centerX = 150
-          const centerY = 150
+          const centerX = 175
+          const centerY = 175
           const radius = 100
           const numFactors = visualFactors.length
           
@@ -112,7 +112,7 @@ export const ChannelCredibilitySubTab = ({
           return (
             <div>
               <div style={{ textAlign: "center", marginBottom: "16px" }}>
-                <svg viewBox="0 0 300 300" style={{ width: "100%", maxWidth: "300px", height: "auto" }}>
+                <svg viewBox="0 0 350 350" style={{ width: "100%", maxWidth: "350px", height: "auto" }}>
                   {/* Background web circles */}
                   {webLevels.map((level, idx) => (
                     <circle
@@ -170,11 +170,19 @@ export const ChannelCredibilitySubTab = ({
                     const labelX = centerX + labelDistance * Math.cos(point.angle)
                     const labelY = centerY + labelDistance * Math.sin(point.angle)
                     
-                    // Format factor name for display (remove underscores, capitalize)
+                    // Format factor name for display (capitalized words)
                     const displayName = factor.name
-                      .split('_')
+                      .replace(/_/g, ' ')
+                      .replace(/([A-Z])/g, ' $1') // Handle camelCase
+                      .trim()
+                      .split(' ')
                       .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
                       .join(' ')
+                    
+                    // Special case for HasTopicLabels
+                    const finalDisplayName = displayName.toLowerCase().includes('has topic labels') 
+                      ? 'Topic Consistency' 
+                      : displayName
                     
                     return (
                       <text
@@ -183,14 +191,23 @@ export const ChannelCredibilitySubTab = ({
                         y={labelY}
                         textAnchor="middle"
                         dominantBaseline="middle"
-                        fontSize="11"
+                        fontSize="10"
                         fontWeight="600"
                         fill={COLORS.ui.textPrimary}
                         style={{ 
                           userSelect: 'none',
-                          maxWidth: '60px'
+                          maxWidth: '70px'
                         }}>
-                        {displayName}
+                        {/* Split long names into multiple lines */}
+                        {finalDisplayName.split(' ').map((word: string, wordIdx: number, arr: string[]) => (
+                          <tspan 
+                            key={wordIdx} 
+                            x={labelX} 
+                            dy={wordIdx === 0 ? 0 : "1.1em"}
+                            textAnchor="middle">
+                            {word}
+                          </tspan>
+                        ))}
                       </text>
                     )
                   })}
@@ -207,7 +224,7 @@ export const ChannelCredibilitySubTab = ({
               }}>
                 <div style={{ 
                   display: "grid", 
-                  gridTemplateColumns: "1fr auto auto",
+                  gridTemplateColumns: "1fr 80px 80px",
                   gap: "8px",
                   fontWeight: "600",
                   paddingBottom: "8px",
@@ -215,52 +232,69 @@ export const ChannelCredibilitySubTab = ({
                   color: COLORS.ui.textSecondary
                 }}>
                   <div>Factor</div>
-                  <div style={{ textAlign: "right" }}>Score</div>
+                  <div style={{ textAlign: "right" }}>Normalized Score</div>
                   <div style={{ textAlign: "right" }}>Value</div>
                 </div>
-                {visualFactors.map((factor: any, index: number) => (
-                  <div
-                    key={index}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr auto auto",
-                      gap: "8px",
-                      paddingTop: "8px",
-                      alignItems: "center"
-                    }}>
-                    <div style={{ 
-                      fontWeight: "500", 
-                      color: COLORS.ui.textPrimary,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap"
-                    }}>
-                      {factor.name.split('_').map((word: string) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                {visualFactors.map((factor: any, index: number) => {
+                  // Format factor name for display (capitalized words)
+                  const displayName = factor.name
+                    .replace(/_/g, ' ')
+                    .replace(/([A-Z])/g, ' $1') // Handle camelCase
+                    .trim()
+                    .split(' ')
+                    .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
+                    .join(' ')
+                  
+                  // Special case for HasTopicLabels
+                  const finalDisplayName = displayName.toLowerCase().includes('has topic labels') 
+                    ? 'Topic Consistency' 
+                    : displayName
+                  
+                  return (
+                    <div
+                      key={index}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 80px 80px",
+                        gap: "8px",
+                        paddingTop: "8px",
+                        alignItems: "center"
+                      }}>
+                      <div style={{ 
+                        fontWeight: "500", 
+                        color: COLORS.ui.textPrimary,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap"
+                      }}>
+                        {finalDisplayName}
+                      </div>
+                      <div style={{ 
+                        textAlign: "right",
+                        fontWeight: "700",
+                        color: factor.normalizedWeight >= 70 ? COLORS.high.primary : factor.normalizedWeight >= 40 ? COLORS.medium.primary : COLORS.low.primary
+                      }}>
+                        {Math.round(factor.normalizedWeight)}%
+                      </div>
+                      <div style={{ 
+                        textAlign: "right",
+                        color: COLORS.ui.textSecondary,
+                        fontSize: "11px",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap"
+                      }}>
+                        {/* Special handling for boolean metrics */}
+                        {factor.name.toLowerCase().includes('hastopiclabels') || factor.name.toLowerCase().includes('has_topic_labels')
+                          ? (factor.value == 1 || factor.value === true || factor.value === 'true' ? 'True' : 'False')
+                          : factor.name.toLowerCase() === 'verified' 
+                          ? (factor.value == 1 || factor.value === true || factor.value === 'true' ? 'Yes' : 'No')
+                          : factor.value
+                        }
+                      </div>
                     </div>
-                    <div style={{ 
-                      textAlign: "right",
-                      fontWeight: "700",
-                      color: factor.normalizedWeight >= 70 ? COLORS.high.primary : factor.normalizedWeight >= 40 ? COLORS.medium.primary : COLORS.low.primary
-                    }}>
-                      {Math.round(factor.normalizedWeight)}%
-                    </div>
-                    <div style={{ 
-                      textAlign: "right",
-                      color: COLORS.ui.textSecondary,
-                      fontSize: "11px",
-                      maxWidth: "80px",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap"
-                    }}>
-                      {/* Special handling for verified (boolean 0/1 -> Yes/No) */}
-                      {factor.name.toLowerCase() === 'verified' 
-                        ? (factor.value == 1 || factor.value === true || factor.value === 'true' ? 'Yes' : 'No')
-                        : factor.value
-                      }
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
 
               {/* Legend */}
@@ -272,6 +306,15 @@ export const ChannelCredibilitySubTab = ({
                 fontStyle: "italic"
               }}>
                 Scores represent normalized credibility metrics (0-100%).
+              </div>
+
+              <div style={{
+                marginTop: "8px",
+                fontSize: "11px",
+                color: COLORS.ui.textSecondary,
+                textAlign: "center"
+              }}>
+                <em>Topic Consistency is decided by whether YouTube has assigned topic tags to this channel; 'True' means the channel has topic tags.</em>
               </div>
             </div>
           )

@@ -51,18 +51,19 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
       <div style={{
         display: "flex",
         gap: "4px",
-        padding: "12px 24px 0 24px",
+        padding: "8px 12px 0 12px",
         borderBottom: `2px solid ${COLORS.ui.border}`,
-        backgroundColor: COLORS.ui.background,
-        justifyContent: "center"
+        backgroundColor: COLORS.ui.background
       }}>
         {subTabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveSubTab(tab.id)}
             style={{
-              padding: "8px 16px",
-              fontSize: "13px",
+              flex: 1,
+              minWidth: 0,
+              padding: "12px 0",
+              fontSize: "14px",
               fontWeight: "600",
               color: activeSubTab === tab.id ? COLORS.neutral.primary : COLORS.ui.textSecondary,
               backgroundColor: activeSubTab === tab.id ? COLORS.ui.surface : "transparent",

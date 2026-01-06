@@ -117,15 +117,7 @@ export const VideoCredibilitySubTab = ({
           </div>
         </div>
 
-        {/* AI Confidence Level */}
-        <div
-          style={{
-            marginTop: "16px",
-            fontSize: "14px",
-            color: COLORS.ui.text.secondary
-          }}>
-            AI Confidence: <strong>{summary.aiConfidence ?? 0}%</strong>
-        </div>
+        {/* Gauge only - confidence values removed (trust score shown above) */}
       </div>
 
       {/* Clickbait Verdict & Claims */}
@@ -170,45 +162,7 @@ export const VideoCredibilitySubTab = ({
           </span>
         </div>
 
-        {/* Confidence Bar */}
-        <div style={{ marginTop: "12px", marginBottom: "16px" }}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: "6px"
-            }}>
-            <span style={{ fontSize: "13px", color: COLORS.ui.text.secondary }}>
-              Confidence
-            </span>
-            <span
-              style={{
-                fontSize: "14px",
-                fontWeight: "600",
-                color: COLORS[verdictColor].text
-              }}>
-              {summary.clickbaitVerdict?.confidence ?? 0}%
-            </span>
-          </div>
-          <div
-            style={{
-              width: "100%",
-              height: "8px",
-              backgroundColor: COLORS.ui.border,
-              borderRadius: "4px",
-              overflow: "hidden"
-            }}>
-            <div
-              style={{
-                width: `${summary.clickbaitVerdict?.confidence ?? 0}%`,
-                height: "100%",
-                backgroundColor: COLORS[verdictColor].primary,
-                transition: "width 1s ease-out"
-              }}
-            />
-          </div>
-        </div>
+        {/* Confidence display removed — trust score gauge suffices */}
 
         {/* One-line Summary */}
         {summary.clickbaitVerdict?.onLineSummary && (
@@ -317,11 +271,7 @@ export const VideoCredibilitySubTab = ({
                                 {claimStatus}
                               </span>
                             )}
-                            {claim.confidence !== undefined && (
-                              <span>
-                                <strong>Confidence:</strong> {claim.confidence}%
-                              </span>
-                            )}
+                            {/* per-claim confidence removed to avoid duplication with trust score */}
                           </div>
                         </div>
                       </div>
