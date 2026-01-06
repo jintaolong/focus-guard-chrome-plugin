@@ -2,7 +2,7 @@
   "name": "comment-verdict-chrome-plugin",
   "displayName": "Comment Verdict: AI YouTube Analysis & Spam/Clickbait Filter",
   "version": "0.0.6",
-  "description": "Get a trust score, clickbait verdict & sentiment analysis from YouTube comments. Helps you decide which videos are worth watching.",
+  "description": "AI trust scores, clickbait alerts, and comment vibes for YouTube. Decide what to watch and who to believe.",
   "author": "Comment Verdict Team",
   "scripts": {
     "dev": "plasmo dev",
