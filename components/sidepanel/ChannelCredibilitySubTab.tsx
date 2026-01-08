@@ -1,4 +1,4 @@
-import { COLORS } from "~lib/colors"
+import { COLORS, getTrustScoreColor } from "~lib/colors"
 
 interface ChannelCredibilitySubTabProps {
   channelCredibility: any
@@ -11,6 +11,9 @@ export const ChannelCredibilitySubTab = ({
   credibilityScore, 
   credibilityFactors 
 }: ChannelCredibilitySubTabProps) => {
+  // Determine color theme based on credibility score
+  const trustColorKey = getTrustScoreColor(credibilityScore)
+  const chartColor = COLORS[trustColorKey].primary
   return (
     <div>
       {/* Channel Credibility */}
@@ -144,9 +147,9 @@ export const ChannelCredibilitySubTab = ({
                   {/* Data polygon */}
                   <polygon
                     points={dataPoints.map((p: any) => `${p.x},${p.y}`).join(' ')}
-                    fill={COLORS.high.primary}
+                    fill={chartColor}
                     fillOpacity={0.2}
-                    stroke={COLORS.high.primary}
+                    stroke={chartColor}
                     strokeWidth="2"
                   />
 
@@ -157,7 +160,7 @@ export const ChannelCredibilitySubTab = ({
                       cx={point.x}
                       cy={point.y}
                       r="4"
-                      fill={COLORS.high.primary}
+                      fill={chartColor}
                       stroke="white"
                       strokeWidth="2"
                     />
