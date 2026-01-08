@@ -23,7 +23,8 @@ export interface VideoAnalysis {
   // Legacy and current shapes supported for compatibility with components
   // Summary-style (newer shape)
   summary?: {
-    trustScore: number // 0-10 or 0-100
+    trustScore: number // 0-10 or 0-100 (Verdict Certainty - AI's confidence in verdict)
+    evidenceScore?: number // 0-100 (Evidence Score - weighted user evidence for/against claims)
     aiConfidence?: number // 0-100%
     clickbaitVerdict?: {
       label?: "LEGIT" | "MISLEADING" | "CLICKBAIT"

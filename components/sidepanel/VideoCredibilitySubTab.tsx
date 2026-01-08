@@ -93,7 +93,7 @@ export const VideoCredibilitySubTab = ({
             fontWeight: "600",
             color: COLORS.ui.textPrimary
           }}>
-          Trust Score
+          Verdict Certainty
         </h3>
 
         {/* Radial Gauge */}
@@ -148,6 +148,17 @@ export const VideoCredibilitySubTab = ({
           </div>
         </div>
 
+        {/* Footnote */}
+        <p
+          style={{
+            margin: "12px 0 0 0",
+            fontSize: "11px",
+            color: COLORS.ui.textSecondary,
+            lineHeight: "1.4",
+            textAlign: "center"
+          }}>
+          How confident AI is about the verdict?
+        </p>
 
         {/* Gauge only - confidence values removed (trust score shown above) */}
       </div>
@@ -231,6 +242,73 @@ export const VideoCredibilitySubTab = ({
               fontStyle: "italic"
             }}>
             {summary.clickbaitVerdict.onLineSummary}
+          </div>
+        )}
+
+        {/* Evidence Score Bar - placed above claims */}
+        {summary.evidenceScore !== undefined && (
+          <div style={{ marginBottom: "16px" }}>
+            <h4
+              style={{
+                margin: "0 0 8px 0",
+                fontSize: "13px",
+                fontWeight: "600",
+                color: COLORS.ui.textPrimary
+              }}>
+              Evidence Score
+            </h4>
+            <div
+              style={{
+                position: "relative",
+                width: "100%",
+                height: "20px",
+                backgroundColor: COLORS.ui.border,
+                borderRadius: "10px",
+                overflow: "hidden",
+                marginBottom: "6px"
+              }}>
+              <div
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  top: 0,
+                  height: "100%",
+                  width: `${summary.evidenceScore}%`,
+                  background: (() => {
+                    const score = summary.evidenceScore
+                    if (score >= 70) return `linear-gradient(90deg, ${COLORS.high.primary}, ${COLORS.high.text})`
+                    if (score >= 50) return `linear-gradient(90deg, ${COLORS.medium.primary}, ${COLORS.medium.text})`
+                    if (score >= 30) return `linear-gradient(90deg, ${COLORS.medium.text}, ${COLORS.low.primary})`
+                    return `linear-gradient(90deg, ${COLORS.low.primary}, ${COLORS.low.text})`
+                  })(),
+                  borderRadius: "10px 0 0 10px",
+                  transition: "width 0.5s ease"
+                }}
+              />
+              <div
+                style={{
+                  position: "absolute",
+                  left: "50%",
+                  top: "50%",
+                  transform: "translate(-50%, -50%)",
+                  fontSize: "11px",
+                  fontWeight: "700",
+                  color: COLORS.ui.textPrimary,
+                  textShadow: "0 0 3px rgba(255,255,255,0.9)",
+                  zIndex: 1
+                }}>
+                {summary.evidenceScore.toFixed(1)}
+              </div>
+            </div>
+            <p
+              style={{
+                margin: 0,
+                fontSize: "10px",
+                color: COLORS.ui.textSecondary,
+                lineHeight: "1.3"
+              }}>
+              Weighted evidence from user comments (0=all against, 100=all for)
+            </p>
           </div>
         )}
 

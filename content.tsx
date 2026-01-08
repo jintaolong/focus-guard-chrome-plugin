@@ -68,6 +68,47 @@ function isWatchPage(): boolean {
   return false
 }
 
+// Calculate evidence score from claims (0-100 scale)
+// Measures strength of user evidence for/against claims
+// Formula: weighted_for = sum(for.count * (1 + likes*0.1))
+//          weighted_against = sum(against.count * (1 + likes*0.1))
+//          evidence_score = 100 * weighted_for / (weighted_for + weighted_against + ε)
+function calculateEvidenceScore(claims: any[]): number {
+  if (!claims || claims.length === 0) return 50 // Neutral score if no claims
+  
+  let weightedFor = 0
+  let weightedAgainst = 0
+  const epsilon = 0.001 // Small value to avoid division by zero
+  
+  for (const claim of claims) {
+    // Process evidence_for
+    if (claim.evidence_for && Array.isArray(claim.evidence_for)) {
+      for (const evidence of claim.evidence_for) {
+        const likes = typeof evidence.likes === 'number' ? evidence.likes : 0
+        const weight = 1 + (likes * 0.1)
+        weightedFor += weight
+      }
+    }
+    
+    // Process evidence_against
+    if (claim.evidence_against && Array.isArray(claim.evidence_against)) {
+      for (const evidence of claim.evidence_against) {
+        const likes = typeof evidence.likes === 'number' ? evidence.likes : 0
+        const weight = 1 + (likes * 0.1)
+        weightedAgainst += weight
+      }
+    }
+  }
+  
+  // Calculate evidence score (0-100)
+  const total = weightedFor + weightedAgainst + epsilon
+  const score = (100 * weightedFor) / total
+  
+  console.log(`Evidence Score Calculation: for=${weightedFor.toFixed(2)}, against=${weightedAgainst.toFixed(2)}, score=${score.toFixed(1)}`)
+  
+  return Math.round(score * 10) / 10 // Round to 1 decimal
+}
+
 // Debug mode: enable extended injection on any YouTube page when set.
 // Read debug flag from environment at build time (set by `dev:debug` script).
 // Use a direct `process.env.COMMENT_VERDICT_DEBUG` access so the bundler can
@@ -518,17 +559,23 @@ const ContentScript = () => {
         console.log("Comment Verdict: Normalized confidence:", confidenceNorm)
         
         const confidencePercent = Math.round(confidenceNorm * 100)
-        const trustScoreNormalized = Math.round(confidenceNorm * 10 * 10) / 10
-        console.log("Comment Verdict: Final trustScore:", trustScoreNormalized, "verdict:", verdictRaw)
+        const verdictCertainty = Math.round(confidenceNorm * 10 * 10) / 10 // Renamed from trustScoreNormalized
+        
+        // Calculate evidence score from claims
+        const claims = relevancyData?.data?.claims || []
+        const evidenceScore = calculateEvidenceScore(claims)
+        
+        console.log("Comment Verdict: Final verdictCertainty:", verdictCertainty, "evidenceScore:", evidenceScore, "verdict:", verdictRaw)
 
         setAnalysisStatus({
-          trustScore: trustScoreNormalized,
+          trustScore: verdictCertainty, // Still using trustScore key for backwards compatibility
           clickbaitVerdict: verdictRaw as "LEGIT" | "MISLEADING" | "CLICKBAIT",
           isAnalyzing: false
         })
 
         const minimalSummary = {
-          trustScore: trustScoreNormalized,
+          trustScore: verdictCertainty, // Verdict certainty (AI confidence in verdict)
+          evidenceScore: evidenceScore, // Evidence score (weighted user evidence)
           aiConfidence: confidencePercent,
           clickbaitVerdict: {
             label: verdictRaw,
@@ -679,7 +726,7 @@ const ContentScript = () => {
 
         setVideoAnalysis({
           summary: minimalSummary,
-          trustScore: { score: trustScoreNormalized },
+          trustScore: { score: verdictCertainty },
           clickbaitVerdict: { verdict: verdictRaw },
           executiveSummary: summaryData?.summary_paragraph ?? null,
           channelCredibility: credibilityData ? {
@@ -857,67 +904,161 @@ const ContentScript = () => {
         const pollDuration = ((Date.now() - pollStartTime) / 1000).toFixed(1)
         console.log(`✅ Job completed in ${pollDuration}s:`, jobResult)
 
-        // Step 3a: After job completes, fetch analysis endpoints
-        // NOTE: Excluding human-likeness from general flow - will be loaded on-demand for advanced features
-        // IMPORTANT: Summary must be fetched FIRST because backend dependencies require it (e.g., credibility)
-        console.log("⏱️ Starting to fetch analysis data (post-job)...")
+        // Step 3a: Extract analysis data from job result (optimized path)
         const fetchStartTime = Date.now()
+        const resultData = jobResult.result_data
         
-        // Step 3a.1: Fetch summary first (required by backend for other endpoints)
-        console.log("⏱️ Fetching summary first (required by backend)...")
-        const summaryFetchStart = Date.now()
-        try {
-          summaryData = await FocusGuardAPI.analyzeSummaryV2({ video_id: videoId, force_refresh: false })
-          const summaryDuration = ((Date.now() - summaryFetchStart) / 1000).toFixed(1)
-          console.log(`✅ Summary data fetched in ${summaryDuration}s`)
-        } catch (error) {
-          console.error("Failed to fetch summary:", error)
-        }
+        // Check if job result contains optimized data structure (new backend implementation)
+        const hasOptimizedData = resultData && 
+                                  resultData.summary && 
+                                  resultData.relevancy && 
+                                  resultData.sentiment &&
+                                  resultData.channel_credibility &&
+                                  resultData.topic_clusters &&
+                                  resultData.topic_gaps
         
-        // Step 3a.2: Fetch remaining endpoints in parallel (after summary exists)
-        console.log("⏱️ Fetching remaining analysis data in parallel...")
-        const parallelFetchStart = Date.now()
-        const results = await Promise.allSettled([
-          FocusGuardAPI.analyzeRelevancyV2(videoId, false),
-          FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: false }),
-          FocusGuardAPI.analyzeChannelCredibilityV2(videoId, false),
-          FocusGuardAPI.analyzeTopicClusteringV2(videoId, false),
-          FocusGuardAPI.analyzeTopicGapV2(videoId, false)
-        ])
-        const parallelDuration = ((Date.now() - parallelFetchStart) / 1000).toFixed(1)
-        const totalFetchDuration = ((Date.now() - fetchStartTime) / 1000).toFixed(1)
-        console.log(`✅ Parallel endpoints fetched in ${parallelDuration}s (total post-job fetch: ${totalFetchDuration}s)`)
-        
-        // Extract results, logging any failures and capturing tier restrictions
-        relevancyData = results[0].status === 'fulfilled' ? results[0].value : null
-        sentimentData = results[1].status === 'fulfilled' ? results[1].value : null
-        credibilityData = results[2].status === 'fulfilled' ? results[2].value : null
-        topicClustersData = results[3].status === 'fulfilled' ? results[3].value : null
-        topicGapsData = results[4].status === 'fulfilled' ? results[4].value : null
-        humanLikenessData = null // Not fetched in general flow - load on-demand for advanced features
-        
-        // Log any failures and extract tier restrictions
-        results.forEach((result, idx) => {
-          if (result.status === 'rejected') {
-            const endpoints = ['relevancy', 'sentiment', 'credibility', 'topicClusters', 'topicGaps']
-            console.error(`Failed to fetch ${endpoints[idx]}:`, result.reason)
-            
-            // Check if the error is a tier restriction
-            const error = result.reason
-            if (error && typeof error === 'object' && 'response' in error && error.response) {
-              const responseData = error.response
-              if (responseData.detail && responseData.detail.code === 'TIER_RESTRICTION') {
-                console.log(`Tier restriction detected for ${endpoints[idx]}:`, responseData.detail)
-                if (idx === 1) sentimentTierRestriction = responseData.detail
-                if (idx === 3) topicClustersTierRestriction = responseData.detail
-                if (idx === 4) topicGapsTierRestriction = responseData.detail
+        if (hasOptimizedData) {
+          // NEW OPTIMIZED PATH: Extract all data from job result (no additional API calls needed)
+          console.log("✅ Using optimized job result data (all analysis included)")
+          
+          // Debug: Log the raw result_data structure
+          console.log("🔍 DEBUG result_data.sentiment:", resultData.sentiment)
+          console.log("🔍 DEBUG result_data.channel_credibility:", resultData.channel_credibility)
+          
+          // Transform job result data to match expected endpoint response formats
+          summaryData = {
+            status: 'SUCCESS',
+            summary_paragraph: resultData.summary.summary_paragraph,
+            video_id: resultData.video_id,
+            snapshot_id: resultData.snapshot_id,
+            cache_hit: resultData.cache_hit,
+            data_hash: '',
+            video_title: resultData.video_title,
+            credibility_score: resultData.channel_credibility.score,
+            sentiment_score: 0, // Will be calculated from sentiment data
+            persona: resultData.summary.persona,
+            key_takeaways: resultData.summary.key_takeaways,
+            confidence: null
+          }
+          
+          relevancyData = {
+            status: 'SUCCESS',
+            video_id: resultData.video_id,
+            video_title: resultData.video_title,
+            data: resultData.relevancy,
+            cache_hit: resultData.cache_hit,
+            note: null
+          }
+          
+          sentimentData = {
+            status: 'SUCCESS',
+            video_id: resultData.video_id,
+            video_title: resultData.video_title,
+            data: resultData.sentiment,
+            cache_hit: resultData.cache_hit,
+            note: null
+          }
+          
+          console.log("🔍 DEBUG transformed sentimentData:", sentimentData)
+          
+          credibilityData = {
+            status: 'SUCCESS',
+            video_id: resultData.video_id,
+            video_title: resultData.video_title,
+            channel_id: resultData.channel_credibility.channel_id,
+            channel_name: resultData.channel_credibility.channel_name,
+            score: resultData.channel_credibility.score,
+            normalized_factors: resultData.channel_credibility.normalized_factors,
+            factual_factors: resultData.channel_credibility.factual_factors,
+            computed_at: resultData.channel_credibility.computed_at,
+            cache_hit: resultData.cache_hit
+          }
+          
+          topicClustersData = {
+            status: 'SUCCESS',
+            video_id: resultData.video_id,
+            video_title: resultData.video_title,
+            topic_clusters: resultData.topic_clusters.clusters,
+            processing_time: resultData.topic_clusters.processing_time,
+            cache_hit: resultData.cache_hit
+          }
+          
+          topicGapsData = {
+            status: 'SUCCESS',
+            video_id: resultData.video_id,
+            video_title: resultData.video_title,
+            topic_gaps: resultData.topic_gaps.gaps,
+            filtered_question_count: resultData.topic_gaps.filtered_question_count,
+            processing_time: resultData.topic_gaps.processing_time,
+            cache_hit: resultData.cache_hit
+          }
+          
+          humanLikenessData = null // Not included in job result
+          
+          const optimizedDuration = ((Date.now() - fetchStartTime) / 1000).toFixed(1)
+          console.log(`✅ Optimized data extraction completed in ${optimizedDuration}s (saved ~18s!)`)
+          
+        } else {
+          // FALLBACK PATH: Old behavior for backward compatibility (job result doesn't have optimized data)
+          console.log("⚠️ Job result missing optimized data, falling back to individual endpoint fetches...")
+          console.log("⏱️ Starting to fetch analysis data (post-job)...")
+          
+          // Step 3a.1: Fetch summary first (required by backend for other endpoints)
+          console.log("⏱️ Fetching summary first (required by backend)...")
+          const summaryFetchStart = Date.now()
+          try {
+            summaryData = await FocusGuardAPI.analyzeSummaryV2({ video_id: videoId, force_refresh: false })
+            const summaryDuration = ((Date.now() - summaryFetchStart) / 1000).toFixed(1)
+            console.log(`✅ Summary data fetched in ${summaryDuration}s`)
+          } catch (error) {
+            console.error("Failed to fetch summary:", error)
+          }
+          
+          // Step 3a.2: Fetch remaining endpoints in parallel (after summary exists)
+          console.log("⏱️ Fetching remaining analysis data in parallel...")
+          const parallelFetchStart = Date.now()
+          const results = await Promise.allSettled([
+            FocusGuardAPI.analyzeRelevancyV2(videoId, false),
+            FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: false }),
+            FocusGuardAPI.analyzeChannelCredibilityV2(videoId, false),
+            FocusGuardAPI.analyzeTopicClusteringV2(videoId, false),
+            FocusGuardAPI.analyzeTopicGapV2(videoId, false)
+          ])
+          const parallelDuration = ((Date.now() - parallelFetchStart) / 1000).toFixed(1)
+          const totalFetchDuration = ((Date.now() - fetchStartTime) / 1000).toFixed(1)
+          console.log(`✅ Parallel endpoints fetched in ${parallelDuration}s (total post-job fetch: ${totalFetchDuration}s)`)
+          
+          // Extract results, logging any failures and capturing tier restrictions
+          relevancyData = results[0].status === 'fulfilled' ? results[0].value : null
+          sentimentData = results[1].status === 'fulfilled' ? results[1].value : null
+          credibilityData = results[2].status === 'fulfilled' ? results[2].value : null
+          topicClustersData = results[3].status === 'fulfilled' ? results[3].value : null
+          topicGapsData = results[4].status === 'fulfilled' ? results[4].value : null
+          humanLikenessData = null // Not fetched in general flow - load on-demand for advanced features
+          
+          // Log any failures and extract tier restrictions
+          results.forEach((result, idx) => {
+            if (result.status === 'rejected') {
+              const endpoints = ['relevancy', 'sentiment', 'credibility', 'topicClusters', 'topicGaps']
+              console.error(`Failed to fetch ${endpoints[idx]}:`, result.reason)
+              
+              // Check if the error is a tier restriction
+              const error = result.reason
+              if (error && typeof error === 'object' && 'response' in error && error.response) {
+                const responseData = error.response
+                if (responseData.detail && responseData.detail.code === 'TIER_RESTRICTION') {
+                  console.log(`Tier restriction detected for ${endpoints[idx]}:`, responseData.detail)
+                  if (idx === 1) sentimentTierRestriction = responseData.detail
+                  if (idx === 3) topicClustersTierRestriction = responseData.detail
+                  if (idx === 4) topicGapsTierRestriction = responseData.detail
+                }
               }
             }
+          })
+          
+          if (!relevancyData) {
+            throw new Error("Failed to fetch relevancy data (required)")
           }
-        })
-        
-        if (!relevancyData) {
-          throw new Error("Failed to fetch relevancy data (required)")
         }
       } else {
         // Step 2b: Cached - directly get relevancy
@@ -934,10 +1075,15 @@ const ContentScript = () => {
       const confidenceNorm = normalizeConfidence(confidenceRaw)
       console.log("Comment Verdict: Normalized confidence:", confidenceNorm)
 
-      // Normalize confidence: convert to percent and 0-10 trust score.
+      // Normalize confidence: convert to percent and 0-10 verdict certainty.
       const confidencePercent = Math.round(confidenceNorm * 100)
-      const trustScoreNormalized = Math.round(confidenceNorm * 10 * 10) / 10 // 0-10, one decimal
-      console.log("Comment Verdict: Final trustScore for analysisStatus:", trustScoreNormalized, "confidencePercent:", confidencePercent)
+      const verdictCertainty = Math.round(confidenceNorm * 10 * 10) / 10 // 0-10, one decimal (renamed from trustScoreNormalized)
+      
+      // Calculate evidence score from claims
+      const claims = relevancyData.data.claims || []
+      const evidenceScore = calculateEvidenceScore(claims)
+      
+      console.log("Comment Verdict: Final verdictCertainty:", verdictCertainty, "evidenceScore:", evidenceScore, "confidencePercent:", confidencePercent)
 
       // Fetch additional analysis data for full report (only if we haven't already fetched it)
       // NOTE: Excluding human-likeness from general flow - will be loaded on-demand for advanced features
@@ -1011,6 +1157,11 @@ const ContentScript = () => {
       }
       if (credibilityData) {
         console.log("Comment Verdict: Credibility data received:", credibilityData)
+        console.log("🔍 DEBUG credibilityData.score:", credibilityData.score)
+        console.log("🔍 DEBUG credibilityData.normalized_factors:", credibilityData.normalized_factors)
+        console.log("🔍 DEBUG credibilityData.factual_factors:", credibilityData.factual_factors)
+      } else {
+        console.log("⚠️ WARNING: credibilityData is null/undefined")
       }
       if (humanLikenessData) {
         console.log("Comment Verdict: Human Likeness data received:", humanLikenessData)
@@ -1023,6 +1174,10 @@ const ContentScript = () => {
       }
       
       // Extract counts from nested structure (if sentiment data exists)
+      console.log("🔍 DEBUG sentimentData before extraction:", sentimentData)
+      console.log("🔍 DEBUG sentimentData.data:", sentimentData?.data)
+      console.log("🔍 DEBUG sentimentData.data.positive:", sentimentData?.data?.positive)
+      
       const positiveCount = sentimentData ? (typeof sentimentData.data.positive === 'number' ? sentimentData.data.positive : (sentimentData.data.positive?.count ?? 0)) : 0
       const neutralCount = sentimentData ? (typeof sentimentData.data.neutral === 'number' ? sentimentData.data.neutral : (sentimentData.data.neutral?.count ?? 0)) : 0
       const negativeCount = sentimentData ? (typeof sentimentData.data.negative === 'number' ? sentimentData.data.negative : (sentimentData.data.negative?.count ?? 0)) : 0
@@ -1032,18 +1187,22 @@ const ContentScript = () => {
         positive: positiveCount,
         neutral: neutralCount,
         negative: negativeCount,
-        total: totalComments
+        total: totalComments,
+        rawPositive: sentimentData?.data?.positive,
+        rawNeutral: sentimentData?.data?.neutral,
+        rawNegative: sentimentData?.data?.negative
       })
 
       setAnalysisStatus({
-        trustScore: trustScoreNormalized,
+        trustScore: verdictCertainty, // Still using trustScore key for backwards compatibility
         clickbaitVerdict: verdictRaw as "LEGIT" | "MISLEADING" | "CLICKBAIT",
         isAnalyzing: false
       })
 
       // Create a minimal video analysis object for the panel with expected fields
       const minimalSummary = {
-        trustScore: trustScoreNormalized,
+        trustScore: verdictCertainty, // Verdict certainty (AI confidence in verdict)
+        evidenceScore: evidenceScore, // Evidence score (weighted user evidence)
         aiConfidence: confidencePercent,
         clickbaitVerdict: {
           label: verdictRaw,
@@ -1062,6 +1221,8 @@ const ContentScript = () => {
         } : undefined,
         key_takeaways: (summaryData as any)?.key_takeaways || (summaryData as any)?.keyTakeaways || []
       }
+      
+      console.log("🔍 DEBUG minimalSummary.channelCredibility:", minimalSummary.channelCredibility)
 
       // Build sentiment distribution if available
       const sentimentDistribution = sentimentData ? (() => {
@@ -1090,14 +1251,14 @@ const ContentScript = () => {
 
       // Transform topic clusters to high-value insights
       const benefitInsights = topicClustersData?.topic_clusters
-        ?.filter(cluster => cluster.count > 0)
+        ?.filter((cluster: any) => cluster.count > 0)
         .slice(0, 5)
-        .map((cluster, idx) => ({
+        .map((cluster: any, idx: number) => ({
           id: `benefit-${idx}`,
           statement: cluster.statement,
           type: "benefit" as const,
           commentCount: cluster.count,
-          supportingComments: cluster.supporting_quotes.map((quote, qIdx) => ({
+          supportingComments: cluster.supporting_quotes.map((quote: any, qIdx: number) => ({
             id: `comment-${idx}-${qIdx}`,
             text: quote,
             timestamp: undefined,
@@ -1108,12 +1269,12 @@ const ContentScript = () => {
 
       // Transform topic gaps to unanswered questions for ContentGapsTab
       const unansweredQuestions = topicGapsData?.topic_gaps
-        ?.map((gap, idx) => ({
+        ?.map((gap: any, idx: number) => ({
           id: `gap-${idx}`,
           statement: gap.question_statement,
           type: "issue" as const,
           commentCount: gap.supporting_comments.length,
-          supportingComments: gap.supporting_comments.map((comment, cIdx) => ({
+          supportingComments: gap.supporting_comments.map((comment: any, cIdx: number) => ({
             id: `gap-comment-${idx}-${cIdx}`,
             text: comment,
             timestamp: undefined,
@@ -1192,10 +1353,10 @@ const ContentScript = () => {
         }
       }
 
-      setVideoAnalysis({
+      const videoAnalysisData = {
         // Legacy shape support
         summary: minimalSummary,
-        trustScore: { score: trustScoreNormalized },
+        trustScore: { score: verdictCertainty },
         clickbaitVerdict: { verdict: verdictRaw },
         executiveSummary: summaryData?.summary_paragraph ?? null,
         channelCredibility: credibilityData ? {
@@ -1249,7 +1410,12 @@ const ContentScript = () => {
           analysisDate: new Date().toISOString(),
           tierRestriction: reportTierRestriction
         }
-      } as any)
+      } as any
+      
+      console.log("🔍 DEBUG videoAnalysisData.channelCredibility:", videoAnalysisData.channelCredibility)
+      console.log("🔍 DEBUG videoAnalysisData.summary.channelCredibility:", videoAnalysisData.summary?.channelCredibility)
+      
+      setVideoAnalysis(videoAnalysisData)
 
       setAnalysisState("complete")
       setCurrentJobId(null)
