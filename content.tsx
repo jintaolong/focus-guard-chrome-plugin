@@ -136,6 +136,7 @@ const ContentScript = () => {
   const [progressPercent, setProgressPercent] = useState<number | null>(null)
   const [progressMessage, setProgressMessage] = useState<string | null>(null)
   const abortPollingRef = useRef<(() => void) | null>(null)
+  const [userTierInfo, setUserTierInfo] = useState<{ tier: string; dashboardUrl: string } | null>(null)
 
   // Expose the current analysis on the window for quick debugging in DevTools.
   // Usage in page console: `__FG_VIDEO_ANALYSIS` or `__FG_VIDEO_ANALYSIS_SUMMARY`.
@@ -189,6 +190,8 @@ const ContentScript = () => {
           }
           currentVideoIdRef.current = videoId
           setCurrentVideoId(videoId)
+          // Reset tier info cache for new video (will be fetched fresh on analysis)
+          setUserTierInfo(null)
           // Check if auto-analyze is enabled
           const shouldAutoAnalyze = settings?.videoAnalysis?.autoAnalyze ?? false
           if (shouldAutoAnalyze) {
@@ -610,13 +613,31 @@ const ContentScript = () => {
           contentGaps: topicGapsTierRestriction
         })
 
-        // Check report tier restriction
-        const reportTierRestriction = await getReportTierRestriction()
+        // Get user tier and enforce tier restrictions on frontend (use cached or fetch)
+        let userTier: string
+        let dashboardUrl: string
         
-        // Get user tier and enforce tier restrictions on frontend
-        const subscription = await SubscriptionService.getSubscription()
-        const userTier = subscription.tier?.toLowerCase() || 'free'
-        const dashboardUrl = `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
+        if (userTierInfo) {
+          // Use cached tier info
+          userTier = userTierInfo.tier
+          dashboardUrl = userTierInfo.dashboardUrl
+        } else {
+          // Fetch if not cached
+          const subscription = await SubscriptionService.getSubscription()
+          userTier = subscription.tier?.toLowerCase() || 'free'
+          dashboardUrl = `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
+          // Cache for future use
+          setUserTierInfo({ tier: userTier, dashboardUrl })
+        }
+        
+        // Build report tier restriction inline instead of calling getReportTierRestriction() which would fetch subscription again
+        const reportTierRestriction = userTier !== 'pro' ? {
+          code: 'TIER_RESTRICTION' as const,
+          required_tier: 'pro' as const,
+          current_tier: userTier,
+          message: 'Report downloads are available for Pro users only. Upgrade to download detailed analysis reports.',
+          upgrade_url: dashboardUrl
+        } : null
         
         // Enforce tier restrictions based on feature access rules:
         // - Comment Sentiment: Starter+ (block for Free)
@@ -750,6 +771,22 @@ const ContentScript = () => {
       
       if (!isAuth) {
         throw new Error("Not authenticated. Please log in to analyze videos.")
+      }
+      
+      // Fetch user tier info early (in parallel with job processing) and cache it
+      if (!userTierInfo) {
+        console.log("⏱️ Fetching subscription tier early (parallel with job)...")
+        const tierFetchStart = Date.now()
+        try {
+          const subscription = await SubscriptionService.getSubscription()
+          const tier = subscription.tier?.toLowerCase() || 'free'
+          const dashboardUrl = `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
+          const tierFetchDuration = ((Date.now() - tierFetchStart) / 1000).toFixed(1)
+          console.log(`✅ Subscription tier fetched early in ${tierFetchDuration}s: ${tier}`)
+          setUserTierInfo({ tier, dashboardUrl })
+        } catch (error) {
+          console.warn("Failed to fetch tier info early, will retry later:", error)
+        }
       }
       
       // Step 1: Check cache status
@@ -1085,13 +1122,37 @@ const ContentScript = () => {
           isExpanded: false
         })) || []
 
-      // Check report tier restriction
-      const reportTierRestriction = await getReportTierRestriction()
+      // Get user tier and enforce tier restrictions on frontend (fetch once and reuse)
+      console.log("⏱️ Getting subscription tier info...")
+      const tierFetchStart = Date.now()
+      let subscription
+      let userTier: string
+      let dashboardUrl: string
       
-      // Get user tier and enforce tier restrictions on frontend
-      const subscription = await SubscriptionService.getSubscription()
-      const userTier = subscription.tier?.toLowerCase() || 'free'
-      const dashboardUrl = `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
+      if (userTierInfo) {
+        // Use cached tier info fetched at analysis start
+        console.log(`✅ Using cached subscription tier: ${userTierInfo.tier}`)
+        userTier = userTierInfo.tier
+        dashboardUrl = userTierInfo.dashboardUrl
+      } else {
+        // Fallback: fetch if not already cached
+        subscription = await SubscriptionService.getSubscription()
+        userTier = subscription.tier?.toLowerCase() || 'free'
+        dashboardUrl = `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
+        const tierFetchDuration = ((Date.now() - tierFetchStart) / 1000).toFixed(1)
+        console.log(`✅ Subscription tier fetched in ${tierFetchDuration}s: ${userTier}`)
+        // Cache for future use
+        setUserTierInfo({ tier: userTier, dashboardUrl })
+      }
+      
+      // Build report tier restriction inline instead of calling getReportTierRestriction() which would fetch subscription again
+      const reportTierRestriction = userTier !== 'pro' ? {
+        code: 'TIER_RESTRICTION' as const,
+        required_tier: 'pro' as const,
+        current_tier: userTier,
+        message: 'Report downloads are available for Pro users only. Upgrade to download detailed analysis reports.',
+        upgrade_url: dashboardUrl
+      } : null
       
       // Enforce tier restrictions based on feature access rules:
       // - Comment Sentiment: Starter+ (block for Free)
