@@ -647,14 +647,14 @@ const ContentScript = () => {
 
         // Transform topic clusters to high-value insights
         const benefitInsights = topicClustersData?.topic_clusters
-          ?.filter(cluster => cluster.count > 0)
+          ?.filter((cluster: any) => cluster.count > 0)
           .slice(0, 5)
-          .map((cluster, idx) => ({
+          .map((cluster: any, idx: number) => ({
             id: `benefit-${idx}`,
             statement: cluster.statement,
             type: "benefit" as const,
             commentCount: cluster.count,
-            supportingComments: cluster.supporting_quotes.map((quote, qIdx) => ({
+            supportingComments: cluster.supporting_quotes.map((quote: any, qIdx: number) => ({
               id: `comment-${idx}-${qIdx}`,
               text: quote,
               timestamp: undefined,
@@ -665,12 +665,12 @@ const ContentScript = () => {
 
         // Transform topic gaps to unanswered questions for ContentGapsTab
         const unansweredQuestions = topicGapsData?.topic_gaps
-          ?.map((gap, idx) => ({
+          ?.map((gap: any, idx: number) => ({
             id: `gap-${idx}`,
             statement: gap.question_statement,
             type: "issue" as const,
             commentCount: gap.supporting_comments.length,
-            supportingComments: gap.supporting_comments.map((comment, cIdx) => ({
+            supportingComments: gap.supporting_comments.map((comment: any, cIdx: number) => ({
               id: `gap-comment-${idx}-${cIdx}`,
               text: comment,
               timestamp: undefined,
