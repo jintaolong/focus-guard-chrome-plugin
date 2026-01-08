@@ -497,47 +497,83 @@ const ContentScript = () => {
       // Cached - fetch relevancy and additional data for quick display
       try {
         console.log("Comment Verdict: Fetching analysis data for cached video...")
-        // Fetch all analysis components in parallel
-        const results = await Promise.allSettled([
+        
+        // OPTIMIZATION: Fetch core data first (relevancy + summary) for fast UI update
+        // Then fetch secondary data in background without blocking
+        console.log("Comment Verdict: ⚡ Fetching core data (relevancy + summary)...")
+        const coreStartTime = Date.now()
+        const coreResults = await Promise.allSettled([
           FocusGuardAPI.analyzeRelevancyV2(videoId, false),
-          FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: false }),
-          FocusGuardAPI.analyzeSummaryV2({ video_id: videoId, force_refresh: false }),
-          FocusGuardAPI.analyzeChannelCredibilityV2(videoId, false),
-          // Human-likeness excluded from general flow - load on-demand for advanced features
-          Promise.resolve(null),
-          FocusGuardAPI.analyzeTopicClusteringV2(videoId, false),
-          FocusGuardAPI.analyzeTopicGapV2(videoId, false)
+          FocusGuardAPI.analyzeSummaryV2({ video_id: videoId, force_refresh: false })
         ])
-
-        // Extract results and tier restrictions
-        const relevancyData = results[0].status === 'fulfilled' ? results[0].value : null
-        const sentimentData = results[1].status === 'fulfilled' ? results[1].value : null
-        const summaryData = results[2].status === 'fulfilled' ? results[2].value : null
-        const credibilityData = results[3].status === 'fulfilled' ? results[3].value : null
+        const coreDuration = ((Date.now() - coreStartTime) / 1000).toFixed(2)
+        console.log(`Comment Verdict: ✅ Core data fetched in ${coreDuration}s`)
+        
+        const relevancyData = coreResults[0].status === 'fulfilled' ? coreResults[0].value : null
+        const summaryData = coreResults[1].status === 'fulfilled' ? coreResults[1].value : null
+        
+        if (!relevancyData) {
+          throw new Error("Failed to fetch core relevancy data")
+        }
+        
+        // Start fetching secondary data in background (don't await)
+        console.log("Comment Verdict: ⚡ Fetching secondary data in background...")
+        const secondaryPromise = Promise.allSettled([
+          FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: false }),
+          FocusGuardAPI.analyzeChannelCredibilityV2(videoId, false),
+          FocusGuardAPI.analyzeTopicClusteringV2(videoId, false).catch(err => {
+            console.warn("Topic clustering failed (non-blocking):", err)
+            return null
+          }),
+          FocusGuardAPI.analyzeTopicGapV2(videoId, false).catch(err => {
+            console.warn("Topic gaps failed (non-blocking):", err)
+            return null
+          })
+        ])
+        
+        // Add timeout to prevent slow secondary data from blocking too long
+        const SECONDARY_TIMEOUT = 5000 // 5 seconds max wait for secondary data
+        const timeoutPromise = new Promise(resolve => setTimeout(() => {
+          console.log("Comment Verdict: ⏱️ Secondary data timeout - proceeding with core data only")
+          resolve([
+            { status: 'rejected', reason: new Error('Timeout') },
+            { status: 'rejected', reason: new Error('Timeout') },
+            { status: 'rejected', reason: new Error('Timeout') },
+            { status: 'rejected', reason: new Error('Timeout') }
+          ])
+        }, SECONDARY_TIMEOUT))
+        
+        const secondaryResults = await Promise.race([secondaryPromise, timeoutPromise]) as PromiseSettledResult<any>[]
+        
+        // Extract secondary results
+        const sentimentData = secondaryResults[0]?.status === 'fulfilled' ? secondaryResults[0].value : null
+        const credibilityData = secondaryResults[1]?.status === 'fulfilled' ? secondaryResults[1].value : null
+        const topicClustersData = secondaryResults[2]?.status === 'fulfilled' ? secondaryResults[2].value : null
+        const topicGapsData = secondaryResults[3]?.status === 'fulfilled' ? secondaryResults[3].value : null
         const humanLikenessData = null
-        const topicClustersData = results[5].status === 'fulfilled' ? results[5].value : null
-        const topicGapsData = results[6].status === 'fulfilled' ? results[6].value : null
 
         let sentimentTierRestriction = null
         let topicClustersTierRestriction = null
         let topicGapsTierRestriction = null
 
         // Extract tier restrictions from failures
-        results.forEach((result, idx) => {
-          if (result.status === 'rejected') {
-            const endpoints = ['relevancy', 'sentiment', 'summary', 'credibility', 'humanLikeness', 'topicClusters', 'topicGaps']
-            console.error(`Comment Verdict: failed to fetch ${endpoints[idx]}:`, result.reason)
+        secondaryResults.forEach((result, idx) => {
+          if (result?.status === 'rejected') {
+            const endpoints = ['sentiment', 'credibility', 'topicClusters', 'topicGaps']
+            const error = result.reason
+            // Only log non-timeout errors
+            if (error?.message !== 'Timeout') {
+              console.warn(`Comment Verdict: failed to fetch ${endpoints[idx]}:`, error)
+            }
             
             // Check if error contains tier restriction
-            const error = result.reason
             if (error && typeof error === 'object') {
-              // Check multiple possible error structures
               const detail = error.detail || (error.response && error.response.detail)
               if (detail && detail.code === 'TIER_RESTRICTION') {
                 console.log(`Comment Verdict: Tier restriction detected for ${endpoints[idx]}:`, detail)
-                if (idx === 1) sentimentTierRestriction = detail
-                if (idx === 5) topicClustersTierRestriction = detail
-                if (idx === 6) topicGapsTierRestriction = detail
+                if (idx === 0) sentimentTierRestriction = detail
+                if (idx === 2) topicClustersTierRestriction = detail
+                if (idx === 3) topicGapsTierRestriction = detail
               }
             }
           }
@@ -1353,6 +1389,15 @@ const ContentScript = () => {
         }
       }
 
+      // IMPORTANT: Validate that we're still on the same video before updating state
+      // This prevents race conditions where a job completes for an old video after user has switched
+      if (currentVideoIdRef.current !== videoId) {
+        console.log(`⚠️ Video switched during analysis. Started: ${videoId}, Current: ${currentVideoIdRef.current}. Discarding old results.`)
+        setAnalysisState("idle")
+        setCurrentJobId(null)
+        return
+      }
+      
       const videoAnalysisData = {
         // Legacy shape support
         summary: minimalSummary,
