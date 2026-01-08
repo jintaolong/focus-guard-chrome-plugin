@@ -23,16 +23,26 @@ export interface VideoAnalysis {
   // Legacy and current shapes supported for compatibility with components
   // Summary-style (newer shape)
   summary?: {
-    trustScore: number // 0-10 or 0-100
+    trustScore: number // 0-10 or 0-100 (Verdict Certainty - AI's confidence in verdict)
+    evidenceScore?: number // 0-100 (Evidence Score - weighted user evidence for/against claims)
     aiConfidence?: number // 0-100%
     clickbaitVerdict?: {
       label?: "LEGIT" | "MISLEADING" | "CLICKBAIT"
       confidence?: number // 0-100%
+      onLineSummary?: string
+      claims?: Array<{
+        claim: string
+        verdict?: string
+        confidence?: number
+        supporting_evidence?: string[]
+      }>
     }
     channelCredibility?: {
       score?: number // 0-100
       factors?: Array<{ name: string; value: string; weight: number }>
     }
+    persona?: string // "viewer", "creator", or "analyst"
+    key_takeaways?: string[] | null
   }
 
   // Top-level (legacy) fields used by several components

@@ -16,11 +16,15 @@ interface ToggleButtonProps {
   isCached?: boolean | null
   // Error message to display when analysis fails
   errorMessage?: string | null
+  // Progress percentage (0-100) for async job tracking
+  progressPercent?: number | null
+  // Progress message from backend (e.g., "Analyzing comments...")
+  progressMessage?: string | null
 }
 
 type DockPosition = "left" | "right"
 
-export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", onDockChange, state = "complete", isCached = null, errorMessage = null }: ToggleButtonProps) => {
+export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", onDockChange, state = "complete", isCached = null, errorMessage = null, progressPercent = null, progressMessage = null }: ToggleButtonProps) => {
   const [isDragging, setIsDragging] = useState(false)
   const movedRef = useRef(false)
   const [dockPosition, setDockPosition] = useState<DockPosition>(dock)
@@ -106,15 +110,15 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
                     state === "complete" ? COLORS[verdictColor].primary : 
                     COLORS.neutral.primary
     
-    const baseStyle: React.CSSProperties = {
+      const baseStyle: React.CSSProperties = {
       position: "fixed",
       zIndex: 10000,
       display: "flex",
       flexDirection: "column",
       alignItems: "center",
       justifyContent: "center",
-      gap: "4px",
-      padding: "12px 16px",
+      gap: "3px",
+      padding: "8px 11px",
       backgroundColor: bgColor,
       border: `3px solid white`,
       cursor: isDragging ? "grabbing" : (state === "analyzing" ? "wait" : "pointer"),
@@ -185,7 +189,7 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
       // Get icon URL safely - handle extension context invalidation
       let iconUrl: string | null = null
       try {
-        iconUrl = chrome.runtime.getURL("assets/blue.png")
+        iconUrl = chrome.runtime.getURL("assets/stroke.png")
       } catch (error) {
         // Extension context invalidated - will show emoji instead
         console.warn("ToggleButton: Extension context invalidated, using emoji fallback")
@@ -197,22 +201,22 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          gap: "4px",
+          gap: "3px",
           textAlign: "center",
-          padding: "4px 0"
+          padding: "3px 0"
         }}>
           {iconUrl ? (
-            <img src={iconUrl} alt="Comment Verdict" style={{ width: "20px", height: "20px" }} />
+            <img src={iconUrl} alt="Comment Verdict" style={{ width: "27px", height: "27px" }} />
           ) : (
-            <span style={{ fontSize: "20px" }}>🛡️</span>
+            <span style={{ fontSize: "27px" }}>🛡️</span>
           )}
           <span style={{ 
-            fontSize: "13px", 
+            fontSize: "9px", 
             fontWeight: "700",
             color: "white",
             textShadow: "0 1px 2px rgba(0,0,0,0.3)",
             lineHeight: 1.2,
-            maxWidth: "80px"
+            maxWidth: "60px"
           }}>
             {buttonText}
           </span>
@@ -223,6 +227,7 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
     if (state === "analyzing") {
       // Check if we're in cache checking phase (no score yet) vs actual analysis
       const isCheckingCache = !trustScore && isCached === null
+      const hasProgress = progressPercent !== null && progressPercent !== undefined && progressPercent >= 0
       
       return (
         <div style={{ 
@@ -230,28 +235,52 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          gap: "6px",
+          gap: "4px",
           textAlign: "center"
         }}>
           <div
             style={{
-              width: "24px",
-              height: "24px",
-              border: "3px solid rgba(255,255,255,0.3)",
+              width: "16px",
+              height: "16px",
+              border: "2px solid rgba(255,255,255,0.3)",
               borderTopColor: "white",
               borderRadius: "50%",
               animation: "spin 0.8s linear infinite"
             }}
           />
-          <span style={{ 
-            fontSize: "12px", 
-            fontWeight: "600",
-            color: "white",
-            textShadow: "0 1px 2px rgba(0,0,0,0.3)",
-            lineHeight: 1
-          }}>
-            {isCheckingCache ? "Checking..." : "Analyzing..."}
-          </span>
+          {hasProgress ? (
+            <>
+              <span style={{ 
+                fontSize: "11px", 
+                fontWeight: "700",
+                color: "white",
+                textShadow: "0 1px 2px rgba(0,0,0,0.3)",
+                lineHeight: 1
+              }}>
+                {Math.round(progressPercent)}%
+              </span>
+              <span style={{ 
+                fontSize: "7px", 
+                fontWeight: "600",
+                color: "white",
+                textShadow: "0 1px 2px rgba(0,0,0,0.3)",
+                lineHeight: 1,
+                maxWidth: "70px"
+              }}>
+                {progressMessage || "Analyzing..."}
+              </span>
+            </>
+          ) : (
+            <span style={{ 
+              fontSize: "8px", 
+              fontWeight: "600",
+              color: "white",
+              textShadow: "0 1px 2px rgba(0,0,0,0.3)",
+              lineHeight: 1
+            }}>
+              {isCheckingCache ? "Checking..." : progressMessage || "Analyzing..."}
+            </span>
+          )}
           <style>
             {`
               @keyframes spin {
@@ -274,7 +303,7 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
         textAlign: "center"
       }}>
         <span style={{ 
-          fontSize: "20px", 
+          fontSize: "13px", 
           fontWeight: "900",
           color: "white",
           textShadow: "0 1px 3px rgba(0,0,0,0.3)",
@@ -283,7 +312,7 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
           {scoreDisplay}
         </span>
         <span style={{ 
-          fontSize: "13px", 
+          fontSize: "9px", 
           fontWeight: "700",
           color: "white",
           textShadow: "0 1px 2px rgba(0,0,0,0.3)",

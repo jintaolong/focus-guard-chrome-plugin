@@ -110,6 +110,7 @@ export interface SummaryJobRequest {
   video_id: string // 11 characters
   query_context?: string | null
   force_refresh?: boolean
+  max_comments?: number // default 100, range 1-1000
 }
 
 export interface ReportJobRequest {
@@ -168,6 +169,8 @@ export interface SummaryRequestV2 {
   video_id: string
   query_context?: string | null
   force_refresh?: boolean
+  max_comments?: number // default 100, range 1-1000
+  persona?: "viewer" | "creator" | "analyst" | null // optional override
 }
 
 export interface ReportRequest {
@@ -199,6 +202,7 @@ export interface TopicCluster {
   statement: string
   count: number
   supporting_quotes: string[]
+  all_supporting_comments?: string[] // All supporting comments (not limited)
 }
 
 export interface TopicClusterResponseV2 {
@@ -213,6 +217,8 @@ export interface TopicClusterResponseV2 {
 export interface TopicGap {
   question_statement: string
   supporting_comments: string[]
+  all_supporting_comments?: string[] // All supporting comments (not limited)
+  highlight_indexes?: Array<{ [key: string]: any }> // Highlight information
 }
 
 export interface TopicGapResponseV2 {
@@ -247,7 +253,13 @@ export interface RelevancyResponseV2 {
     confidence_score: number
     one_line_summary?: string
     best_timestamp?: string | null
-    claims: any[]
+    claims: Array<{
+      claim: string
+      verdict?: string
+      confidence?: number
+      supporting_evidence?: string[]
+      [key: string]: any
+    }>
     [key: string]: any
   }
   cache_hit: boolean
@@ -290,6 +302,9 @@ export interface SummaryResponseV2 {
   video_title: string
   credibility_score: number
   sentiment_score: number
+  persona?: string // "viewer", "creator", or "analyst"
+  key_takeaways?: string[] | null
+  confidence?: string | null
 }
 
 export interface SummaryStatusResponse {

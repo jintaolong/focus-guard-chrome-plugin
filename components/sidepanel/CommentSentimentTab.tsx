@@ -1,7 +1,7 @@
-// FR-102 Tab: Comment Sentiment Analysis
+// FR-102 Tab: Content Satisfaction Analysis
 // Sentiment Overview (Donut Chart) + Example Comments by Sentiment
 
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
 import type { VideoAnalysis } from "~types/analysis"
 import { COLORS, getSentimentColor } from "~lib/colors"
 import { BlurredContent } from "~components/UpgradePrompt"
@@ -13,6 +13,26 @@ interface CommentSentimentTabProps {
 export const CommentSentimentTab = ({ analysis }: CommentSentimentTabProps) => {
   const sentiment = (analysis as any)?.sentiment
   const viewerInsights = (analysis as any)?.viewerInsights
+  const [isDonutCollapsed, setIsDonutCollapsed] = useState(false)
+  const contentRef = useRef<HTMLDivElement>(null)
+  
+  // Auto-collapse donut chart when scrolling down
+  useEffect(() => {
+    const handleScroll = (e: Event) => {
+      const target = e.target as HTMLElement
+      if (target && target.scrollTop > 100) {
+        setIsDonutCollapsed(true)
+      } else if (target && target.scrollTop < 50) {
+        setIsDonutCollapsed(false)
+      }
+    }
+    
+    const scrollContainer = contentRef.current?.closest('[style*="overflow"]') as HTMLElement
+    if (scrollContainer) {
+      scrollContainer.addEventListener('scroll', handleScroll)
+      return () => scrollContainer.removeEventListener('scroll', handleScroll)
+    }
+  }, [])
 
   // Normalize shapes: provide defaults when fields are missing
   const sentimentBreakdown = viewerInsights?.sentimentBreakdown ?? {
@@ -42,21 +62,46 @@ export const CommentSentimentTab = ({ analysis }: CommentSentimentTabProps) => {
     { type: "neutral" as const, value: percentages.neutral, count: sentimentBreakdown.neutral || 0 }
   ]
 
+  const sentimentLabels: Record<string, string> = {
+    positive: "Liked",
+    neutral: "Mixed",
+    negative: "Disliked"
+  }
+
   const content = (
-    <div>
+    <div ref={contentRef}>
       {/* Sentiment Overview */}
       <div style={{ marginBottom: "32px" }}>
         <h3
+          onClick={() => setIsDonutCollapsed(!isDonutCollapsed)}
           style={{
             margin: "0 0 24px 0",
             fontSize: "18px",
             fontWeight: "600",
-            color: COLORS.ui.textPrimary
+            color: COLORS.ui.textPrimary,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px"
           }}>
-          Comment Sentiment on Content Relevancy
+          <span style={{
+            transition: "transform 0.2s",
+            transform: isDonutCollapsed ? "rotate(-90deg)" : "rotate(0deg)",
+            display: "inline-block"
+          }}>▼</span>
+          <span>Comment Mood</span>
         </h3>
+        <p style={{ 
+          fontSize: "13px", 
+          color: COLORS.ui.textSecondary, 
+          margin: "0 0 16px 0",
+          fontStyle: "italic"
+        }}>
+          Overall vibe based on comment tone.
+        </p>
 
-        <div style={{ display: "flex", gap: "32px", alignItems: "center" }}>
+        {!isDonutCollapsed && (
+          <div style={{ display: "flex", gap: "32px", alignItems: "center" }}>
           {/* Donut Chart */}
           <div style={{ position: "relative", width: "160px", height: "160px", flexShrink: 0 }}>
             <svg viewBox="0 0 200 200" style={{ width: "100%", height: "100%", transform: "rotate(-90deg)" }}>
@@ -155,7 +200,7 @@ export const CommentSentimentTab = ({ analysis }: CommentSentimentTabProps) => {
                         color: COLORS.ui.textPrimary,
                         textTransform: "capitalize"
                       }}>
-                      {segment.type}
+                      {sentimentLabels[segment.type] ?? segment.type}
                     </span>
                     <span
                       style={{
@@ -174,6 +219,7 @@ export const CommentSentimentTab = ({ analysis }: CommentSentimentTabProps) => {
             ))}
           </div>
         </div>
+        )}
       </div>
 
       {/* Example Comments by Sentiment */}
@@ -185,7 +231,7 @@ export const CommentSentimentTab = ({ analysis }: CommentSentimentTabProps) => {
             fontWeight: "600",
             color: COLORS.ui.textPrimary
           }}>
-          Example Comments on Content Relevancy
+          Example Comments
         </h3>
         {renderExampleComments(analysis)}
       </div>
@@ -221,9 +267,9 @@ function renderExampleComments(analysis: VideoAnalysis) {
   }
 
   const sentimentTypes = [
-    { type: "positive", label: "Positive", comments: exampleComments.positive || [] },
-    { type: "neutral", label: "Neutral", comments: exampleComments.neutral || [] },
-    { type: "negative", label: "Negative", comments: exampleComments.negative || [] }
+    { type: "positive", label: "Liked", comments: exampleComments.positive || [] },
+    { type: "neutral", label: "Mixed", comments: exampleComments.neutral || [] },
+    { type: "negative", label: "Disliked", comments: exampleComments.negative || [] }
   ]
 
   const toggleSection = (type: string) => {
@@ -237,7 +283,7 @@ function renderExampleComments(analysis: VideoAnalysis) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       {sentimentTypes.map(({ type, label, comments }) => {
-        const topComments = comments.slice(0, 3)
+        const topComments = comments.slice(0, 7)
         if (topComments.length === 0) return null
         const isExpanded = expandedSections[type]
 

@@ -229,10 +229,31 @@ export class FocusGuardAPI {
    * Get topic gap analysis (V2 - cached-first)
    */
   static async analyzeTopicGapV2(videoId: string, forceRefresh = false): Promise<TopicGapResponseV2> {
-    return this.fetchWithAuth<TopicGapResponseV2>("/videos/topic-gap/v2", {
-      method: "POST",
-      body: JSON.stringify({ video_id: videoId, force_refresh: forceRefresh })
-    })
+    try {
+      return await this.fetchWithAuth<TopicGapResponseV2>("/videos/topic-gap/v2", {
+        method: "POST",
+        body: JSON.stringify({ video_id: videoId, force_refresh: forceRefresh })
+      })
+    } catch (error) {
+      // Backend returns an error when there are minimal/no topic gaps - treat this as success with empty gaps
+      if (error && typeof error === 'object' && 'message' in error) {
+        const errorMessage = (error as any).message || ''
+        if (errorMessage.includes('Minimal Topic Gaps Identified') || errorMessage.includes('Topic gap analysis failed')) {
+          // Return a valid response with no gaps
+          return {
+            status: 'SUCCESS',
+            video_id: videoId,
+            video_title: '',
+            topic_gaps: [],
+            processing_time: 0,
+            cache_hit: false,
+            cached_at: null
+          } as TopicGapResponseV2
+        }
+      }
+      // Re-throw other errors
+      throw error
+    }
   }
 
   /**
@@ -402,10 +423,21 @@ export class FocusGuardAPI {
   static async pollJob(
     jobId: string,
     onProgress?: (status: JobStatusResponse) => void,
-    pollInterval = 2000
+    pollInterval = 2000,
+    abortSignal?: AbortSignal
   ): Promise<JobResultResponse> {
     while (true) {
+      // Check if polling was aborted before each iteration
+      if (abortSignal?.aborted) {
+        throw new Error("Polling aborted")
+      }
+      
       const status = await this.getJobStatus(jobId)
+      
+      // Check again after async operation
+      if (abortSignal?.aborted) {
+        throw new Error("Polling aborted")
+      }
       
       if (onProgress) {
         onProgress(status)
@@ -413,6 +445,7 @@ export class FocusGuardAPI {
 
       if (status.is_terminal) {
         if (status.status === "completed") {
+          // Fetch result immediately without any delay
           return await this.getJobResult(jobId)
         } else if (status.status === "failed") {
           throw new Error(status.error_message || "Job failed")
@@ -421,8 +454,35 @@ export class FocusGuardAPI {
         }
       }
 
-      await new Promise(resolve => setTimeout(resolve, pollInterval))
+      // Only wait if job is not yet complete
+      // Use abortable sleep that can be interrupted
+      if (abortSignal) {
+        await this.abortableSleep(pollInterval, abortSignal)
+      } else {
+        await new Promise(resolve => setTimeout(resolve, pollInterval))
+      }
     }
+  }
+
+  /**
+   * Sleep that can be aborted via AbortSignal
+   */
+  private static async abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      if (signal.aborted) {
+        reject(new Error("Polling aborted"))
+        return
+      }
+
+      const timeout = setTimeout(resolve, ms)
+      
+      const abortHandler = () => {
+        clearTimeout(timeout)
+        reject(new Error("Polling aborted"))
+      }
+      
+      signal.addEventListener('abort', abortHandler, { once: true })
+    })
   }
 
   // ============================================================================
@@ -646,7 +706,7 @@ export class FocusGuardAPI {
         statement: cluster.statement,
         type: "benefit" as const,
         commentCount: cluster.count,
-        supportingComments: cluster.supporting_quotes.map((quote, qIdx) => ({
+        supportingComments: (cluster.all_supporting_comments || cluster.supporting_quotes).map((quote, qIdx) => ({
           id: `comment-${idx}-${qIdx}`,
           text: quote,
           humanLikenessScore: 8, // Default, would need actual HLS data per comment
@@ -663,8 +723,8 @@ export class FocusGuardAPI {
         id: `gap-${idx}`,
         statement: gap.question_statement,
         type: "gap" as const,
-        commentCount: gap.supporting_comments.length,
-        supportingComments: gap.supporting_comments.map((comment, cIdx) => ({
+        commentCount: (gap.all_supporting_comments || gap.supporting_comments).length,
+        supportingComments: (gap.all_supporting_comments || gap.supporting_comments).map((comment, cIdx) => ({
           id: `gap-comment-${idx}-${cIdx}`,
           text: comment,
           humanLikenessScore: 8,
@@ -704,7 +764,14 @@ export class FocusGuardAPI {
         aiConfidence: Math.round(relevancyConfidenceNorm * 100),
         clickbaitVerdict: {
           label: (relevancyVerdictLabel || "UNKNOWN") as any,
-          confidence: Math.round(relevancyConfidenceNorm * 100)
+          confidence: Math.round(relevancyConfidenceNorm * 100),
+          onLineSummary: relevancy?.data?.one_line_summary,
+          claims: relevancy?.data?.claims?.map((c: any) => ({
+            claim: c.claim || c.claim_text || c.text || "",
+            verdict: c.verdict || c.status || undefined,
+            confidence: c.confidence,
+            supporting_evidence: c.supporting_evidence || c.evidence || (Array.isArray(c.evidence) ? c.evidence : undefined)
+          }))
         },
         channelCredibility: {
           score: credibility.score,
@@ -713,7 +780,9 @@ export class FocusGuardAPI {
             value: value.toString(),
             weight: value
           }))
-        }
+        },
+        persona: summary.persona,
+        key_takeaways: summary.key_takeaways
       },
 
       trustScore: {
@@ -810,8 +879,17 @@ export class FocusGuardAPI {
         aiConfidence: Math.round(confidenceNorm * 100),
         clickbaitVerdict: {
           label: (verdictLabel || "UNKNOWN") as any,
-          confidence: Math.round(confidenceNorm * 100)
-        }
+          confidence: Math.round(confidenceNorm * 100),
+          onLineSummary: relevancy?.data?.one_line_summary || resultData.one_line_summary || undefined,
+          claims: (relevancy?.data?.claims || resultData.claims || []).map((c: any) => ({
+            claim: c.claim || c.claim_text || c.text || "",
+            verdict: c.verdict || c.status || undefined,
+            confidence: c.confidence,
+            supporting_evidence: c.supporting_evidence || c.evidence || (Array.isArray(c.evidence) ? c.evidence : undefined)
+          }))
+        },
+        persona: resultData.persona || undefined,
+        key_takeaways: resultData.key_takeaways || resultData.key_takeaways || null
       },
 
       analyzedAt: new Date().toISOString(),
