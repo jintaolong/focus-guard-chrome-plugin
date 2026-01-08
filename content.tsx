@@ -208,14 +208,13 @@ const ContentScript = () => {
         window.location.pathname === "/feed/subscriptions" ||
         window.location.pathname === "/feed/trending"
 
-      // Only show UI on actual watch pages in production
-      // In debug mode, allow showing UI on other YouTube pages for testing
-      const debug = DEBUG && isYouTubeDomain()
-      const isWatch = DEBUG ? (isWatchPage() || debug || isHome) : isWatchPage()
+      // Only show UI on actual watch pages (regular videos and shorts)
+      // Toggle button should ONLY appear on watch pages, not home/search/etc
+      const isWatch = isWatchPage()
 
       setIsYouTubeHome(isHome)
       setOnWatchPage(isWatch)
-      console.log("Comment Verdict checkPageType: isHome=", isHome, "isWatch=", isWatch, "debug=", debug, "href=", window.location.href)
+      console.log("Comment Verdict checkPageType: isHome=", isHome, "isWatch=", isWatch, "href=", window.location.href)
 
       // FR-202: Auto-activate analysis on watch page
       if (isWatch) {
@@ -265,16 +264,6 @@ const ContentScript = () => {
           } catch (e) {
             // ignore
           }
-        } else if (DEBUG && !videoId) {
-          // In debug mode without videoId, start in idle state
-          setAnalysisState("idle")
-          setVideoAnalysis(null)
-          setAnalysisStatus(null)
-          setAnalysisError(null)
-          setIsCached(null)
-          setCurrentJobId(null)
-          setProgressPercent(null)
-          setProgressMessage(null)
         }
       } else {
         // User left watch page - abort any ongoing polling
@@ -1636,9 +1625,6 @@ const ContentScript = () => {
                 // Start analysis when in idle state
                 if (currentVideoId) {
                   startVideoAnalysis(currentVideoId)
-                } else if (DEBUG) {
-                  // In debug mode without videoId, start analysis anyway
-                  startVideoAnalysis("debug-mock-video-id")
                 }
               } else if (analysisState === "complete") {
                 // Open panel when analysis is complete
