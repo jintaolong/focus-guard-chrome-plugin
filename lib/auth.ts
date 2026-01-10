@@ -302,7 +302,7 @@ export class AuthService {
     }
   }
 
-  private static async fetchWithAuth<T>(
+  static async fetchWithAuth<T>(
     endpoint: string,
     options?: RequestInit
   ): Promise<T> {

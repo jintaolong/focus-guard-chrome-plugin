@@ -111,9 +111,12 @@ describe('Auth Flow - Complete E2E', () => {
   })
 
   describe('Scenario 2: User Sign-In Flow', () => {
-    const mockUser = {
-      id: 'user-123',
+    const mockUser: any = {
+      id: 123,
       email: 'test@example.com',
+      full_name: 'Test User',
+      is_active: true,
+      is_verified: true,
       name: 'Test User',
       avatar: null,
       created_at: '2024-01-01T00:00:00Z'
@@ -174,9 +177,12 @@ describe('Auth Flow - Complete E2E', () => {
   })
 
   describe('Scenario 3: Authenticated User Experience', () => {
-    const mockUser = {
-      id: 'user-123',
+    const mockUser: any = {
+      id: 123,
       email: 'test@example.com',
+      full_name: 'Test User',
+      is_active: true,
+      is_verified: true,
       name: 'Test User',
       avatar: null,
       created_at: '2024-01-01T00:00:00Z'
@@ -252,9 +258,12 @@ describe('Auth Flow - Complete E2E', () => {
   })
 
   describe('Scenario 4: User Logout Flow', () => {
-    const mockUser = {
-      id: 'user-123',
+    const mockUser: any = {
+      id: 123,
       email: 'test@example.com',
+      full_name: 'Test User',
+      is_active: true,
+      is_verified: true,
       name: 'Test User',
       avatar: null,
       created_at: '2024-01-01T00:00:00Z'

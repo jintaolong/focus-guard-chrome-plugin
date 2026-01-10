@@ -245,6 +245,7 @@ export class FocusGuardAPI {
             video_id: videoId,
             video_title: '',
             topic_gaps: [],
+            filtered_question_count: 0,
             processing_time: 0,
             cache_hit: false,
             cached_at: null

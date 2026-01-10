@@ -106,23 +106,37 @@ describe('Popup - Authentication UI State', () => {
   })
 
   describe('Authenticated User', () => {
-    const mockUser = {
-      id: 'user-123',
+    const mockUser: any = {
+      id: 123,
       email: 'test@example.com',
+      full_name: 'Test User',
+      is_active: true,
+      is_verified: true,
       name: 'Test User',
       avatar: null,
       created_at: '2024-01-01T00:00:00Z'
     }
 
-    const mockSubscription = {
+    const mockSubscription: any = {
+      id: 1,
+      user_id: 123,
       tier: 'STARTER',
       status: 'active',
-      current_period_end: '2025-02-01T00:00:00Z'
+      daily_searches_limit: 10,
+      daily_searches_used: 0,
+      last_reset_date: '2025-01-01',
+      current_period_start: null,
+      current_period_end: '2025-02-01T00:00:00Z',
+      cancel_at_period_end: false,
+      created_at: new Date().toISOString()
     }
 
-    const mockUsage = {
-      reports_generated: 5,
-      reports_limit: 50
+    const mockUsage: any = {
+      tier: 'STARTER',
+      daily_searches_limit: 10,
+      daily_searches_used: 0,
+      searches_remaining: 10,
+      can_search: true
     }
 
     beforeEach(() => {
@@ -200,9 +214,12 @@ describe('Popup - Authentication UI State', () => {
       })
       
       // Simulate OAuth completion
-      const mockUser = {
-        id: 'user-123',
+      const mockUser: any = {
+        id: 123,
         email: 'test@example.com',
+        full_name: 'Test User',
+        is_active: true,
+        is_verified: true,
         name: 'Test User',
         avatar: null,
         created_at: '2024-01-01T00:00:00Z'
@@ -211,14 +228,14 @@ describe('Popup - Authentication UI State', () => {
       vi.mocked(AuthService.isAuthenticated).mockResolvedValue(true)
       vi.mocked(AuthService.getCurrentUser).mockResolvedValue(mockUser)
       vi.mocked(SubscriptionService.getSubscription).mockResolvedValue({
-        tier: 'FREE',
+        tier: 'FREE', 
         status: 'active',
         current_period_end: null
-      })
+      } as any)
       vi.mocked(SubscriptionService.getUsage).mockResolvedValue({
         reports_generated: 0,
         reports_limit: 10
-      })
+      } as any)
       
       // Trigger OAUTH_COMPLETE message
       if (messageHandler) {
@@ -240,21 +257,24 @@ describe('Popup - Authentication UI State', () => {
       
       vi.mocked(AuthService.isAuthenticated).mockResolvedValue(true)
       vi.mocked(AuthService.getCurrentUser).mockResolvedValue({
-        id: 'user-123',
+        id: 123,
         email: 'test@example.com',
+        full_name: 'Test User',
+        is_active: true,
+        is_verified: true,
         name: 'Test User',
         avatar: null,
         created_at: '2024-01-01T00:00:00Z'
-      })
+      } as any)
       vi.mocked(SubscriptionService.getSubscription).mockResolvedValue({
         tier: 'FREE',
         status: 'active',
         current_period_end: null
-      })
+      } as any)
       vi.mocked(SubscriptionService.getUsage).mockResolvedValue({
         reports_generated: 0,
         reports_limit: 10
-      })
+      } as any)
       
       render(<IndexPopup />)
       
@@ -294,12 +314,15 @@ describe('Popup - Authentication UI State', () => {
       // Update auth state
       vi.mocked(AuthService.isAuthenticated).mockResolvedValue(true)
       vi.mocked(AuthService.getCurrentUser).mockResolvedValue({
-        id: 'user-123',
+        id: 123,
         email: 'test@example.com',
+        full_name: 'Test User',
+        is_active: true,
+        is_verified: true,
         name: 'Test User',
         avatar: null,
         created_at: '2024-01-01T00:00:00Z'
-      })
+      } as any)
       
       // Trigger storage change (e.g., token was set)
       if (storageChangeHandler) {
@@ -327,21 +350,24 @@ describe('Popup - Authentication UI State', () => {
       // Start authenticated
       vi.mocked(AuthService.isAuthenticated).mockResolvedValue(true)
       vi.mocked(AuthService.getCurrentUser).mockResolvedValue({
-        id: 'user-123',
+        id: 123,
         email: 'test@example.com',
+        full_name: 'Test User',
+        is_active: true,
+        is_verified: true,
         name: 'Test User',
         avatar: null,
         created_at: '2024-01-01T00:00:00Z'
-      })
+      } as any)
       vi.mocked(SubscriptionService.getSubscription).mockResolvedValue({
         tier: 'FREE',
         status: 'active',
         current_period_end: null
-      })
+      } as any)
       vi.mocked(SubscriptionService.getUsage).mockResolvedValue({
         reports_generated: 0,
         reports_limit: 10
-      })
+      } as any)
       
       render(<IndexPopup />)
       
@@ -367,21 +393,24 @@ describe('Popup - Authentication UI State', () => {
       // Start authenticated
       vi.mocked(AuthService.isAuthenticated).mockResolvedValue(true)
       vi.mocked(AuthService.getCurrentUser).mockResolvedValue({
-        id: 'user-123',
+        id: 123,
         email: 'test@example.com',
+        full_name: 'Test User',
+        is_active: true,
+        is_verified: true,
         name: 'Test User',
         avatar: null,
         created_at: '2024-01-01T00:00:00Z'
-      })
+      } as any)
       vi.mocked(SubscriptionService.getSubscription).mockResolvedValue({
         tier: 'FREE',
         status: 'active',
         current_period_end: null
-      })
+      } as any)
       vi.mocked(SubscriptionService.getUsage).mockResolvedValue({
         reports_generated: 0,
         reports_limit: 10
-      })
+      } as any)
       
       render(<IndexPopup />)
       

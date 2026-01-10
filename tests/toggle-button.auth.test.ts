@@ -79,10 +79,10 @@ describe('Toggle Button - Auth Guard', () => {
         json: async () => ({ error: 'Unauthorized' })
       } as Response)
 
-      const response = await AuthService.fetchWithAuth('/videos/123/cache-status')
+      const response = await AuthService.fetchWithAuth<any>('/videos/123/cache-status')
       
-      expect(response.ok).toBe(false)
-      expect(response.status).toBe(401)
+      expect((response as any).ok).toBe(false)
+      expect((response as any).status).toBe(401)
     })
 
     it('should prevent cache status check without auth', async () => {
@@ -112,9 +112,12 @@ describe('Toggle Button - Auth Guard', () => {
   })
 
   describe('After User Sign In (Authenticated)', () => {
-    const mockUser = {
-      id: 'user-123',
+    const mockUser: any = {
+      id: 123,
       email: 'test@example.com',
+      full_name: 'Test User',
+      is_active: true,
+      is_verified: true,
       name: 'Test User',
       avatar: null,
       created_at: '2024-01-01T00:00:00Z'
@@ -155,10 +158,10 @@ describe('Toggle Button - Auth Guard', () => {
       const isAuth = await AuthService.isAuthenticated()
       expect(isAuth).toBe(true)
       
-      const response = await AuthService.fetchWithAuth('/videos/test-video-123/cache-status')
+      const response = await AuthService.fetchWithAuth<any>('/videos/test-video-123/cache-status')
       
-      expect(response.ok).toBe(true)
-      expect(response.status).toBe(200)
+      expect((response as any).ok).toBe(true)
+      expect((response as any).status).toBe(200)
     })
 
     it('should allow job submission when authenticated', async () => {
@@ -175,13 +178,13 @@ describe('Toggle Button - Auth Guard', () => {
       const isAuth = await AuthService.isAuthenticated()
       expect(isAuth).toBe(true)
       
-      const response = await AuthService.fetchWithAuth('/jobs/submit', {
+      const response = await AuthService.fetchWithAuth<any>('/jobs/submit', {
         method: 'POST',
         body: JSON.stringify({ video_id: 'test-video-123' })
       })
       
-      expect(response.ok).toBe(true)
-      const data = await response.json()
+      expect((response as any).ok).toBe(true)
+      const data = await (response as any).json()
       expect(data.job_id).toBe('job-456')
     })
 
@@ -397,10 +400,10 @@ describe('Toggle Button - Auth Guard', () => {
         json: async () => ({ error: 'Invalid token' })
       } as Response)
       
-      const response = await AuthService.fetchWithAuth('/videos/123/cache-status')
+      const response = await AuthService.fetchWithAuth<any>('/videos/123/cache-status')
       
-      expect(response.ok).toBe(false)
-      expect(response.status).toBe(401)
+      expect((response as any).ok).toBe(false)
+      expect((response as any).status).toBe(401)
     })
   })
 })
