@@ -1,5 +1,6 @@
 // Test setup file
 import { vi } from 'vitest'
+import '@testing-library/jest-dom/vitest'
 
 // Mock Chrome API with proper callback handling
 global.chrome = {

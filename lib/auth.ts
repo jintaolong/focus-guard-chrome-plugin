@@ -207,12 +207,28 @@ export class AuthService {
   static async getCurrentUser(): Promise<UserResponse | null> {
     try {
       const result = await this.storageGet([this.USER_KEY])
-      const stored = result[this.USER_KEY] || null
+      let stored: any = result[this.USER_KEY] || null
 
-      // If there's a stored user, return it
-      if (stored) return stored
+      // If there's something in storage, validate it before returning.
+      if (stored) {
+        // If stored as a string (corrupted JSON or legacy), try to parse it.
+        if (typeof stored === 'string') {
+          try {
+            stored = JSON.parse(stored)
+          } catch (e) {
+            console.warn('AuthService: Corrupted user data in storage (invalid JSON), will fetch from API')
+            stored = null
+          }
+        }
 
-      // No stored user — try to fetch from the API using the current token.
+        // If after parsing we have an object with expected fields, return it.
+        if (stored && typeof stored === 'object' && (stored.id || stored.email)) {
+          return stored as UserResponse
+        }
+        // Otherwise treat as corrupted and fall through to API fetch
+      }
+
+      // No stored user or corrupted entry — try to fetch from the API using the current token.
       // This helps avoid a race where tokens are stored before user info is written.
       try {
         const user = await this.getMe()
@@ -221,7 +237,7 @@ export class AuthService {
         return user
       } catch (fetchErr) {
         // If network fetch fails, just return null and let caller handle it
-        console.warn("AuthService: Failed to fetch user from API during getCurrentUser fallback:", fetchErr)
+        console.warn('AuthService: Failed to fetch user from API during getCurrentUser fallback:', fetchErr)
         return null
       }
     } catch (error) {
