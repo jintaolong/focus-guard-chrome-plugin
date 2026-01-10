@@ -30,7 +30,7 @@ export const COLORS = {
     primary: "#3b82f6", // blue-500
     light: "#dbeafe", // blue-100
     dark: "#1e40af", // blue-700
-    text: "#2563eb" // blue-600
+    text: "#092052" // blue-600
   },
   
   // UI Colors
@@ -107,9 +107,43 @@ export function getClickbaitVerdictColor(
   const v = (verdict || "").toString().toLowerCase()
   if (v === "legit" || v === "not-clickbait") return "high"
   if (v === "misleading" || v === "moderate-clickbait" || v === "disputed") return "medium"
+  // Dangerous verdicts should map to a warning/negative tone (red)
+  if (v === "dangerous" || v === "highly-dangerous" || v === "high-risk") return "low"
   if (v === "clickbait" || v === "highly-clickbait") return "low"
   // Fallback to neutral if unknown
   return "neutral"
+}
+
+/**
+ * Get a concrete color value for clickbait-related UI elements.
+ * - For explicit dangerous verdicts, return the `low.dark` tone.
+ * - For explicit clickbait verdicts, return the `low.primary` tone.
+ * - Otherwise fallback to the normal color set for the verdict key.
+ */
+export function getClickbaitColorPart(verdict: string, part: keyof ColorSet | "text"): string {
+  const v = (verdict || "").toString().toLowerCase()
+
+  // Explicit dangerous mapping -> use low.dark for a stronger warning tone
+  if (v === "dangerous" || v === "highly-dangerous" || v === "high-risk") {
+    if (part === "primary" || part === "text") return COLORS.low.dark
+    if (part === "dark") return COLORS.low.dark
+    if (part === "light") return COLORS.low.light
+    return COLORS.low.primary
+  }
+
+  // Explicit clickbait mapping -> use low.primary
+  if (v === "clickbait" || v === "highly-clickbait") {
+    if (part === "primary" || part === "text") return COLORS.low.primary
+    if (part === "dark") return COLORS.low.dark
+    if (part === "light") return COLORS.low.light
+    return COLORS.low.primary
+  }
+
+  // Fallback to the generic mapping by color key
+  const key = getClickbaitVerdictColor(verdict)
+  const cs = (COLORS as any)[key] || (COLORS as any).neutral
+  if (part === "text") return cs.text
+  return cs[part]
 }
 
 export function getSentimentColor(

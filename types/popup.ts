@@ -15,4 +15,6 @@ export interface FocusGuardSettings {
     autoAnalyze: boolean
     botDetectionEnabled: boolean
   }
+  // Mode controls available UI presets; optional for existing saved settings
+  mode?: 'deep-work' | 'curated' | 'intelligence' | 'video-analysis'
 }

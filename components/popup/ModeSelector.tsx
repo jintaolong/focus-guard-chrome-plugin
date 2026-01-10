@@ -1,5 +1,12 @@
 import type { FocusGuardSettings } from "~types/popup"
-import { MODE_INFO } from "~types/popup"
+
+// Local mode metadata (kept here to avoid tight coupling with types file)
+const MODE_INFO: Record<NonNullable<FocusGuardSettings['mode']>, { name: string; description: string; icon: string }> = {
+  'deep-work': { name: 'Deep Work', description: 'Minimize distractions and focus.', icon: '🧠' },
+  curated: { name: 'Curated', description: 'Show curated insights only.', icon: '✨' },
+  intelligence: { name: 'Intelligence', description: 'Detailed analytics and claims.', icon: '📊' },
+  'video-analysis': { name: 'Video Analysis', description: 'Run full video analysis.', icon: '🎬' }
+}
 
 interface ModeSelectorProps {
   currentMode: FocusGuardSettings["mode"]
@@ -33,7 +40,7 @@ export const ModeSelector = ({ currentMode, onModeChange }: ModeSelectorProps) =
           gap: "8px"
         }}>
         {modes.map((mode) => {
-          const info = MODE_INFO[mode]
+          const info = MODE_INFO[mode as keyof typeof MODE_INFO]
           const isActive = currentMode === mode
 
           return (

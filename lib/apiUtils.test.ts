@@ -24,11 +24,12 @@ describe('API Utils', () => {
     })
 
     it('should create a tier restriction error', () => {
-      const tierRestriction = {
-        featureName: 'Premium Feature',
-        requiredTier: 'premium',
-        currentTier: 'free',
-        message: 'Upgrade required'
+      const tierRestriction: any = {
+        code: 'TIER_RESTRICTION',
+        required_tier: 'starter',
+        current_tier: 'free',
+        message: 'Upgrade required',
+        upgrade_url: 'https://example.com/upgrade'
       }
 
       const error = new APIError({

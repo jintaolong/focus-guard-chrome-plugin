@@ -28,7 +28,8 @@
       "~lib/*": ["lib/*"],
       "~components/*": ["components/*"],
       "~types/*": ["types/*"],
-      "~types": ["types/index"]
+      "~types": ["types/index"],
+      "~popup": ["popup.tsx"]
     }
   },
   "include": [
