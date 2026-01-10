@@ -59,12 +59,29 @@ function IndexPopup() {
       }
     }
     
-    // Listen for runtime messages (e.g., SESSION_EXPIRED from background)
+    // Listen for runtime messages (e.g., SESSION_EXPIRED or OAUTH_COMPLETE from background)
     const messageListener = (message: any) => {
       if (message.type === 'SESSION_EXPIRED') {
         console.log("Popup: Session expired, logging out")
         setAccount(null)
         setError("Your session has expired. Please log in again.")
+        return
+      }
+
+      if (message.type === 'OAUTH_COMPLETE') {
+        console.log('Popup: OAUTH_COMPLETE received, reloading user data')
+        // small delay to allow storage propagation
+        setTimeout(() => {
+          loadUserData()
+        }, 100)
+        return
+      }
+
+      if (message.type === 'AUTH_STATE_CHANGED') {
+        console.log('Popup: AUTH_STATE_CHANGED received, reloading user data', message.isAuthenticated)
+        // Reload user data to reflect new auth state
+        loadUserData()
+        return
       }
     }
     

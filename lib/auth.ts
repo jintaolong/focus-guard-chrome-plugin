@@ -207,7 +207,23 @@ export class AuthService {
   static async getCurrentUser(): Promise<UserResponse | null> {
     try {
       const result = await this.storageGet([this.USER_KEY])
-      return result[this.USER_KEY] || null
+      const stored = result[this.USER_KEY] || null
+
+      // If there's a stored user, return it
+      if (stored) return stored
+
+      // No stored user — try to fetch from the API using the current token.
+      // This helps avoid a race where tokens are stored before user info is written.
+      try {
+        const user = await this.getMe()
+        // Persist the fetched user for future quick access
+        await this.setCurrentUser(user)
+        return user
+      } catch (fetchErr) {
+        // If network fetch fails, just return null and let caller handle it
+        console.warn("AuthService: Failed to fetch user from API during getCurrentUser fallback:", fetchErr)
+        return null
+      }
     } catch (error) {
       console.error("Failed to get current user:", error)
       return null
