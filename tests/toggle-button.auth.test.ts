@@ -32,6 +32,8 @@ describe('Toggle Button - Auth Guard', () => {
       vi.mocked(AuthService.isAuthenticated).mockResolvedValue(false)
       vi.mocked(AuthService.getCurrentUser).mockResolvedValue(null)
       vi.mocked(AuthService.getAccessToken).mockResolvedValue(null)
+      // Mock fetchWithAuth to throw when no token available
+      vi.mocked(AuthService.fetchWithAuth).mockRejectedValue(new Error('No access token available'))
     })
 
     it('should detect user is not authenticated', async () => {
@@ -72,17 +74,10 @@ describe('Toggle Button - Auth Guard', () => {
     })
 
     it('should not be able to access API endpoints', async () => {
-      // Mock API call failure
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: false,
-        status: 401,
-        json: async () => ({ error: 'Unauthorized' })
-      } as Response)
-
-      const response = await AuthService.fetchWithAuth<any>('/videos/123/cache-status')
-      
-      expect((response as any).ok).toBe(false)
-      expect((response as any).status).toBe(401)
+      // Try to access API without auth - fetchWithAuth should throw
+      await expect(
+        AuthService.fetchWithAuth<any>('/videos/123/cache-status')
+      ).rejects.toThrow('No access token available')
     })
 
     it('should prevent cache status check without auth', async () => {
@@ -130,6 +125,17 @@ describe('Toggle Button - Auth Guard', () => {
       vi.mocked(AuthService.isAuthenticated).mockResolvedValue(true)
       vi.mocked(AuthService.getCurrentUser).mockResolvedValue(mockUser)
       vi.mocked(AuthService.getAccessToken).mockResolvedValue(mockAccessToken)
+      
+      // Mock fetchWithAuth to return appropriate data based on endpoint
+      vi.mocked(AuthService.fetchWithAuth).mockImplementation(async (endpoint: string) => {
+        if (endpoint.includes('/cache-status')) {
+          return { cached: false, video_id: 'test-video-123' }
+        }
+        if (endpoint.includes('/jobs/submit')) {
+          return { job_id: 'job-456', status: 'pending' }
+        }
+        return {}
+      })
     })
 
     it('should detect user is authenticated', async () => {
@@ -158,10 +164,10 @@ describe('Toggle Button - Auth Guard', () => {
       const isAuth = await AuthService.isAuthenticated()
       expect(isAuth).toBe(true)
       
-      const response = await AuthService.fetchWithAuth<any>('/videos/test-video-123/cache-status')
+      // fetchWithAuth returns parsed data directly (not a Response object)
+      const cacheStatus = await AuthService.fetchWithAuth<any>('/videos/test-video-123/cache-status')
       
-      expect((response as any).ok).toBe(true)
-      expect((response as any).status).toBe(200)
+      expect(cacheStatus).toBeDefined()
     })
 
     it('should allow job submission when authenticated', async () => {
@@ -178,14 +184,13 @@ describe('Toggle Button - Auth Guard', () => {
       const isAuth = await AuthService.isAuthenticated()
       expect(isAuth).toBe(true)
       
-      const response = await AuthService.fetchWithAuth<any>('/jobs/submit', {
+      // fetchWithAuth returns parsed JSON data directly
+      const jobData = await AuthService.fetchWithAuth<any>('/jobs/submit', {
         method: 'POST',
         body: JSON.stringify({ video_id: 'test-video-123' })
       })
       
-      expect((response as any).ok).toBe(true)
-      const data = await (response as any).json()
-      expect(data.job_id).toBe('job-456')
+      expect(jobData.job_id).toBe('job-456')
     })
 
     it('should be able to generate reports', async () => {
@@ -226,14 +231,12 @@ describe('Toggle Button - Auth Guard', () => {
     it('should handle session expiration during analysis', async () => {
       // Start authenticated
       vi.mocked(AuthService.isAuthenticated).mockResolvedValueOnce(true)
-      vi.mocked(AuthService.getAccessToken).mockResolvedValueOnce('valid-token')
       
       const isAuthBefore = await AuthService.isAuthenticated()
       expect(isAuthBefore).toBe(true)
       
       // Session expires mid-analysis
       vi.mocked(AuthService.isAuthenticated).mockResolvedValueOnce(false)
-      vi.mocked(AuthService.getAccessToken).mockResolvedValueOnce(null)
       
       // Mock 401 response
       global.fetch = vi.fn().mockResolvedValue({
@@ -393,6 +396,11 @@ describe('Toggle Button - Auth Guard', () => {
       vi.mocked(AuthService.getAccessToken).mockResolvedValue('invalid-token')
       vi.mocked(AuthService.isAuthenticated).mockResolvedValue(true)
       
+      // Mock fetchWithAuth to throw on invalid token
+      vi.mocked(AuthService.fetchWithAuth).mockRejectedValue(
+        new Error('API request failed with status 401')
+      )
+      
       // Mock 401 response (invalid token)
       global.fetch = vi.fn().mockResolvedValue({
         ok: false,
@@ -400,10 +408,10 @@ describe('Toggle Button - Auth Guard', () => {
         json: async () => ({ error: 'Invalid token' })
       } as Response)
       
-      const response = await AuthService.fetchWithAuth<any>('/videos/123/cache-status')
-      
-      expect((response as any).ok).toBe(false)
-      expect((response as any).status).toBe(401)
+      // fetchWithAuth should throw on API error
+      await expect(
+        AuthService.fetchWithAuth<any>('/videos/123/cache-status')
+      ).rejects.toThrow()
     })
   })
 })

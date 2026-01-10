@@ -42,10 +42,15 @@ function IndexPopup() {
 
   useEffect(() => {
     console.log("Comment Verdict popup loaded");
-    // Test storage first
-    AuthService.testStorage()
-      .then(() => console.log("Storage test passed"))
-      .catch((err) => console.error("Storage test failed:", err))
+    // Test storage first (defensive: some test environments may not expose this helper)
+    if (typeof AuthService.testStorage === "function") {
+      Promise.resolve()
+        .then(() => AuthService.testStorage())
+        .then(() => console.log("Storage test passed"))
+        .catch((err) => console.error("Storage test failed:", err))
+    } else {
+      console.warn("AuthService.testStorage not available in this environment")
+    }
     loadUserData()
     
     // Listen for storage changes (e.g., OAuth completion in background or portal sync)
