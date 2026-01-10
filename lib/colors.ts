@@ -107,6 +107,8 @@ export function getClickbaitVerdictColor(
   const v = (verdict || "").toString().toLowerCase()
   if (v === "legit" || v === "not-clickbait") return "high"
   if (v === "misleading" || v === "moderate-clickbait" || v === "disputed") return "medium"
+  // Dangerous verdicts should map to a warning/negative tone (red)
+  if (v === "dangerous" || v === "highly-dangerous" || v === "high-risk") return "low"
   if (v === "clickbait" || v === "highly-clickbait") return "low"
   // Fallback to neutral if unknown
   return "neutral"
