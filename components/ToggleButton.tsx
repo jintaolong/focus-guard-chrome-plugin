@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import type React from "react";
-import { COLORS, getTrustScoreColor, getClickbaitVerdictColor } from "~lib/colors";
+import { COLORS, getTrustScoreColor, getClickbaitVerdictColor, getClickbaitColorPart } from "~lib/colors";
 
 interface ToggleButtonProps {
   // accepted shapes: a raw number, or an object like { score: number }

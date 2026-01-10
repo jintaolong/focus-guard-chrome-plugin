@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { COLORS, getClickbaitVerdictColor } from "~lib/colors"
+import { COLORS, getClickbaitVerdictColor, getClickbaitColorPart } from "~lib/colors"
 
 // Helper to determine claim field names (backend might use claim or claim_text)
 const getClaimText = (claim: any): string => claim?.claim_text || claim?.claim || ""
@@ -78,6 +78,8 @@ export const VideoCredibilitySubTab = ({
     })
   }
 
+  const verdictLabel = summary.clickbaitVerdict?.label || ""
+
   return (
     <div>
       {/* Trust Score Visualization - Semi-Circular Radial Gauge */}
@@ -111,7 +113,7 @@ export const VideoCredibilitySubTab = ({
             <path
               d="M 20 100 A 80 80 0 0 1 180 100"
               fill="none"
-              stroke={COLORS[verdictColor].primary}
+              stroke={getClickbaitColorPart(verdictLabel, "primary")}
               strokeWidth="20"
               strokeLinecap="round"
               strokeDasharray={`${(trustScore / 10) * 251.2} 251.2`}
@@ -130,7 +132,7 @@ export const VideoCredibilitySubTab = ({
               transform: "translate(-50%, -20%)",
               fontSize: "48px",
               fontWeight: "700",
-              color: COLORS[verdictColor].primary
+              color: getClickbaitColorPart(verdictLabel, "primary")
             }}>
             {trustScore.toFixed(1)}
           </div>
@@ -182,8 +184,8 @@ export const VideoCredibilitySubTab = ({
             alignItems: "center",
             gap: "12px",
             padding: "12px 20px",
-            backgroundColor: COLORS[verdictColor].light,
-            border: `3px solid ${COLORS[verdictColor].primary}`,
+            backgroundColor: getClickbaitColorPart(verdictLabel, "light"),
+            border: `3px solid ${getClickbaitColorPart(verdictLabel, "primary")}`,
             borderRadius: "12px",
             marginBottom: "12px"
           }}>
@@ -198,7 +200,7 @@ export const VideoCredibilitySubTab = ({
             style={{
               fontSize: "18px",
               fontWeight: "700",
-              color: COLORS[verdictColor].dark,
+              color: getClickbaitColorPart(verdictLabel, "dark"),
               letterSpacing: "0.5px"
             }}>
             {summary.clickbaitVerdict?.label}
@@ -395,10 +397,10 @@ export const VideoCredibilitySubTab = ({
                               <span
                                 style={{
                                   padding: "2px 8px",
-                                  backgroundColor: COLORS[claimVerdictColor].light,
+                                  backgroundColor: getClickbaitColorPart(claimStatus, "light"),
                                   borderRadius: "4px",
                                   fontWeight: "600",
-                                  color: COLORS[claimVerdictColor].dark
+                                  color: getClickbaitColorPart(claimStatus, "dark")
                                 }}>
                                 {claimStatus}
                               </span>
