@@ -7,6 +7,8 @@ import { SearchInterface } from "~components/SearchInterface"
 import { ToggleButton } from "~components/ToggleButton"
 import { SidePanel } from "~components/SidePanel"
 import { PreWatchPopover } from "~components/PreWatchPopover"
+import { CommunityVerdictTeaser } from "~components/CommunityVerdictTeaser"
+import { AnalysisSettingsModal } from "~components/AnalysisSettingsModal"
 import { initConsole } from "~lib/console-manager"
 import { FocusGuardAPI } from "~lib/api"
 import { AuthService } from "~lib/auth"
@@ -178,6 +180,8 @@ const ContentScript = () => {
   const [progressMessage, setProgressMessage] = useState<string | null>(null)
   const abortPollingRef = useRef<(() => void) | null>(null)
   const [userTierInfo, setUserTierInfo] = useState<{ tier: string; dashboardUrl: string } | null>(null)
+  const [showCommunityTeaser, setShowCommunityTeaser] = useState(false)
+  const [showSettingsModal, setShowSettingsModal] = useState(false)
 
   // Expose the current analysis on the window for quick debugging in DevTools.
   // Usage in page console: `__FG_VIDEO_ANALYSIS` or `__FG_VIDEO_ANALYSIS_SUMMARY`.
@@ -475,7 +479,21 @@ const ContentScript = () => {
       setIsCached(cacheStatus.cached)
 
       if (!cacheStatus.cached) {
-        // Not cached — leave defaults
+        // Not cached — check if free user with no credits
+        // Show teaser if they're free tier with 0 credits
+        if (userTierInfo?.tier === 'free') {
+          try {
+            const credits = await FocusGuardAPI.getCreditBalance()
+            if (credits.credits_balance === 0) {
+              console.log("Free user with 0 credits - showing teaser")
+              setShowCommunityTeaser(true)
+            }
+          } catch (err) {
+            console.warn("Failed to check credit balance:", err)
+          }
+        }
+        
+        // Leave defaults
         setAnalysisState("idle")
         setAnalysisStatus(null)
         setVideoAnalysis(null)
@@ -826,6 +844,38 @@ const ContentScript = () => {
   }
 
   const startVideoAnalysis = async (videoId: string) => {
+    // Check if we should confirm credit usage
+    const shouldConfirm = settings?.videoAnalysis?.confirmCreditUsage !== false
+    
+    if (shouldConfirm) {
+      // Estimate credit cost
+      const maxCommentDepth = settings?.videoAnalysis?.maxCommentDepth || 100
+      try {
+        const estimate = await FocusGuardAPI.estimateCreditCost(maxCommentDepth, false)
+        
+        // Check if free user with no credits - show teaser instead
+        if (!estimate.has_sufficient_credits && userTierInfo?.tier === 'free') {
+          setShowCommunityTeaser(true)
+          return
+        }
+        
+        // Show confirmation dialog
+        const confirmMessage = `This analysis will use ${estimate.estimated_credits} credit${estimate.estimated_credits === 1 ? '' : 's'}.\n\nYour current balance: ${estimate.current_balance} credits\n\nDo you want to proceed?`
+        
+        if (!confirm(confirmMessage)) {
+          console.log("User cancelled credit usage")
+          return
+        }
+        
+        if (!estimate.has_sufficient_credits) {
+          alert("You don't have enough credits to perform this analysis. Please top up or upgrade your plan.")
+          return
+        }
+      } catch (error) {
+        console.warn("Failed to estimate credit cost, proceeding anyway:", error)
+      }
+    }
+    
     setIsAnalyzing(true)
     setAnalysisState("analyzing")
     setAnalysisStatus(null)
@@ -1605,40 +1655,78 @@ const ContentScript = () => {
         
         {/* New ToggleButton - visible when panel is closed */}
         {!isSidePanelOpen && (
-          // Debug: log props sent to ToggleButton to verify shapes at runtime
-          console.log("Comment Verdict: Toggle props", { analysisState, analysisStatus, videoAnalysisSummary: videoAnalysis?.summary, isCached, analysisError }),
-          <ToggleButton
-            trustScore={analysisStatus?.trustScore}
-            verdict={analysisStatus?.clickbaitVerdict}
-            dock={panelDock}
-            state={isCheckingCache ? "analyzing" : analysisState}
-            isCached={isCached}
-            errorMessage={analysisError}
-            progressPercent={progressPercent}
-            progressMessage={progressMessage}
-            onToggle={() => {
-              if (isCheckingCache) {
-                // Do nothing while checking cache
-                return
-              }
-              if (analysisState === "idle") {
-                // Start analysis when in idle state
-                if (currentVideoId) {
-                  startVideoAnalysis(currentVideoId)
+          <>
+            {/* Debug: log props sent to ToggleButton to verify shapes at runtime */}
+            {console.log("Comment Verdict: Toggle props", { analysisState, analysisStatus, videoAnalysisSummary: videoAnalysis?.summary, isCached, analysisError })}
+            <ToggleButton
+              trustScore={analysisStatus?.trustScore}
+              verdict={analysisStatus?.clickbaitVerdict}
+              dock={panelDock}
+              state={isCheckingCache ? "analyzing" : analysisState}
+              isCached={isCached}
+              errorMessage={analysisError}
+              progressPercent={progressPercent}
+              progressMessage={progressMessage}
+              showCachedVerdict={settings?.videoAnalysis?.showCachedVerdict || false}
+              onToggle={() => {
+                if (isCheckingCache) {
+                  // Do nothing while checking cache
+                  return
                 }
-              } else if (analysisState === "complete") {
-                // Open panel when analysis is complete
-                setIsSidePanelOpen(true)
-              }
-              // Do nothing if analyzing (wait for completion)
-            }}
-            onDockChange={(pos) => {
-              setPanelDock(pos)
-              try {
-                localStorage.setItem("focus-guard-toggle-dock", pos)
-              } catch (e) {}
-            }}
-          />
+                if (analysisState === "idle") {
+                  // Start analysis when in idle state
+                  if (currentVideoId) {
+                    startVideoAnalysis(currentVideoId)
+                  }
+                } else if (analysisState === "complete") {
+                  // Open panel when analysis is complete
+                  setIsSidePanelOpen(true)
+                }
+                // Do nothing if analyzing (wait for completion)
+              }}
+              onDockChange={(pos) => {
+                setPanelDock(pos)
+                try {
+                  localStorage.setItem("focus-guard-toggle-dock", pos)
+                } catch (e) {}
+              }}
+            />
+
+            {/* Settings Button for PRO users */}
+            {userTierInfo?.tier === 'pro' && analysisState === 'idle' && (
+              <button
+                onClick={() => setShowSettingsModal(true)}
+                style={{
+                  position: "fixed",
+                  [panelDock]: "80px",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  width: "40px",
+                  height: "40px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "white",
+                  border: "3px solid #3b82f6",
+                  borderRadius: panelDock === "left" ? "0 12px 12px 0" : "12px 0 0 12px",
+                  cursor: "pointer",
+                  boxShadow: "0 4px 12px rgba(0, 0, 0, 0.2)",
+                  zIndex: 9999,
+                  transition: "all 0.2s"
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = "#eff6ff"
+                  e.currentTarget.style.transform = "translateY(-50%) scale(1.05)"
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = "white"
+                  e.currentTarget.style.transform = "translateY(-50%) scale(1)"
+                }}
+                title="Analysis Settings">
+                <span style={{ fontSize: "20px" }}>⚙️</span>
+              </button>
+            )}
+          </>
         )}
 
         <SidePanel
@@ -1654,7 +1742,76 @@ const ContentScript = () => {
           onBotFilterChange={(enabled) => {
             console.log("Bot filter changed:", enabled)
           }}
+          onForceRefresh={() => {
+            if (currentVideoId) {
+              // Check if we should confirm credit usage
+              const shouldConfirm = settings?.videoAnalysis?.confirmCreditUsage !== false
+              
+              if (shouldConfirm) {
+                const maxCommentDepth = settings?.videoAnalysis?.maxCommentDepth || 100
+                FocusGuardAPI.estimateCreditCost(maxCommentDepth, false).then(estimate => {
+                  const confirmMessage = `Force refresh will use ${estimate.estimated_credits} credit${estimate.estimated_credits === 1 ? '' : 's'}.\n\nYour current balance: ${estimate.current_balance} credits\n\nDo you want to proceed?`
+                  
+                  if (confirm(confirmMessage)) {
+                    if (estimate.has_sufficient_credits) {
+                      startVideoAnalysis(currentVideoId)
+                    } else {
+                      alert("You don't have enough credits to perform this analysis. Please top up or upgrade your plan.")
+                    }
+                  }
+                }).catch(error => {
+                  console.warn("Failed to estimate credit cost, proceeding anyway:", error)
+                  startVideoAnalysis(currentVideoId)
+                })
+              } else {
+                startVideoAnalysis(currentVideoId)
+              }
+            }
+          }}
         />
+
+        {/* Community Verdict Teaser for Free Users */}
+        {showCommunityTeaser && (
+          <CommunityVerdictTeaser
+            onUpgrade={() => {
+              const dashboardUrl = userTierInfo?.dashboardUrl || `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
+              chrome.tabs.create({ url: dashboardUrl })
+              setShowCommunityTeaser(false)
+            }}
+            onRequestAnalysis={() => {
+              // Future feature: queue analysis request
+              alert("Analysis request submitted! You'll be notified when this video is analyzed by the community.")
+              setShowCommunityTeaser(false)
+            }}
+          />
+        )}
+
+        {/* Analysis Settings Modal for PRO Users */}
+        {settings && (
+          <AnalysisSettingsModal
+            isOpen={showSettingsModal}
+            settings={settings}
+            onClose={() => setShowSettingsModal(false)}
+            onApply={(maxComments, customContext, forceRefresh) => {
+              console.log("Analysis settings applied:", { maxComments, customContext, forceRefresh })
+              
+              // Update settings
+              const newSettings = {
+                ...settings,
+                videoAnalysis: {
+                  ...settings.videoAnalysis,
+                  maxCommentDepth: maxComments
+                }
+              }
+              chrome.storage.sync.set({ settings: newSettings })
+              
+              // Start analysis with custom settings
+              if (currentVideoId) {
+                startVideoAnalysis(currentVideoId)
+              }
+            }}
+          />
+        )}
       </>
     )
   }

@@ -897,4 +897,73 @@ export class FocusGuardAPI {
       isStale: false
     }
   }
+
+  // ============================================================================
+  // Credit System APIs
+  // ============================================================================
+
+  /**
+   * Get user's credit balance and subscription info
+   */
+  static async getCreditBalance(): Promise<{
+    credits_balance: number
+    monthly_quota: number
+    tier: string
+    next_reset_date: string | null
+  }> {
+    return this.fetchWithAuth("/credits/balance")
+  }
+
+  /**
+   * Get available credit top-up packs
+   */
+  static async getTopupPacks(): Promise<{
+    packs: Array<{
+      id: string
+      name: string
+      credits: number
+      price: number
+    }>
+  }> {
+    return this.fetchWithAuth("/credits/topup-packs")
+  }
+
+  /**
+   * Get credit transaction history
+   */
+  static async getCreditHistory(limit: number = 50, offset: number = 0): Promise<{
+    transactions: Array<{
+      id: number
+      amount: number
+      transaction_type: string
+      balance_after: number
+      video_id: string | null
+      description: string
+      created_at: string
+    }>
+    total_count: number
+  }> {
+    return this.fetchWithAuth(`/credits/history?limit=${limit}&offset=${offset}`)
+  }
+
+  /**
+   * Estimate credit cost for an analysis operation
+   */
+  static async estimateCreditCost(
+    commentDepth: number,
+    isCustomContext: boolean = false
+  ): Promise<{
+    estimated_credits: number
+    comment_depth: number
+    has_sufficient_credits: boolean
+    current_balance: number
+  }> {
+    return this.fetchWithAuth("/credits/estimate-cost", {
+      method: "POST",
+      body: JSON.stringify({
+        comment_depth: commentDepth,
+        is_custom_context: isCustomContext
+      })
+    })
+  }
 }

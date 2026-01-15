@@ -6,6 +6,10 @@ export interface UserAccount {
   searchesUsedToday: number
   searchesRemaining: number
   resetTime: string
+  // Credit system fields
+  creditsBalance?: number
+  monthlyQuota?: number
+  nextResetDate?: string | null
 }
 
 export interface FocusGuardSettings {
@@ -14,6 +18,9 @@ export interface FocusGuardSettings {
     showPreWatchPopover: boolean
     autoAnalyze: boolean
     botDetectionEnabled: boolean
+    showCachedVerdict?: boolean // Toggle to show verdict for cached analyses
+    confirmCreditUsage?: boolean // Toggle to confirm before using credits
+    maxCommentDepth?: number // Max comments for PRO users (100-1000)
   }
   // Mode controls available UI presets; optional for existing saved settings
   mode?: 'deep-work' | 'curated' | 'intelligence' | 'video-analysis'
