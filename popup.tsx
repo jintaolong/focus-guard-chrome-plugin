@@ -7,6 +7,7 @@ import { initConsole } from "~lib/console-manager"
 import { AuthService } from "~lib/auth"
 import { SubscriptionService } from "~lib/subscription"
 import { ConfigService } from "~lib/config"
+import { FocusGuardAPI } from "~lib/api"
 import type { UserAccount, FocusGuardSettings } from "~types/popup"
 
 import "./style.css"
@@ -34,7 +35,10 @@ function IndexPopup() {
     videoAnalysis: {
       showPreWatchPopover: true,
       autoAnalyze: false,
-      botDetectionEnabled: true
+      botDetectionEnabled: true,
+      showCachedVerdict: false, // Default: hide verdict for cached analyses
+      confirmCreditUsage: true, // Default: confirm credit usage
+      maxCommentDepth: 100 // Default: 100 comments
     }
   })
   const [isLoading, setIsLoading] = useState(true)
@@ -114,7 +118,10 @@ function IndexPopup() {
           videoAnalysis: {
             showPreWatchPopover: true,
             autoAnalyze: false,
-            botDetectionEnabled: true
+            botDetectionEnabled: true,
+            showCachedVerdict: false,
+            confirmCreditUsage: true,
+            maxCommentDepth: 100
           }
         }
         setSettings(defaultSettings)
@@ -128,16 +135,21 @@ function IndexPopup() {
       
       if (isAuth) {
         // Get user and subscription info
-        console.log("Popup: Fetching user, subscription, and usage...")
-        const [user, subscription, usage] = await Promise.all([
+        console.log("Popup: Fetching user, subscription, usage, and credits...")
+        const [user, subscription, usage, credits] = await Promise.all([
           AuthService.getCurrentUser(),
           SubscriptionService.getSubscription(),
-          SubscriptionService.getUsage()
+          SubscriptionService.getUsage(),
+          FocusGuardAPI.getCreditBalance().catch(err => {
+            console.warn("Popup: Failed to fetch credits, continuing without credit info:", err)
+            return null
+          })
         ])
 
-        console.log("Popup: Got user data:", { user, subscription, usage })
+        console.log("Popup: Got user data:", { user, subscription, usage, credits })
         console.log("Popup: Subscription tier from backend:", subscription.tier)
         console.log("Popup: Usage data from backend:", usage)
+        console.log("Popup: Credit balance data:", credits)
 
         if (user) {
           // Map backend tier (FREE/STARTER/PRO) to frontend tier (free/starter/pro)
@@ -177,10 +189,32 @@ function IndexPopup() {
             dailySearchesLimit: usage.daily_searches_limit,
             searchesUsedToday: usage.daily_searches_used,
             searchesRemaining: searchesRemaining,
-            resetTime: subscription.last_reset_date
+            resetTime: subscription.last_reset_date,
+            // Credit system fields
+            creditsBalance: credits?.credits_balance || 0,
+            monthlyQuota: credits?.monthly_quota || 0,
+            nextResetDate: credits?.next_reset_date || null
           }
           console.log("📊 Popup: Setting account state:", newAccount)
           setAccount(newAccount)
+          
+          // Update confirmCreditUsage setting based on tier if not already set
+          if (result.settings?.videoAnalysis?.confirmCreditUsage === undefined) {
+            const updatedSettings: FocusGuardSettings = {
+              ...settings,
+              videoAnalysis: {
+                showPreWatchPopover: settings.videoAnalysis?.showPreWatchPopover ?? true,
+                autoAnalyze: settings.videoAnalysis?.autoAnalyze ?? false,
+                botDetectionEnabled: settings.videoAnalysis?.botDetectionEnabled ?? true,
+                showCachedVerdict: settings.videoAnalysis?.showCachedVerdict ?? false,
+                confirmCreditUsage: tier === "free", // ON for free, OFF for starter/pro
+                maxCommentDepth: settings.videoAnalysis?.maxCommentDepth ?? 100
+              }
+            }
+            setSettings(updatedSettings)
+            await chrome.storage.sync.set({ settings: updatedSettings })
+            console.log("Popup: Set confirmCreditUsage based on tier:", tier, updatedSettings.videoAnalysis?.confirmCreditUsage || false)
+          }
         } else {
           console.log("Popup: No user data, setting account to null")
           setAccount(null)
@@ -233,6 +267,16 @@ function IndexPopup() {
     } catch (error) {
       console.error("Failed to open portal:", error)
       setError(error instanceof Error ? error.message : "Failed to open portal")
+    }
+  }
+
+  const handleTopUp = async () => {
+    try {
+      // Open the web portal top-up page
+      await chrome.tabs.create({ url: `${PORTAL_URL}/dashboard?tab=credits` })
+    } catch (error) {
+      console.error("Failed to open top-up page:", error)
+      setError(error instanceof Error ? error.message : "Failed to open top-up page")
     }
   }
 
@@ -328,7 +372,7 @@ function IndexPopup() {
       </div>
 
       {/* Account Info */}
-      <AccountInfo account={account} onManagePlan={handleManagePlan} />
+      <AccountInfo account={account} onManagePlan={handleManagePlan} onTopUp={handleTopUp} />
 
       {/* Enable/Disable Toggle */}
       <ToggleSwitch
@@ -341,6 +385,107 @@ function IndexPopup() {
             : "Comment Verdict is paused"
         }
       />
+
+      {/* Credit Usage Settings */}
+      <div style={{ marginTop: "16px", padding: "16px", backgroundColor: "#f9fafb", borderRadius: "12px" }}>
+        <h3 style={{ fontSize: "13px", fontWeight: "600", color: "#1a1a1a", marginBottom: "12px" }}>
+          Analysis Settings
+        </h3>
+        
+        {/* Show Cached Verdict Toggle */}
+        <ToggleSwitch
+          enabled={settings.videoAnalysis?.showCachedVerdict || false}
+          onToggle={async (enabled) => {
+            const newSettings: FocusGuardSettings = {
+              ...settings,
+              videoAnalysis: {
+                showPreWatchPopover: settings.videoAnalysis?.showPreWatchPopover ?? true,
+                autoAnalyze: settings.videoAnalysis?.autoAnalyze ?? false,
+                botDetectionEnabled: settings.videoAnalysis?.botDetectionEnabled ?? true,
+                showCachedVerdict: enabled,
+                confirmCreditUsage: settings.videoAnalysis?.confirmCreditUsage ?? true,
+                maxCommentDepth: settings.videoAnalysis?.maxCommentDepth ?? 100
+              }
+            }
+            setSettings(newSettings)
+            await chrome.storage.sync.set({ settings: newSettings })
+          }}
+          label="Show Verdict for Cached Videos"
+          description="Display confidence & verdict on videos that have been analyzed"
+        />
+
+        {/* Confirm Credit Usage Toggle */}
+        <div style={{ marginTop: "12px" }}>
+          <ToggleSwitch
+            enabled={settings.videoAnalysis?.confirmCreditUsage !== false}
+            onToggle={async (enabled) => {
+              const newSettings: FocusGuardSettings = {
+                ...settings,
+                videoAnalysis: {
+                  showPreWatchPopover: settings.videoAnalysis?.showPreWatchPopover ?? true,
+                  autoAnalyze: settings.videoAnalysis?.autoAnalyze ?? false,
+                  botDetectionEnabled: settings.videoAnalysis?.botDetectionEnabled ?? true,
+                  showCachedVerdict: settings.videoAnalysis?.showCachedVerdict ?? false,
+                  confirmCreditUsage: enabled,
+                  maxCommentDepth: settings.videoAnalysis?.maxCommentDepth ?? 100
+                }
+              }
+              setSettings(newSettings)
+              await chrome.storage.sync.set({ settings: newSettings })
+            }}
+            label="Confirm Before Using Credits"
+            description="Get a confirmation dialog before analyzing a video"
+          />
+        </div>
+
+        {/* Comment Depth Slider (PRO only) */}
+        {account.tier === "pro" && (
+          <div style={{ marginTop: "16px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+              <label style={{ fontSize: "12px", fontWeight: "600", color: "#666" }}>
+                Max Comments per Analysis
+              </label>
+              <span style={{ fontSize: "12px", fontWeight: "700", color: "#3b82f6" }}>
+                {settings.videoAnalysis?.maxCommentDepth || 100} • {Math.ceil((settings.videoAnalysis?.maxCommentDepth || 100) / 100)} credits
+              </span>
+            </div>
+            <input
+              type="range"
+              min="100"
+              max="1000"
+              step="100"
+              value={settings.videoAnalysis?.maxCommentDepth || 100}
+              onChange={async (e) => {
+                const newDepth = parseInt(e.target.value)
+                const newSettings: FocusGuardSettings = {
+                  ...settings,
+                  videoAnalysis: {
+                    showPreWatchPopover: settings.videoAnalysis?.showPreWatchPopover ?? true,
+                    autoAnalyze: settings.videoAnalysis?.autoAnalyze ?? false,
+                    botDetectionEnabled: settings.videoAnalysis?.botDetectionEnabled ?? true,
+                    showCachedVerdict: settings.videoAnalysis?.showCachedVerdict ?? false,
+                    confirmCreditUsage: settings.videoAnalysis?.confirmCreditUsage ?? true,
+                    maxCommentDepth: newDepth
+                  }
+                }
+                setSettings(newSettings)
+                await chrome.storage.sync.set({ settings: newSettings })
+              }}
+              style={{
+                width: "100%",
+                height: "6px",
+                borderRadius: "3px",
+                outline: "none",
+                cursor: "pointer"
+              }}
+            />
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "#999", marginTop: "4px" }}>
+              <span>Fast (100)</span>
+              <span>Deep (1000)</span>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Footer */}
       <div
