@@ -57,6 +57,23 @@ function IndexPopup() {
     }
     loadUserData()
     
+    // Reload data when popup becomes visible (e.g., user reopens it)
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        console.log("Popup: Became visible, refreshing user data")
+        loadUserData()
+      }
+    }
+    
+    // Also reload on window focus (for when popup is already open but user returns to it)
+    const handleFocus = () => {
+      console.log("Popup: Got focus, refreshing user data")
+      loadUserData()
+    }
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('focus', handleFocus)
+    
     // Listen for storage changes (e.g., OAuth completion in background or portal sync)
     const storageListener = (changes: any, areaName: string) => {
       if (areaName === 'sync') {
@@ -98,6 +115,8 @@ function IndexPopup() {
     chrome.runtime.onMessage.addListener(messageListener)
     
     return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('focus', handleFocus)
       chrome.storage.onChanged.removeListener(storageListener)
       chrome.runtime.onMessage.removeListener(messageListener)
     }
@@ -185,6 +204,7 @@ function IndexPopup() {
           const newAccount: UserAccount = {
             isLoggedIn: true,
             email: user.email,
+            isVerified: user.is_verified,
             tier,
             dailySearchesLimit: usage.daily_searches_limit,
             searchesUsedToday: usage.daily_searches_used,
@@ -193,13 +213,18 @@ function IndexPopup() {
             // Credit system fields
             creditsBalance: credits?.credits_balance || 0,
             monthlyQuota: credits?.monthly_quota || 0,
+            purchasedCredits: 0, // Not available from current API response
             nextResetDate: credits?.next_reset_date || null
           }
           console.log("📊 Popup: Setting account state:", newAccount)
           setAccount(newAccount)
           
-          // Update confirmCreditUsage setting based on tier if not already set
-          if (result.settings?.videoAnalysis?.confirmCreditUsage === undefined) {
+          // Sanitize settings based on current tier
+          const currentMaxCommentDepth = settings.videoAnalysis?.maxCommentDepth ?? 100
+          const shouldEnforceLimit = tier !== "pro" && currentMaxCommentDepth > 100
+          const needsUpdate = result.settings?.videoAnalysis?.confirmCreditUsage === undefined || shouldEnforceLimit
+          
+          if (needsUpdate) {
             const updatedSettings: FocusGuardSettings = {
               ...settings,
               videoAnalysis: {
@@ -208,12 +233,12 @@ function IndexPopup() {
                 botDetectionEnabled: settings.videoAnalysis?.botDetectionEnabled ?? true,
                 showCachedVerdict: settings.videoAnalysis?.showCachedVerdict ?? false,
                 confirmCreditUsage: tier === "free", // ON for free, OFF for starter/pro
-                maxCommentDepth: settings.videoAnalysis?.maxCommentDepth ?? 100
+                maxCommentDepth: tier === "pro" ? currentMaxCommentDepth : Math.min(currentMaxCommentDepth, 100) // Enforce 100 cap for free/starter
               }
             }
             setSettings(updatedSettings)
             await chrome.storage.sync.set({ settings: updatedSettings })
-            console.log("Popup: Set confirmCreditUsage based on tier:", tier, updatedSettings.videoAnalysis?.confirmCreditUsage || false)
+            console.log("Popup: Sanitized settings based on tier:", tier, "maxCommentDepth capped at", updatedSettings.videoAnalysis?.maxCommentDepth)
           }
         } else {
           console.log("Popup: No user data, setting account to null")
@@ -261,9 +286,8 @@ function IndexPopup() {
 
   const handleManagePlan = async () => {
     try {
-      // Open the web portal dashboard for plan management
-      // Users can upgrade, downgrade, or cancel their subscription there
-      await chrome.tabs.create({ url: `${PORTAL_URL}/dashboard` })
+      // Open the web portal Plans & Billing tab
+      await chrome.tabs.create({ url: `${PORTAL_URL}/dashboard?tab=billing` })
     } catch (error) {
       console.error("Failed to open portal:", error)
       setError(error instanceof Error ? error.message : "Failed to open portal")
@@ -272,11 +296,11 @@ function IndexPopup() {
 
   const handleTopUp = async () => {
     try {
-      // Open the web portal top-up page
-      await chrome.tabs.create({ url: `${PORTAL_URL}/dashboard?tab=credits` })
+      // Open the web portal Plans & Billing tab for credit top-up
+      await chrome.tabs.create({ url: `${PORTAL_URL}/dashboard?tab=billing` })
     } catch (error) {
-      console.error("Failed to open top-up page:", error)
-      setError(error instanceof Error ? error.message : "Failed to open top-up page")
+      console.error("Failed to open billing page:", error)
+      setError(error instanceof Error ? error.message : "Failed to open billing page")
     }
   }
 
@@ -301,6 +325,32 @@ function IndexPopup() {
     const newSettings = { ...settings, isEnabled: enabled }
     setSettings(newSettings)
     await chrome.storage.sync.set({ settings: newSettings })
+  }
+
+  const handleResendVerification = async () => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      // Call backend to resend verification email
+      const response = await fetch(`${PORTAL_URL}/api/v1/auth/resend-verification`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${await AuthService.getAccessToken()}`
+        }
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to resend verification email')
+      }
+
+      alert('Verification email sent! Please check your inbox and spam folder.')
+    } catch (error) {
+      console.error('Failed to resend verification email:', error)
+      setError('Failed to resend verification email. Please try again.')
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   if (isLoading) {
@@ -372,7 +422,12 @@ function IndexPopup() {
       </div>
 
       {/* Account Info */}
-      <AccountInfo account={account} onManagePlan={handleManagePlan} onTopUp={handleTopUp} />
+      <AccountInfo 
+        account={account} 
+        onManagePlan={handleManagePlan} 
+        onTopUp={handleTopUp} 
+        onResendVerification={handleResendVerification}
+      />
 
       {/* Enable/Disable Toggle */}
       <ToggleSwitch
@@ -438,53 +493,70 @@ function IndexPopup() {
           />
         </div>
 
-        {/* Comment Depth Slider (PRO only) */}
-        {account.tier === "pro" && (
-          <div style={{ marginTop: "16px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-              <label style={{ fontSize: "12px", fontWeight: "600", color: "#666" }}>
-                Max Comments per Analysis
-              </label>
-              <span style={{ fontSize: "12px", fontWeight: "700", color: "#3b82f6" }}>
-                {settings.videoAnalysis?.maxCommentDepth || 100} • {Math.ceil((settings.videoAnalysis?.maxCommentDepth || 100) / 100)} credits
-              </span>
-            </div>
-            <input
-              type="range"
-              min="100"
-              max="1000"
-              step="100"
-              value={settings.videoAnalysis?.maxCommentDepth || 100}
-              onChange={async (e) => {
-                const newDepth = parseInt(e.target.value)
-                const newSettings: FocusGuardSettings = {
-                  ...settings,
-                  videoAnalysis: {
-                    showPreWatchPopover: settings.videoAnalysis?.showPreWatchPopover ?? true,
-                    autoAnalyze: settings.videoAnalysis?.autoAnalyze ?? false,
-                    botDetectionEnabled: settings.videoAnalysis?.botDetectionEnabled ?? true,
-                    showCachedVerdict: settings.videoAnalysis?.showCachedVerdict ?? false,
-                    confirmCreditUsage: settings.videoAnalysis?.confirmCreditUsage ?? true,
-                    maxCommentDepth: newDepth
-                  }
-                }
-                setSettings(newSettings)
-                await chrome.storage.sync.set({ settings: newSettings })
-              }}
-              style={{
-                width: "100%",
-                height: "6px",
-                borderRadius: "3px",
-                outline: "none",
-                cursor: "pointer"
-              }}
-            />
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "#999", marginTop: "4px" }}>
-              <span>Fast (100)</span>
-              <span>Deep (1000)</span>
-            </div>
+        {/* Comment Depth Slider - Always visible, disabled for free/starter */}
+        <div style={{ marginTop: "16px", opacity: account.tier === "pro" ? 1 : 0.6 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+            <label style={{ fontSize: "12px", fontWeight: "600", color: "#666" }}>
+              Max Comments per Analysis
+              {account.tier !== "pro" && (
+                <span style={{ fontSize: "10px", fontWeight: "400", color: "#f59e0b", marginLeft: "6px" }}>
+                  🔒 PRO Only
+                </span>
+              )}
+            </label>
+            <span style={{ fontSize: "12px", fontWeight: "700", color: account.tier === "pro" ? "#3b82f6" : "#999" }}>
+              {settings.videoAnalysis?.maxCommentDepth || 100} • {Math.ceil((settings.videoAnalysis?.maxCommentDepth || 100) / 100)} credits
+            </span>
           </div>
-        )}
+          <input
+            type="range"
+            min="100"
+            max="1000"
+            step="100"
+            value={settings.videoAnalysis?.maxCommentDepth || 100}
+            disabled={account.tier !== "pro"}
+            onChange={async (e) => {
+              const newDepth = parseInt(e.target.value)
+              const newSettings: FocusGuardSettings = {
+                ...settings,
+                videoAnalysis: {
+                  showPreWatchPopover: settings.videoAnalysis?.showPreWatchPopover ?? true,
+                  autoAnalyze: settings.videoAnalysis?.autoAnalyze ?? false,
+                  botDetectionEnabled: settings.videoAnalysis?.botDetectionEnabled ?? true,
+                  showCachedVerdict: settings.videoAnalysis?.showCachedVerdict ?? false,
+                  confirmCreditUsage: settings.videoAnalysis?.confirmCreditUsage ?? true,
+                  maxCommentDepth: newDepth
+                }
+              }
+              setSettings(newSettings)
+              await chrome.storage.sync.set({ settings: newSettings })
+            }}
+            style={{
+              width: "100%",
+              height: "6px",
+              borderRadius: "3px",
+              outline: "none",
+              cursor: account.tier === "pro" ? "pointer" : "not-allowed"
+            }}
+          />
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "#999", marginTop: "4px" }}>
+            <span>Fast (100)</span>
+            <span>Deep (1000)</span>
+          </div>
+          {account.tier !== "pro" && (
+            <div style={{
+              fontSize: "11px",
+              color: "#f59e0b",
+              marginTop: "8px",
+              padding: "8px",
+              backgroundColor: "#fffbeb",
+              borderRadius: "4px",
+              border: "1px solid #fef3c7"
+            }}>
+              💎 <strong>Upgrade to PRO</strong> to analyze up to 1,000 comments per video for deeper insights.
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Footer */}
