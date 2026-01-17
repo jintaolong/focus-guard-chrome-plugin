@@ -9,6 +9,7 @@ import { SidePanel } from "~components/SidePanel"
 import { PreWatchPopover } from "~components/PreWatchPopover"
 import { CommunityVerdictTeaser } from "~components/CommunityVerdictTeaser"
 import { AnalysisSettingsModal } from "~components/AnalysisSettingsModal"
+import { CreditConfirmationDialog } from "~components/CreditConfirmationDialog"
 import { initConsole } from "~lib/console-manager"
 import { FocusGuardAPI } from "~lib/api"
 import { AuthService } from "~lib/auth"
@@ -182,6 +183,13 @@ const ContentScript = () => {
   const [userTierInfo, setUserTierInfo] = useState<{ tier: string; dashboardUrl: string } | null>(null)
   const [showCommunityTeaser, setShowCommunityTeaser] = useState(false)
   const [showSettingsModal, setShowSettingsModal] = useState(false)
+  const [showCreditConfirmDialog, setShowCreditConfirmDialog] = useState(false)
+  const [creditConfirmData, setCreditConfirmData] = useState<{
+    estimatedCredits: number
+    currentBalance: number
+    hasSufficientCredits: boolean
+    onConfirm: () => void
+  } | null>(null)
 
   // Expose the current analysis on the window for quick debugging in DevTools.
   // Usage in page console: `__FG_VIDEO_ANALYSIS` or `__FG_VIDEO_ANALYSIS_SUMMARY`.
@@ -843,39 +851,45 @@ const ContentScript = () => {
     }
   }
 
-  const startVideoAnalysis = async (videoId: string) => {
+  const startVideoAnalysis = async (videoId: string, forceRefresh: boolean = false) => {
     // Check if we should confirm credit usage
     const shouldConfirm = settings?.videoAnalysis?.confirmCreditUsage !== false
     
     if (shouldConfirm) {
-      // Estimate credit cost
-      const maxCommentDepth = settings?.videoAnalysis?.maxCommentDepth || 100
+      // Estimate credit cost with tier-based limit enforcement
+      const tier = userTierInfo?.tier || 'free'
+      const settingsMaxComments = settings?.videoAnalysis?.maxCommentDepth || 100
+      const maxCommentDepth = tier === 'pro' ? settingsMaxComments : Math.min(settingsMaxComments, 100)
       try {
         const estimate = await FocusGuardAPI.estimateCreditCost(maxCommentDepth, false)
         
-        // Check if free user with no credits - show teaser instead
-        if (!estimate.has_sufficient_credits && userTierInfo?.tier === 'free') {
-          setShowCommunityTeaser(true)
-          return
-        }
-        
-        // Show confirmation dialog
-        const confirmMessage = `This analysis will use ${estimate.estimated_credits} credit${estimate.estimated_credits === 1 ? '' : 's'}.\n\nYour current balance: ${estimate.current_balance} credits\n\nDo you want to proceed?`
-        
-        if (!confirm(confirmMessage)) {
-          console.log("User cancelled credit usage")
-          return
-        }
-        
-        if (!estimate.has_sufficient_credits) {
-          alert("You don't have enough credits to perform this analysis. Please top up or upgrade your plan.")
-          return
-        }
+        // Show credit confirmation dialog
+        setCreditConfirmData({
+          estimatedCredits: estimate.estimated_credits,
+          currentBalance: estimate.current_balance,
+          hasSufficientCredits: estimate.has_sufficient_credits,
+          onConfirm: () => {
+            setShowCreditConfirmDialog(false)
+            setCreditConfirmData(null)
+            // Proceed with analysis
+            proceedWithAnalysis(videoId, forceRefresh)
+          }
+        })
+        setShowCreditConfirmDialog(true)
+        return // Wait for user confirmation
       } catch (error) {
         console.warn("Failed to estimate credit cost, proceeding anyway:", error)
+        // Proceed without confirmation if estimate fails
+        proceedWithAnalysis(videoId, forceRefresh)
+        return
       }
+    } else {
+      // No confirmation needed - proceed directly
+      proceedWithAnalysis(videoId, forceRefresh)
     }
-    
+  }
+
+  const proceedWithAnalysis = async (videoId: string, forceRefresh: boolean = false) => {
     setIsAnalyzing(true)
     setAnalysisState("analyzing")
     setAnalysisStatus(null)
@@ -942,11 +956,16 @@ const ContentScript = () => {
           jobId = runningJobCheck.existingJobId
           setCurrentJobId(jobId)
         } else {
-          console.log(`Video not cached, submitting summary job (max_comments: ${MAX_COMMENTS})...`)
+          const tier = userTierInfo?.tier || 'free'
+          const settingsMaxComments = settings?.videoAnalysis?.maxCommentDepth || 100
+          // Enforce tier-based limits: free/starter capped at 100, PRO can go higher
+          const maxComments = tier === 'pro' ? settingsMaxComments : Math.min(settingsMaxComments, 100)
+          console.log(`Submitting summary job: video_id=${videoId}, force_refresh=${forceRefresh}, max_comments=${maxComments}`)
+          console.log(`Settings: videoAnalysis.maxCommentDepth=${settings?.videoAnalysis?.maxCommentDepth}, MAX_COMMENTS=${MAX_COMMENTS}, resolved_tier=${tier}, enforced_max=${maxComments}`)
           const jobResponse = await FocusGuardAPI.submitSummaryJob({
             video_id: videoId,
-            force_refresh: false,
-            max_comments: MAX_COMMENTS
+            force_refresh: forceRefresh,
+            max_comments: maxComments
           })
           console.log("Job submitted:", jobResponse)
           jobId = jobResponse.job_id
@@ -1662,7 +1681,7 @@ const ContentScript = () => {
               trustScore={analysisStatus?.trustScore}
               verdict={analysisStatus?.clickbaitVerdict}
               dock={panelDock}
-              state={isCheckingCache ? "analyzing" : analysisState}
+              state={isCheckingCache ? "analyzing" : (analysisState === "complete" && isCached && !settings?.videoAnalysis?.showCachedVerdict) ? "idle" : analysisState}
               isCached={isCached}
               errorMessage={analysisError}
               progressPercent={progressPercent}
@@ -1742,33 +1761,8 @@ const ContentScript = () => {
           onBotFilterChange={(enabled) => {
             console.log("Bot filter changed:", enabled)
           }}
-          onForceRefresh={() => {
-            if (currentVideoId) {
-              // Check if we should confirm credit usage
-              const shouldConfirm = settings?.videoAnalysis?.confirmCreditUsage !== false
-              
-              if (shouldConfirm) {
-                const maxCommentDepth = settings?.videoAnalysis?.maxCommentDepth || 100
-                FocusGuardAPI.estimateCreditCost(maxCommentDepth, false).then(estimate => {
-                  const confirmMessage = `Force refresh will use ${estimate.estimated_credits} credit${estimate.estimated_credits === 1 ? '' : 's'}.\n\nYour current balance: ${estimate.current_balance} credits\n\nDo you want to proceed?`
-                  
-                  if (confirm(confirmMessage)) {
-                    if (estimate.has_sufficient_credits) {
-                      startVideoAnalysis(currentVideoId)
-                    } else {
-                      alert("You don't have enough credits to perform this analysis. Please top up or upgrade your plan.")
-                    }
-                  }
-                }).catch(error => {
-                  console.warn("Failed to estimate credit cost, proceeding anyway:", error)
-                  startVideoAnalysis(currentVideoId)
-                })
-              } else {
-                startVideoAnalysis(currentVideoId)
-              }
-            }
-          }}
         />
+        {/* Force refresh temporarily disabled - omitting onForceRefresh prop */}
 
         {/* Community Verdict Teaser for Free Users */}
         {showCommunityTeaser && (
@@ -1809,6 +1803,51 @@ const ContentScript = () => {
               if (currentVideoId) {
                 startVideoAnalysis(currentVideoId)
               }
+            }}
+          />
+        )}
+
+        {/* Credit Confirmation Dialog */}
+        {creditConfirmData && (
+          <CreditConfirmationDialog
+            isOpen={showCreditConfirmDialog}
+            estimatedCredits={creditConfirmData.estimatedCredits}
+            currentBalance={creditConfirmData.currentBalance}
+            hasSufficientCredits={creditConfirmData.hasSufficientCredits}
+            userTier={(userTierInfo?.tier || 'free') as "free" | "starter" | "pro"}
+            onConfirm={creditConfirmData.onConfirm}
+            onCancel={() => {
+              setShowCreditConfirmDialog(false)
+              setCreditConfirmData(null)
+              // Re-open sidepanel if it was closed
+              if (!isSidePanelOpen && analysisState === "complete") {
+                setIsSidePanelOpen(true)
+              }
+            }}
+            onUpgrade={() => {
+              const portalUrl = process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"
+              const tier = userTierInfo?.tier || 'free'
+              // Direct users to appropriate upgrade page based on current tier
+              const upgradeUrl = tier === 'free' 
+                ? `${portalUrl}/dashboard?tab=billing`
+                : tier === 'starter'
+                ? `${portalUrl}/dashboard?tab=billing`
+                : `${portalUrl}/dashboard?tab=billing`
+              // Open URL in new tab (content scripts can't use chrome.tabs, so open directly)
+              window.open(upgradeUrl, '_blank')
+              setShowCreditConfirmDialog(false)
+              setCreditConfirmData(null)
+            }}
+            onTopUp={() => {
+              const dashboardUrl = userTierInfo?.dashboardUrl || `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
+              window.open(`${dashboardUrl}?tab=credits`, '_blank')
+              setShowCreditConfirmDialog(false)
+              setCreditConfirmData(null)
+            }}
+            onContactSales={() => {
+              window.open("mailto:sales@commentverdict.com?subject=Enterprise%20Credits%20Inquiry", '_blank')
+              setShowCreditConfirmDialog(false)
+              setCreditConfirmData(null)
             }}
           />
         )}
