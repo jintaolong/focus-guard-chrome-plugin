@@ -212,10 +212,14 @@ function IndexPopup() {
             searchesRemaining: searchesRemaining,
             resetTime: subscription.last_reset_date,
             // Credit system fields
-            creditsBalance: credits?.credits_balance || 0,
+            creditsBalance: credits?.total_credits || 0, // Use total_credits for display
+            monthlyCreditsRemaining: credits?.credits_balance || 0, // Monthly credits only
             monthlyQuota: credits?.monthly_quota || 0,
-            purchasedCredits: 0, // Not available from current API response
-            nextResetDate: credits?.next_reset_date || null
+            purchasedCredits: credits?.purchased_credits_balance || 0,
+            nextResetDate: credits?.next_reset_date || null,
+            // Subscription cancellation info
+            cancelAtPeriodEnd: subscription.cancel_at_period_end,
+            currentPeriodEnd: subscription.current_period_end
           }
           console.log("📊 Popup: Setting account state:", newAccount)
           setAccount(newAccount)
@@ -298,7 +302,7 @@ function IndexPopup() {
   const handleTopUp = async () => {
     try {
       // Open the web portal Plans & Billing tab for credit top-up
-      await chrome.tabs.create({ url: `${PORTAL_URL}/dashboard?tab=billing` })
+      await chrome.tabs.create({ url: `${PORTAL_URL}/dashboard?tab=billing&purchase_type=credits` })
     } catch (error) {
       console.error("Failed to open billing page:", error)
       setError(error instanceof Error ? error.message : "Failed to open billing page")
