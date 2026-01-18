@@ -184,6 +184,7 @@ const ContentScript = () => {
   const [showCommunityTeaser, setShowCommunityTeaser] = useState(false)
   const [showSettingsModal, setShowSettingsModal] = useState(false)
   const [showCreditConfirmDialog, setShowCreditConfirmDialog] = useState(false)
+  const [isUserVerified, setIsUserVerified] = useState<boolean | null>(null)
   const [creditConfirmData, setCreditConfirmData] = useState<{
     estimatedCredits: number
     currentBalance: number
@@ -852,16 +853,60 @@ const ContentScript = () => {
   }
 
   const startVideoAnalysis = async (videoId: string, forceRefresh: boolean = false) => {
+    // Check email verification status first
+    try {
+      const creditBalance = await FocusGuardAPI.getCreditBalance()
+      // Assuming backend will add is_verified field to credit balance response
+      // For now, we'll fetch from chrome.storage where popup stores it
+      const storage = await chrome.storage.sync.get(['account'])
+      const isVerified = storage.account?.is_verified !== false
+      setIsUserVerified(isVerified)
+      
+      if (!isVerified) {
+        // Show verification prompt dialog
+        setCreditConfirmData({
+          estimatedCredits: 0,
+          currentBalance: creditBalance.credits_balance,
+          hasSufficientCredits: false,
+          onConfirm: () => {
+            setShowCreditConfirmDialog(false)
+            setCreditConfirmData(null)
+          }
+        })
+        setShowCreditConfirmDialog(true)
+        return
+      }
+    } catch (error) {
+      console.warn("Failed to check verification status:", error)
+    }
+    
+    // Fetch tier if not already cached (needed for credit estimation)
+    let currentTier = userTierInfo?.tier || 'free'
+    if (!userTierInfo) {
+      console.log("⏱️ Fetching subscription tier for credit estimate...")
+      try {
+        const subscription = await SubscriptionService.getSubscription()
+        currentTier = subscription.tier?.toLowerCase() || 'free'
+        const dashboardUrl = `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
+        setUserTierInfo({ tier: currentTier, dashboardUrl })
+        console.log(`✅ Subscription tier fetched: ${currentTier}`)
+      } catch (error) {
+        console.warn("Failed to fetch tier info, defaulting to free:", error)
+        currentTier = 'free'
+      }
+    }
+    
     // Check if we should confirm credit usage
     const shouldConfirm = settings?.videoAnalysis?.confirmCreditUsage !== false
     
     if (shouldConfirm) {
       // Estimate credit cost with tier-based limit enforcement
-      const tier = userTierInfo?.tier || 'free'
       const settingsMaxComments = settings?.videoAnalysis?.maxCommentDepth || 100
-      const maxCommentDepth = tier === 'pro' ? settingsMaxComments : Math.min(settingsMaxComments, 100)
+      const maxCommentDepth = currentTier === 'pro' ? settingsMaxComments : Math.min(settingsMaxComments, 100)
+      console.log("💰 Credit Estimate Params:", { tier: currentTier, settingsMaxComments, maxCommentDepth, settings: settings?.videoAnalysis })
       try {
         const estimate = await FocusGuardAPI.estimateCreditCost(maxCommentDepth, false)
+        console.log("💰 Credit Estimate Response:", estimate)
         
         // Show credit confirmation dialog
         setCreditConfirmData({
@@ -899,6 +944,18 @@ const ContentScript = () => {
     try {
       const analysisStartTime = Date.now()
       console.log("Starting video analysis for:", videoId)
+      
+      // Ensure settings are loaded before proceeding - load fresh from storage
+      let currentSettings = settings
+      if (!currentSettings) {
+        console.warn("⚠️ Settings not loaded in state, loading from storage...")
+        const result = await chrome.storage.sync.get(["settings"])
+        currentSettings = result.settings || null
+        if (currentSettings) {
+          setSettings(currentSettings)
+        }
+      }
+      console.log("📋 Current settings for analysis:", currentSettings)
       
       // Check authentication before starting
       console.log("Checking authentication before analysis...")
@@ -957,11 +1014,11 @@ const ContentScript = () => {
           setCurrentJobId(jobId)
         } else {
           const tier = userTierInfo?.tier || 'free'
-          const settingsMaxComments = settings?.videoAnalysis?.maxCommentDepth || 100
+          const settingsMaxComments = currentSettings?.videoAnalysis?.maxCommentDepth || 100
           // Enforce tier-based limits: free/starter capped at 100, PRO can go higher
           const maxComments = tier === 'pro' ? settingsMaxComments : Math.min(settingsMaxComments, 100)
-          console.log(`Submitting summary job: video_id=${videoId}, force_refresh=${forceRefresh}, max_comments=${maxComments}`)
-          console.log(`Settings: videoAnalysis.maxCommentDepth=${settings?.videoAnalysis?.maxCommentDepth}, MAX_COMMENTS=${MAX_COMMENTS}, resolved_tier=${tier}, enforced_max=${maxComments}`)
+          console.log(`📊 Submitting summary job: video_id=${videoId}, force_refresh=${forceRefresh}, max_comments=${maxComments}`)
+          console.log(`📊 Settings breakdown: maxCommentDepth=${currentSettings?.videoAnalysis?.maxCommentDepth}, tier=${tier}, enforced_max=${maxComments}`)
           const jobResponse = await FocusGuardAPI.submitSummaryJob({
             video_id: videoId,
             force_refresh: forceRefresh,
@@ -1815,6 +1872,7 @@ const ContentScript = () => {
             currentBalance={creditConfirmData.currentBalance}
             hasSufficientCredits={creditConfirmData.hasSufficientCredits}
             userTier={(userTierInfo?.tier || 'free') as "free" | "starter" | "pro"}
+            isVerified={isUserVerified ?? true}
             onConfirm={creditConfirmData.onConfirm}
             onCancel={() => {
               setShowCreditConfirmDialog(false)
@@ -1846,6 +1904,18 @@ const ContentScript = () => {
             }}
             onContactSales={() => {
               window.open("mailto:sales@commentverdict.com?subject=Enterprise%20Credits%20Inquiry", '_blank')
+              setShowCreditConfirmDialog(false)
+              setCreditConfirmData(null)
+            }}
+            onVerifyEmail={async () => {
+              // Resend verification email
+              try {
+                await FocusGuardAPI.resendVerificationEmail()
+                alert("Verification email sent! Please check your inbox.")
+              } catch (error) {
+                console.error("Failed to resend verification email:", error)
+                alert("Failed to send verification email. Please try again later.")
+              }
               setShowCreditConfirmDialog(false)
               setCreditConfirmData(null)
             }}
