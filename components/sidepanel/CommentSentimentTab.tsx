@@ -16,6 +16,11 @@ export const CommentSentimentTab = ({ analysis }: CommentSentimentTabProps) => {
   const [isDonutCollapsed, setIsDonutCollapsed] = useState(false)
   const contentRef = useRef<HTMLDivElement>(null)
   
+  // Debug logging
+  console.log("🔍 CommentSentimentTab - sentiment object:", sentiment)
+  console.log("🔍 CommentSentimentTab - sentiment.filteringMetadata:", sentiment?.filteringMetadata)
+  console.log("🔍 CommentSentimentTab - analysis object:", analysis)
+  
   // Auto-collapse donut chart when scrolling down
   useEffect(() => {
     const handleScroll = (e: Event) => {
@@ -71,7 +76,7 @@ export const CommentSentimentTab = ({ analysis }: CommentSentimentTabProps) => {
   const content = (
     <div ref={contentRef}>
       {/* Comment Analysis Info */}
-      {(analysis.maxCommentsRequested || analysis.actualCommentsFetched) && (
+      {(analysis.maxCommentsRequested != null || analysis.actualCommentsFetched != null) && (
         <div style={{
           marginBottom: "16px",
           padding: "12px 16px",
@@ -89,6 +94,28 @@ export const CommentSentimentTab = ({ analysis }: CommentSentimentTabProps) => {
           <span>
             Comment Analysis: <strong>Requested: {analysis.maxCommentsRequested ?? 'N/A'}</strong> • 
             <strong>Analyzed: {analysis.actualCommentsFetched ?? 'N/A'}</strong>
+          </span>
+        </div>
+      )}
+      
+      {/* Sentiment Filtering Pipeline Visualization */}
+      {sentiment?.filteringMetadata && sentiment.filteringMetadata.filtered_count !== undefined && (
+        <div style={{
+          marginBottom: "16px",
+          padding: "12px 16px",
+          background: "linear-gradient(135deg, #F3E5F5 0%, #E1BEE7 100%)",
+          border: "2px solid #9C27B0",
+          borderRadius: "12px",
+          fontSize: "13px",
+          fontWeight: "500",
+          color: "#4A148C",
+          display: "flex",
+          alignItems: "center",
+          gap: "8px"
+        }}>
+          <span style={{ fontSize: "16px" }}>🔍</span>
+          <span>
+            Sentiment Analysis: <strong>{sentiment.filteringMetadata.filtered_count} theme-relevant comments</strong> analyzed
           </span>
         </div>
       )}

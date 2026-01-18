@@ -44,7 +44,7 @@ export const ContentGapsTab = ({ analysis, onBotFilterChange }: ContentGapsTabPr
   const content = (
     <div>
       {/* Comment Analysis Info */}
-      {(analysis.maxCommentsRequested || analysis.actualCommentsFetched) && (
+      {(analysis.maxCommentsRequested != null || analysis.actualCommentsFetched != null) && (
         <div style={{
           marginBottom: "16px",
           padding: "12px 16px",
@@ -62,6 +62,28 @@ export const ContentGapsTab = ({ analysis, onBotFilterChange }: ContentGapsTabPr
           <span>
             Comment Analysis: <strong>Requested: {analysis.maxCommentsRequested ?? 'N/A'}</strong> • 
             <strong>Analyzed: {analysis.actualCommentsFetched ?? 'N/A'}</strong>
+          </span>
+        </div>
+      )}
+      
+      {/* Topic Gap Filtering Pipeline Visualization */}
+      {contentGaps?.filteringMetadata && contentGaps.filteringMetadata.after_layer2 !== undefined && (
+        <div style={{
+          marginBottom: "16px",
+          padding: "12px 16px",
+          background: "linear-gradient(135deg, #FFF3E0 0%, #FFE0B2 100%)",
+          border: "2px solid #FF9800",
+          borderRadius: "12px",
+          fontSize: "13px",
+          fontWeight: "500",
+          color: "#E65100",
+          display: "flex",
+          alignItems: "center",
+          gap: "8px"
+        }}>
+          <span style={{ fontSize: "16px" }}>🔬</span>
+          <span>
+            Question Extraction: <strong>{contentGaps.filteringMetadata.after_layer2} relevant questions</strong> identified from filtered comments
           </span>
         </div>
       )}

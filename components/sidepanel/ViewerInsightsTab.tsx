@@ -21,7 +21,7 @@ export const ViewerInsightsTab = ({ analysis }: ViewerInsightsTabProps) => {
   const content = (
     <div>
       {/* Comment Analysis Info */}
-      {(analysis.maxCommentsRequested || analysis.actualCommentsFetched) && (
+      {(analysis.maxCommentsRequested != null || analysis.actualCommentsFetched != null) && (
         <div style={{
           marginBottom: "16px",
           padding: "12px 16px",

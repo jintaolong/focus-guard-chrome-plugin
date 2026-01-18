@@ -597,6 +597,10 @@ const ContentScript = () => {
         
         console.log("Comment Verdict: Relevancy data on landing:", relevancyData)
         console.log("Comment Verdict: Sentiment data on landing:", sentimentData)
+        console.log("🔍 DEBUG sentimentData.data:", sentimentData?.data)
+        console.log("🔍 DEBUG sentimentData.data.excluded_count:", sentimentData?.data?.excluded_count)
+        console.log("🔍 DEBUG sentimentData.data.total_comments:", sentimentData?.data?.total_comments)
+        console.log("🔍 DEBUG sentimentData.filtering_metadata:", sentimentData?.filtering_metadata)
         console.log("Comment Verdict: Summary data on landing:", summaryData)
         console.log("Comment Verdict: Credibility data on landing:", credibilityData)
         console.log("Comment Verdict: Human Likeness data on landing:", humanLikenessData)
@@ -781,6 +785,8 @@ const ContentScript = () => {
           trustScore: { score: verdictCertainty },
           clickbaitVerdict: { verdict: verdictRaw },
           executiveSummary: summaryData?.summary_paragraph ?? null,
+          maxCommentsRequested: summaryData?.max_comments_requested ?? null,
+          actualCommentsFetched: summaryData?.actual_comments_fetched ?? null,
           channelCredibility: credibilityData ? {
             score: credibilityData.score,
             factors: credibilityData.normalized_factors ? Object.entries(credibilityData.normalized_factors).map(([name, weight]) => ({
@@ -796,8 +802,40 @@ const ContentScript = () => {
               return positiveCount > negativeCount ? "positive" : negativeCount > positiveCount ? "negative" : "neutral"
             })(),
             distribution: sentimentDistribution,
+            filteringMetadata: (() => {
+              if (sentimentData?.filtering_metadata) return sentimentData.filtering_metadata
+              if (sentimentData?.data?.excluded_count !== undefined) {
+                const pos = typeof sentimentData.data.positive === 'number' ? sentimentData.data.positive : (sentimentData.data.positive?.count ?? 0)
+                const neg = typeof sentimentData.data.negative === 'number' ? sentimentData.data.negative : (sentimentData.data.negative?.count ?? 0)
+                const neu = typeof sentimentData.data.neutral === 'number' ? sentimentData.data.neutral : (sentimentData.data.neutral?.count ?? 0)
+                const analyzedCount = pos + neg + neu
+                const totalComments = sentimentData.data.total_comments ?? (analyzedCount + sentimentData.data.excluded_count)
+                return {
+                  total_input: totalComments,
+                  filtered_count: analyzedCount
+                }
+              }
+              return undefined
+            })(),
             tierRestriction: sentimentTierRestriction
-          } : (sentimentTierRestriction ? { tierRestriction: sentimentTierRestriction } : null),
+          } : (sentimentTierRestriction ? { 
+            tierRestriction: sentimentTierRestriction,
+            filteringMetadata: (() => {
+              if (sentimentData?.filtering_metadata) return sentimentData.filtering_metadata
+              if (sentimentData?.data?.excluded_count !== undefined) {
+                const pos = typeof sentimentData.data.positive === 'number' ? sentimentData.data.positive : (sentimentData.data.positive?.count ?? 0)
+                const neg = typeof sentimentData.data.negative === 'number' ? sentimentData.data.negative : (sentimentData.data.negative?.count ?? 0)
+                const neu = typeof sentimentData.data.neutral === 'number' ? sentimentData.data.neutral : (sentimentData.data.neutral?.count ?? 0)
+                const analyzedCount = pos + neg + neu
+                const totalComments = sentimentData.data.total_comments ?? (analyzedCount + sentimentData.data.excluded_count)
+                return {
+                  total_input: totalComments,
+                  filtered_count: analyzedCount
+                }
+              }
+              return undefined
+            })()
+          } : null),
           credibility: null,
           topicClusters: null,
           contentGaps: {
@@ -807,6 +845,7 @@ const ContentScript = () => {
             gapCoverageScore: topicGapsData?.topic_gaps ? Math.max(0, 100 - (topicGapsData.topic_gaps.length * 10)) : 100,
             botDetectionEnabled: true,
             unansweredQuestions: unansweredQuestions,
+            filteringMetadata: topicGapsData?.filtering_metadata,
             tierRestriction: topicGapsTierRestriction
           },
           viewerInsights: sentimentData ? {
@@ -1109,7 +1148,8 @@ const ContentScript = () => {
             video_title: resultData.video_title,
             data: resultData.sentiment,
             cache_hit: resultData.cache_hit,
-            note: null
+            note: null,
+            filtering_metadata: resultData.sentiment?.filtering_metadata
           }
           
           console.log("🔍 DEBUG transformed sentimentData:", sentimentData)
@@ -1143,7 +1183,8 @@ const ContentScript = () => {
             topic_gaps: resultData.topic_gaps.gaps,
             filtered_question_count: resultData.topic_gaps.filtered_question_count,
             processing_time: resultData.topic_gaps.processing_time,
-            cache_hit: resultData.cache_hit
+            cache_hit: resultData.cache_hit,
+            filtering_metadata: resultData.topic_gaps?.filtering_metadata
           }
           
           humanLikenessData = null // Not included in job result
@@ -1528,8 +1569,40 @@ const ContentScript = () => {
             return positiveCount > negativeCount ? "positive" : negativeCount > positiveCount ? "negative" : "neutral"
           })(),
           distribution: sentimentDistribution,
+          filteringMetadata: (() => {
+            if (sentimentData?.filtering_metadata) return sentimentData.filtering_metadata
+            if (sentimentData?.data?.excluded_count !== undefined) {
+              const pos = typeof sentimentData.data.positive === 'number' ? sentimentData.data.positive : (sentimentData.data.positive?.count ?? 0)
+              const neg = typeof sentimentData.data.negative === 'number' ? sentimentData.data.negative : (sentimentData.data.negative?.count ?? 0)
+              const neu = typeof sentimentData.data.neutral === 'number' ? sentimentData.data.neutral : (sentimentData.data.neutral?.count ?? 0)
+              const analyzedCount = pos + neg + neu
+              const totalComments = sentimentData.data.total_comments ?? (analyzedCount + sentimentData.data.excluded_count)
+              return {
+                total_input: totalComments,
+                filtered_count: analyzedCount
+              }
+            }
+            return undefined
+          })(),
           tierRestriction: sentimentTierRestriction
-        } : (sentimentTierRestriction ? { tierRestriction: sentimentTierRestriction } : null),
+        } : (sentimentTierRestriction ? { 
+          tierRestriction: sentimentTierRestriction,
+          filteringMetadata: (() => {
+            if (sentimentData?.filtering_metadata) return sentimentData.filtering_metadata
+            if (sentimentData?.data?.excluded_count !== undefined) {
+              const pos = typeof sentimentData.data.positive === 'number' ? sentimentData.data.positive : (sentimentData.data.positive?.count ?? 0)
+              const neg = typeof sentimentData.data.negative === 'number' ? sentimentData.data.negative : (sentimentData.data.negative?.count ?? 0)
+              const neu = typeof sentimentData.data.neutral === 'number' ? sentimentData.data.neutral : (sentimentData.data.neutral?.count ?? 0)
+              const analyzedCount = pos + neg + neu
+              const totalComments = sentimentData.data.total_comments ?? (analyzedCount + sentimentData.data.excluded_count)
+              return {
+                total_input: totalComments,
+                filtered_count: analyzedCount
+              }
+            }
+            return undefined
+          })()
+        } : null),
         credibility: null,
         topicClusters: null,
         contentGaps: {
@@ -1539,6 +1612,7 @@ const ContentScript = () => {
           gapCoverageScore: topicGapsData?.topic_gaps ? Math.max(0, 100 - (topicGapsData.topic_gaps.length * 10)) : (topicGapsTierRestriction ? undefined : 100),
           botDetectionEnabled: true,
           unansweredQuestions: unansweredQuestions,
+          filteringMetadata: topicGapsData?.filtering_metadata,
           tierRestriction: topicGapsTierRestriction
         },
         viewerInsights: sentimentData ? {
@@ -1880,10 +1954,10 @@ const ContentScript = () => {
               const tier = userTierInfo?.tier || 'free'
               // Direct users to appropriate upgrade page based on current tier
               const upgradeUrl = tier === 'free' 
-                ? `${portalUrl}/dashboard?tab=billing`
+                ? `${portalUrl}/dashboard?tab=billing&purchase_type=tier`
                 : tier === 'starter'
-                ? `${portalUrl}/dashboard?tab=billing`
-                : `${portalUrl}/dashboard?tab=billing`
+                ? `${portalUrl}/dashboard?tab=billing&purchase_type=tier`
+                : `${portalUrl}/dashboard?tab=billing&purchase_type=tier`
               // Open URL in new tab (content scripts can't use chrome.tabs, so open directly)
               window.open(upgradeUrl, '_blank')
               setShowCreditConfirmDialog(false)
@@ -1891,7 +1965,7 @@ const ContentScript = () => {
             }}
             onTopUp={() => {
               const dashboardUrl = userTierInfo?.dashboardUrl || `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
-              window.open(`${dashboardUrl}?tab=credits`, '_blank')
+              window.open(`${dashboardUrl}?tab=credits&purchase_type=credits`, '_blank')
               setShowCreditConfirmDialog(false)
               setCreditConfirmData(null)
             }}
