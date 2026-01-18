@@ -309,6 +309,18 @@ function IndexPopup() {
     try {
       await AuthService.logout()
       setAccount(null)
+      // Reset settings to defaults on logout
+      setSettings({
+        isEnabled: true,
+        videoAnalysis: {
+          showPreWatchPopover: true,
+          autoAnalyze: false,
+          botDetectionEnabled: true,
+          showCachedVerdict: false,
+          confirmCreditUsage: true,
+          maxCommentDepth: 100
+        }
+      })
       
       // Notify background to clear badge
       chrome.runtime.sendMessage({

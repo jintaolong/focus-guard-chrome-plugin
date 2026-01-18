@@ -196,9 +196,17 @@ export class AuthService {
 
   static async clearTokens(): Promise<void> {
     try {
-      console.log("AuthService: Clearing tokens from storage")
-      await this.storageRemove([this.TOKEN_KEY, this.REFRESH_TOKEN_KEY, this.USER_KEY, "account"])
-      console.log("AuthService: Tokens cleared successfully")
+      console.log("AuthService: Clearing tokens and account data from storage")
+      // Clear all account-related data on logout
+      await this.storageRemove([
+        this.TOKEN_KEY, 
+        this.REFRESH_TOKEN_KEY, 
+        this.USER_KEY, 
+        "account",
+        "settings", // Clear settings as they may contain tier-specific config
+        "isAuthenticated"
+      ])
+      console.log("AuthService: Tokens and account data cleared successfully")
     } catch (error) {
       console.error("Failed to clear tokens:", error)
     }
