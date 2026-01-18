@@ -338,7 +338,7 @@ export const AccountInfo = ({ account, onManagePlan, onTopUp, onResendVerificati
                 marginBottom: "8px"
               }}>
               {account.nextResetDate && `Resets ${new Date(account.nextResetDate).toLocaleDateString()}`}
-              {creditsBalance > monthlyQuota && ` • ${creditsBalance - monthlyQuota} from top-ups`}
+              {account.purchasedCredits && account.purchasedCredits > 0 && ` • ${account.purchasedCredits} from top-ups`}
             </p>
           </>
         )}
