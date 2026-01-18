@@ -15,18 +15,23 @@ export const AccountInfo = ({ account, onManagePlan, onTopUp, onResendVerificati
   
   const creditsBalance = account.creditsBalance || 0
   const monthlyQuota = account.monthlyQuota || 0
+  const monthlyCreditsRemaining = account.monthlyCreditsRemaining ?? 0
+  const purchasedCredits = account.purchasedCredits || 0
   
   // Calculate usage percentages for visual bars
   const monthlyUsagePercent = hasMonthlyQuota && monthlyQuota > 0
-    ? Math.min(100, ((monthlyQuota - creditsBalance) / monthlyQuota) * 100)
+    ? Math.min(100, ((monthlyQuota - monthlyCreditsRemaining) / monthlyQuota) * 100)
     : 0
 
   // Debug: log account values
   console.log("AccountInfo: Rendering with values:", {
     tier: account.tier,
     creditsBalance,
+    monthlyCreditsRemaining,
     monthlyQuota,
-    monthlyUsagePercent: monthlyUsagePercent.toFixed(1) + "%"
+    purchasedCredits,
+    monthlyUsagePercent: monthlyUsagePercent.toFixed(1) + "%",
+    cancelAtPeriodEnd: account.cancelAtPeriodEnd
   })
 
   // Tier display labels
@@ -40,7 +45,22 @@ export const AccountInfo = ({ account, onManagePlan, onTopUp, onResendVerificati
 
   // Credit milestone detection
   const getCreditMilestone = () => {
-    // Email verification prompt (highest priority) - only for unverified users
+    // Subscription cancellation warning (highest priority for paid users)
+    if (account.cancelAtPeriodEnd && account.currentPeriodEnd && !isFree) {
+      const endDate = new Date(account.currentPeriodEnd)
+      const daysRemaining = Math.ceil((endDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+      return {
+        type: 'subscription-canceling',
+        title: "⚠️ Subscription Ending Soon",
+        message: `Your ${account.tier.toUpperCase()} plan will end on ${endDate.toLocaleDateString()}${daysRemaining > 0 ? ` (${daysRemaining} day${daysRemaining === 1 ? '' : 's'} remaining)` : ''}. Reactivate to keep your benefits and monthly credits.`,
+        cta: "Reactivate Plan",
+        color: '#d97706',
+        backgroundColor: '#fffbeb',
+        borderColor: '#fde68a'
+      }
+    }
+    
+    // Email verification prompt (high priority) - only for unverified users
     if (account.isVerified === false) {
       return {
         type: 'email-verification',
@@ -310,7 +330,7 @@ export const AccountInfo = ({ account, onManagePlan, onTopUp, onResendVerificati
                   Monthly Quota
                 </span>
                 <span style={{ fontSize: "11px", color: "#666" }}>
-                  {Math.max(0, creditsBalance)} / {monthlyQuota}
+                  {Math.max(0, monthlyCreditsRemaining)} remaining of {monthlyQuota}
                 </span>
               </div>
               <div
@@ -323,9 +343,9 @@ export const AccountInfo = ({ account, onManagePlan, onTopUp, onResendVerificati
                 }}>
                 <div
                   style={{
-                    width: `${Math.min(100, (Math.max(0, creditsBalance) / monthlyQuota) * 100)}%`,
+                    width: `${Math.min(100, (Math.max(0, monthlyCreditsRemaining) / monthlyQuota) * 100)}%`,
                     height: "100%",
-                    backgroundColor: creditsBalance === 0 ? "#dc2626" : creditsBalance <= monthlyQuota * 0.2 ? "#d97706" : "#3b82f6",
+                    backgroundColor: monthlyCreditsRemaining === 0 ? "#dc2626" : monthlyCreditsRemaining <= monthlyQuota * 0.2 ? "#d97706" : "#3b82f6",
                     transition: "width 0.3s ease, background-color 0.3s ease"
                   }}
                 />
@@ -338,7 +358,11 @@ export const AccountInfo = ({ account, onManagePlan, onTopUp, onResendVerificati
                 marginBottom: "8px"
               }}>
               {account.nextResetDate && `Resets ${new Date(account.nextResetDate).toLocaleDateString()}`}
-              {account.purchasedCredits && account.purchasedCredits > 0 && ` • ${account.purchasedCredits} from top-ups`}
+              {purchasedCredits > 0 && (
+                <span style={{ color: "#10b981", fontWeight: "500" }}>
+                  {account.nextResetDate ? " • " : ""}{purchasedCredits} purchased credit{purchasedCredits === 1 ? "" : "s"}
+                </span>
+              )}
             </p>
           </>
         )}
