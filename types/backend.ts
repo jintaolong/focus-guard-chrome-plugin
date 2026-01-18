@@ -17,6 +17,7 @@ export interface UserResponse {
   full_name: string | null
   is_active: boolean
   is_verified: boolean
+  welcome_bonus_used?: boolean // Whether welcome bonus credits have been consumed
 }
 
 export interface UserUpdate {
@@ -193,9 +194,14 @@ export interface SentimentResponseV2 {
     mixed?: number | { count: number; top_comments: Array<{ text: string; [key: string]: any }> }
     bot_flagged_count?: number
     total_comments?: number
+    excluded_count?: number    // Number of comments excluded from sentiment analysis
   }
   cache_hit: boolean
   note: string | null
+  filtering_metadata?: {
+    total_input: number       // Total comments before filtering
+    filtered_count: number    // Comments after theme-relevance filtering
+  }
 }
 
 export interface TopicCluster {
@@ -229,6 +235,11 @@ export interface TopicGapResponseV2 {
   filtered_question_count: number
   processing_time: number
   cache_hit: boolean
+  filtering_metadata?: {
+    total_input: number        // Total comments before filtering
+    after_layer1: number        // After word count + negative anchor filtering
+    after_layer2: number        // After positive anchor + zero-shot filtering
+  }
 }
 
 export interface ChannelCredibilityResponseV2 {
@@ -305,6 +316,8 @@ export interface SummaryResponseV2 {
   persona?: string // "viewer", "creator", or "analyst"
   key_takeaways?: string[] | null
   confidence?: string | null
+  max_comments_requested?: number | null // Number of comments requested for analysis
+  actual_comments_fetched?: number | null // Number of comments actually analyzed
 }
 
 export interface SummaryStatusResponse {

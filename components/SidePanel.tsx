@@ -23,6 +23,7 @@ interface SidePanelProps {
   onReAnalyze?: (videoId: string) => void
   onDownloadHistoryReport?: (videoId: string) => void
   onBotFilterChange?: (enabled: boolean) => void
+  onForceRefresh?: () => void
 }
 
 export const SidePanel = ({
@@ -35,7 +36,8 @@ export const SidePanel = ({
   onDownloadReport,
   onReAnalyze,
   onDownloadHistoryReport,
-  onBotFilterChange
+  onBotFilterChange,
+  onForceRefresh
 }: SidePanelProps) => {
   const [activeTab, setActiveTab] = useState<TabId>("summary")
   const [isCollapsed, setIsCollapsed] = useState(false)
@@ -94,6 +96,33 @@ export const SidePanel = ({
         )}
 
         <div style={{ display: "flex", gap: "8px" }}>
+          {/* Force Refresh Button - only show when not collapsed */}
+          {!isCollapsed && onForceRefresh && analysis && (
+            <button
+              onClick={onForceRefresh}
+              style={{
+                width: "32px",
+                height: "32px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "transparent",
+                border: `1px solid ${COLORS.ui.border}`,
+                borderRadius: "6px",
+                cursor: "pointer",
+                transition: "background-color 0.2s"
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = COLORS.ui.surface
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "transparent"
+              }}
+              title="Force refresh analysis">
+              <span style={{ fontSize: "16px" }}>🔄</span>
+            </button>
+          )}
+          
           {/* Collapse/Expand Button */}
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}

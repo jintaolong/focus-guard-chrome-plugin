@@ -7,6 +7,9 @@ import { SearchInterface } from "~components/SearchInterface"
 import { ToggleButton } from "~components/ToggleButton"
 import { SidePanel } from "~components/SidePanel"
 import { PreWatchPopover } from "~components/PreWatchPopover"
+import { CommunityVerdictTeaser } from "~components/CommunityVerdictTeaser"
+import { AnalysisSettingsModal } from "~components/AnalysisSettingsModal"
+import { CreditConfirmationDialog } from "~components/CreditConfirmationDialog"
 import { initConsole } from "~lib/console-manager"
 import { FocusGuardAPI } from "~lib/api"
 import { AuthService } from "~lib/auth"
@@ -178,6 +181,16 @@ const ContentScript = () => {
   const [progressMessage, setProgressMessage] = useState<string | null>(null)
   const abortPollingRef = useRef<(() => void) | null>(null)
   const [userTierInfo, setUserTierInfo] = useState<{ tier: string; dashboardUrl: string } | null>(null)
+  const [showCommunityTeaser, setShowCommunityTeaser] = useState(false)
+  const [showSettingsModal, setShowSettingsModal] = useState(false)
+  const [showCreditConfirmDialog, setShowCreditConfirmDialog] = useState(false)
+  const [isUserVerified, setIsUserVerified] = useState<boolean | null>(null)
+  const [creditConfirmData, setCreditConfirmData] = useState<{
+    estimatedCredits: number
+    currentBalance: number
+    hasSufficientCredits: boolean
+    onConfirm: () => void
+  } | null>(null)
 
   // Expose the current analysis on the window for quick debugging in DevTools.
   // Usage in page console: `__FG_VIDEO_ANALYSIS` or `__FG_VIDEO_ANALYSIS_SUMMARY`.
@@ -475,7 +488,21 @@ const ContentScript = () => {
       setIsCached(cacheStatus.cached)
 
       if (!cacheStatus.cached) {
-        // Not cached — leave defaults
+        // Not cached — check if free user with no credits
+        // Show teaser if they're free tier with 0 credits
+        if (userTierInfo?.tier === 'free') {
+          try {
+            const credits = await FocusGuardAPI.getCreditBalance()
+            if (credits.credits_balance === 0) {
+              console.log("Free user with 0 credits - showing teaser")
+              setShowCommunityTeaser(true)
+            }
+          } catch (err) {
+            console.warn("Failed to check credit balance:", err)
+          }
+        }
+        
+        // Leave defaults
         setAnalysisState("idle")
         setAnalysisStatus(null)
         setVideoAnalysis(null)
@@ -570,6 +597,10 @@ const ContentScript = () => {
         
         console.log("Comment Verdict: Relevancy data on landing:", relevancyData)
         console.log("Comment Verdict: Sentiment data on landing:", sentimentData)
+        console.log("🔍 DEBUG sentimentData.data:", sentimentData?.data)
+        console.log("🔍 DEBUG sentimentData.data.excluded_count:", sentimentData?.data?.excluded_count)
+        console.log("🔍 DEBUG sentimentData.data.total_comments:", sentimentData?.data?.total_comments)
+        console.log("🔍 DEBUG sentimentData.filtering_metadata:", sentimentData?.filtering_metadata)
         console.log("Comment Verdict: Summary data on landing:", summaryData)
         console.log("Comment Verdict: Credibility data on landing:", credibilityData)
         console.log("Comment Verdict: Human Likeness data on landing:", humanLikenessData)
@@ -754,6 +785,8 @@ const ContentScript = () => {
           trustScore: { score: verdictCertainty },
           clickbaitVerdict: { verdict: verdictRaw },
           executiveSummary: summaryData?.summary_paragraph ?? null,
+          maxCommentsRequested: summaryData?.max_comments_requested ?? null,
+          actualCommentsFetched: summaryData?.actual_comments_fetched ?? null,
           channelCredibility: credibilityData ? {
             score: credibilityData.score,
             factors: credibilityData.normalized_factors ? Object.entries(credibilityData.normalized_factors).map(([name, weight]) => ({
@@ -769,8 +802,40 @@ const ContentScript = () => {
               return positiveCount > negativeCount ? "positive" : negativeCount > positiveCount ? "negative" : "neutral"
             })(),
             distribution: sentimentDistribution,
+            filteringMetadata: (() => {
+              if (sentimentData?.filtering_metadata) return sentimentData.filtering_metadata
+              if (sentimentData?.data?.excluded_count !== undefined) {
+                const pos = typeof sentimentData.data.positive === 'number' ? sentimentData.data.positive : (sentimentData.data.positive?.count ?? 0)
+                const neg = typeof sentimentData.data.negative === 'number' ? sentimentData.data.negative : (sentimentData.data.negative?.count ?? 0)
+                const neu = typeof sentimentData.data.neutral === 'number' ? sentimentData.data.neutral : (sentimentData.data.neutral?.count ?? 0)
+                const analyzedCount = pos + neg + neu
+                const totalComments = sentimentData.data.total_comments ?? (analyzedCount + sentimentData.data.excluded_count)
+                return {
+                  total_input: totalComments,
+                  filtered_count: analyzedCount
+                }
+              }
+              return undefined
+            })(),
             tierRestriction: sentimentTierRestriction
-          } : (sentimentTierRestriction ? { tierRestriction: sentimentTierRestriction } : null),
+          } : (sentimentTierRestriction ? { 
+            tierRestriction: sentimentTierRestriction,
+            filteringMetadata: (() => {
+              if (sentimentData?.filtering_metadata) return sentimentData.filtering_metadata
+              if (sentimentData?.data?.excluded_count !== undefined) {
+                const pos = typeof sentimentData.data.positive === 'number' ? sentimentData.data.positive : (sentimentData.data.positive?.count ?? 0)
+                const neg = typeof sentimentData.data.negative === 'number' ? sentimentData.data.negative : (sentimentData.data.negative?.count ?? 0)
+                const neu = typeof sentimentData.data.neutral === 'number' ? sentimentData.data.neutral : (sentimentData.data.neutral?.count ?? 0)
+                const analyzedCount = pos + neg + neu
+                const totalComments = sentimentData.data.total_comments ?? (analyzedCount + sentimentData.data.excluded_count)
+                return {
+                  total_input: totalComments,
+                  filtered_count: analyzedCount
+                }
+              }
+              return undefined
+            })()
+          } : null),
           credibility: null,
           topicClusters: null,
           contentGaps: {
@@ -780,6 +845,7 @@ const ContentScript = () => {
             gapCoverageScore: topicGapsData?.topic_gaps ? Math.max(0, 100 - (topicGapsData.topic_gaps.length * 10)) : 100,
             botDetectionEnabled: true,
             unansweredQuestions: unansweredQuestions,
+            filteringMetadata: topicGapsData?.filtering_metadata,
             tierRestriction: topicGapsTierRestriction
           },
           viewerInsights: sentimentData ? {
@@ -825,7 +891,89 @@ const ContentScript = () => {
     }
   }
 
-  const startVideoAnalysis = async (videoId: string) => {
+  const startVideoAnalysis = async (videoId: string, forceRefresh: boolean = false) => {
+    // Check email verification status first
+    try {
+      const creditBalance = await FocusGuardAPI.getCreditBalance()
+      // Assuming backend will add is_verified field to credit balance response
+      // For now, we'll fetch from chrome.storage where popup stores it
+      const storage = await chrome.storage.sync.get(['account'])
+      const isVerified = storage.account?.is_verified !== false
+      setIsUserVerified(isVerified)
+      
+      if (!isVerified) {
+        // Show verification prompt dialog
+        setCreditConfirmData({
+          estimatedCredits: 0,
+          currentBalance: creditBalance.credits_balance,
+          hasSufficientCredits: false,
+          onConfirm: () => {
+            setShowCreditConfirmDialog(false)
+            setCreditConfirmData(null)
+          }
+        })
+        setShowCreditConfirmDialog(true)
+        return
+      }
+    } catch (error) {
+      console.warn("Failed to check verification status:", error)
+    }
+    
+    // Fetch tier if not already cached (needed for credit estimation)
+    let currentTier = userTierInfo?.tier || 'free'
+    if (!userTierInfo) {
+      console.log("⏱️ Fetching subscription tier for credit estimate...")
+      try {
+        const subscription = await SubscriptionService.getSubscription()
+        currentTier = subscription.tier?.toLowerCase() || 'free'
+        const dashboardUrl = `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
+        setUserTierInfo({ tier: currentTier, dashboardUrl })
+        console.log(`✅ Subscription tier fetched: ${currentTier}`)
+      } catch (error) {
+        console.warn("Failed to fetch tier info, defaulting to free:", error)
+        currentTier = 'free'
+      }
+    }
+    
+    // Check if we should confirm credit usage
+    const shouldConfirm = settings?.videoAnalysis?.confirmCreditUsage !== false
+    
+    if (shouldConfirm) {
+      // Estimate credit cost with tier-based limit enforcement
+      const settingsMaxComments = settings?.videoAnalysis?.maxCommentDepth || 100
+      const maxCommentDepth = currentTier === 'pro' ? settingsMaxComments : Math.min(settingsMaxComments, 100)
+      console.log("💰 Credit Estimate Params:", { tier: currentTier, settingsMaxComments, maxCommentDepth, settings: settings?.videoAnalysis })
+      try {
+        const estimate = await FocusGuardAPI.estimateCreditCost(maxCommentDepth, false)
+        console.log("💰 Credit Estimate Response:", estimate)
+        
+        // Show credit confirmation dialog
+        setCreditConfirmData({
+          estimatedCredits: estimate.estimated_credits,
+          currentBalance: estimate.current_balance,
+          hasSufficientCredits: estimate.has_sufficient_credits,
+          onConfirm: () => {
+            setShowCreditConfirmDialog(false)
+            setCreditConfirmData(null)
+            // Proceed with analysis
+            proceedWithAnalysis(videoId, forceRefresh)
+          }
+        })
+        setShowCreditConfirmDialog(true)
+        return // Wait for user confirmation
+      } catch (error) {
+        console.warn("Failed to estimate credit cost, proceeding anyway:", error)
+        // Proceed without confirmation if estimate fails
+        proceedWithAnalysis(videoId, forceRefresh)
+        return
+      }
+    } else {
+      // No confirmation needed - proceed directly
+      proceedWithAnalysis(videoId, forceRefresh)
+    }
+  }
+
+  const proceedWithAnalysis = async (videoId: string, forceRefresh: boolean = false) => {
     setIsAnalyzing(true)
     setAnalysisState("analyzing")
     setAnalysisStatus(null)
@@ -836,6 +984,18 @@ const ContentScript = () => {
       const analysisStartTime = Date.now()
       console.log("Starting video analysis for:", videoId)
       
+      // Ensure settings are loaded before proceeding - load fresh from storage
+      let currentSettings = settings
+      if (!currentSettings) {
+        console.warn("⚠️ Settings not loaded in state, loading from storage...")
+        const result = await chrome.storage.sync.get(["settings"])
+        currentSettings = result.settings || null
+        if (currentSettings) {
+          setSettings(currentSettings)
+        }
+      }
+      console.log("📋 Current settings for analysis:", currentSettings)
+      
       // Check authentication before starting
       console.log("Checking authentication before analysis...")
       const isAuth = await AuthService.isAuthenticated()
@@ -845,19 +1005,21 @@ const ContentScript = () => {
         throw new Error("Not authenticated. Please log in to analyze videos.")
       }
       
-      // Fetch user tier info early (in parallel with job processing) and cache it
+      // Fetch user tier info early and store in local variable (state updates are async!)
+      let currentTier = userTierInfo?.tier || 'free'
       if (!userTierInfo) {
         console.log("⏱️ Fetching subscription tier early (parallel with job)...")
         const tierFetchStart = Date.now()
         try {
           const subscription = await SubscriptionService.getSubscription()
-          const tier = subscription.tier?.toLowerCase() || 'free'
+          currentTier = subscription.tier?.toLowerCase() || 'free'
           const dashboardUrl = `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
           const tierFetchDuration = ((Date.now() - tierFetchStart) / 1000).toFixed(1)
-          console.log(`✅ Subscription tier fetched early in ${tierFetchDuration}s: ${tier}`)
-          setUserTierInfo({ tier, dashboardUrl })
+          console.log(`✅ Subscription tier fetched early in ${tierFetchDuration}s: ${currentTier}`)
+          setUserTierInfo({ tier: currentTier, dashboardUrl })
         } catch (error) {
           console.warn("Failed to fetch tier info early, will retry later:", error)
+          currentTier = 'free'
         }
       }
       
@@ -879,6 +1041,7 @@ const ContentScript = () => {
       let sentimentTierRestriction = null
       let topicClustersTierRestriction = null
       let topicGapsTierRestriction = null
+      let resultData = null // Store job result data for comment count tracking
 
       if (!cacheStatus.cached) {
         // Step 2a: Not cached - check for existing job or submit new one
@@ -892,11 +1055,15 @@ const ContentScript = () => {
           jobId = runningJobCheck.existingJobId
           setCurrentJobId(jobId)
         } else {
-          console.log(`Video not cached, submitting summary job (max_comments: ${MAX_COMMENTS})...`)
+          const settingsMaxComments = currentSettings?.videoAnalysis?.maxCommentDepth || 100
+          // Enforce tier-based limits: free/starter capped at 100, PRO can go higher
+          const maxComments = currentTier === 'pro' ? settingsMaxComments : Math.min(settingsMaxComments, 100)
+          console.log(`📊 Submitting summary job: video_id=${videoId}, force_refresh=${forceRefresh}, max_comments=${maxComments}`)
+          console.log(`📊 Settings breakdown: maxCommentDepth=${currentSettings?.videoAnalysis?.maxCommentDepth}, tier=${currentTier}, enforced_max=${maxComments}`)
           const jobResponse = await FocusGuardAPI.submitSummaryJob({
             video_id: videoId,
-            force_refresh: false,
-            max_comments: MAX_COMMENTS
+            force_refresh: forceRefresh,
+            max_comments: maxComments
           })
           console.log("Job submitted:", jobResponse)
           jobId = jobResponse.job_id
@@ -931,7 +1098,7 @@ const ContentScript = () => {
 
         // Step 3a: Extract analysis data from job result (optimized path)
         const fetchStartTime = Date.now()
-        const resultData = jobResult.result_data
+        resultData = jobResult.result_data
         
         // Check if job result contains optimized data structure (new backend implementation)
         const hasOptimizedData = resultData && 
@@ -981,7 +1148,8 @@ const ContentScript = () => {
             video_title: resultData.video_title,
             data: resultData.sentiment,
             cache_hit: resultData.cache_hit,
-            note: null
+            note: null,
+            filtering_metadata: resultData.sentiment?.filtering_metadata
           }
           
           console.log("🔍 DEBUG transformed sentimentData:", sentimentData)
@@ -1015,7 +1183,8 @@ const ContentScript = () => {
             topic_gaps: resultData.topic_gaps.gaps,
             filtered_question_count: resultData.topic_gaps.filtered_question_count,
             processing_time: resultData.topic_gaps.processing_time,
-            cache_hit: resultData.cache_hit
+            cache_hit: resultData.cache_hit,
+            filtering_metadata: resultData.topic_gaps?.filtering_metadata
           }
           
           humanLikenessData = null // Not included in job result
@@ -1311,25 +1480,13 @@ const ContentScript = () => {
       // Get user tier and enforce tier restrictions on frontend (fetch once and reuse)
       console.log("⏱️ Getting subscription tier info...")
       const tierFetchStart = Date.now()
-      let subscription
       let userTier: string
       let dashboardUrl: string
       
-      if (userTierInfo) {
-        // Use cached tier info fetched at analysis start
-        console.log(`✅ Using cached subscription tier: ${userTierInfo.tier}`)
-        userTier = userTierInfo.tier
-        dashboardUrl = userTierInfo.dashboardUrl
-      } else {
-        // Fallback: fetch if not already cached
-        subscription = await SubscriptionService.getSubscription()
-        userTier = subscription.tier?.toLowerCase() || 'free'
-        dashboardUrl = `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
-        const tierFetchDuration = ((Date.now() - tierFetchStart) / 1000).toFixed(1)
-        console.log(`✅ Subscription tier fetched in ${tierFetchDuration}s: ${userTier}`)
-        // Cache for future use
-        setUserTierInfo({ tier: userTier, dashboardUrl })
-      }
+      // Use currentTier variable from early fetch (already fetched at start of proceedWithAnalysis)
+      userTier = currentTier
+      dashboardUrl = userTierInfo?.dashboardUrl || `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
+      console.log(`✅ Using tier from early fetch: ${userTier}`)
       
       // Build report tier restriction inline instead of calling getReportTierRestriction() which would fetch subscription again
       const reportTierRestriction = userTier !== 'pro' ? {
@@ -1393,6 +1550,9 @@ const ContentScript = () => {
         trustScore: { score: verdictCertainty },
         clickbaitVerdict: { verdict: verdictRaw },
         executiveSummary: summaryData?.summary_paragraph ?? null,
+        // Comment count tracking
+        maxCommentsRequested: (resultData as any)?.max_comments_requested ?? summaryData?.max_comments_requested ?? null,
+        actualCommentsFetched: (resultData as any)?.actual_comments_fetched ?? summaryData?.actual_comments_fetched ?? null,
         channelCredibility: credibilityData ? {
           score: credibilityData.score,
           factors: credibilityData.normalized_factors ? Object.entries(credibilityData.normalized_factors).map(([name, weight]) => ({
@@ -1409,8 +1569,40 @@ const ContentScript = () => {
             return positiveCount > negativeCount ? "positive" : negativeCount > positiveCount ? "negative" : "neutral"
           })(),
           distribution: sentimentDistribution,
+          filteringMetadata: (() => {
+            if (sentimentData?.filtering_metadata) return sentimentData.filtering_metadata
+            if (sentimentData?.data?.excluded_count !== undefined) {
+              const pos = typeof sentimentData.data.positive === 'number' ? sentimentData.data.positive : (sentimentData.data.positive?.count ?? 0)
+              const neg = typeof sentimentData.data.negative === 'number' ? sentimentData.data.negative : (sentimentData.data.negative?.count ?? 0)
+              const neu = typeof sentimentData.data.neutral === 'number' ? sentimentData.data.neutral : (sentimentData.data.neutral?.count ?? 0)
+              const analyzedCount = pos + neg + neu
+              const totalComments = sentimentData.data.total_comments ?? (analyzedCount + sentimentData.data.excluded_count)
+              return {
+                total_input: totalComments,
+                filtered_count: analyzedCount
+              }
+            }
+            return undefined
+          })(),
           tierRestriction: sentimentTierRestriction
-        } : (sentimentTierRestriction ? { tierRestriction: sentimentTierRestriction } : null),
+        } : (sentimentTierRestriction ? { 
+          tierRestriction: sentimentTierRestriction,
+          filteringMetadata: (() => {
+            if (sentimentData?.filtering_metadata) return sentimentData.filtering_metadata
+            if (sentimentData?.data?.excluded_count !== undefined) {
+              const pos = typeof sentimentData.data.positive === 'number' ? sentimentData.data.positive : (sentimentData.data.positive?.count ?? 0)
+              const neg = typeof sentimentData.data.negative === 'number' ? sentimentData.data.negative : (sentimentData.data.negative?.count ?? 0)
+              const neu = typeof sentimentData.data.neutral === 'number' ? sentimentData.data.neutral : (sentimentData.data.neutral?.count ?? 0)
+              const analyzedCount = pos + neg + neu
+              const totalComments = sentimentData.data.total_comments ?? (analyzedCount + sentimentData.data.excluded_count)
+              return {
+                total_input: totalComments,
+                filtered_count: analyzedCount
+              }
+            }
+            return undefined
+          })()
+        } : null),
         credibility: null,
         topicClusters: null,
         contentGaps: {
@@ -1420,6 +1612,7 @@ const ContentScript = () => {
           gapCoverageScore: topicGapsData?.topic_gaps ? Math.max(0, 100 - (topicGapsData.topic_gaps.length * 10)) : (topicGapsTierRestriction ? undefined : 100),
           botDetectionEnabled: true,
           unansweredQuestions: unansweredQuestions,
+          filteringMetadata: topicGapsData?.filtering_metadata,
           tierRestriction: topicGapsTierRestriction
         },
         viewerInsights: sentimentData ? {
@@ -1605,40 +1798,78 @@ const ContentScript = () => {
         
         {/* New ToggleButton - visible when panel is closed */}
         {!isSidePanelOpen && (
-          // Debug: log props sent to ToggleButton to verify shapes at runtime
-          console.log("Comment Verdict: Toggle props", { analysisState, analysisStatus, videoAnalysisSummary: videoAnalysis?.summary, isCached, analysisError }),
-          <ToggleButton
-            trustScore={analysisStatus?.trustScore}
-            verdict={analysisStatus?.clickbaitVerdict}
-            dock={panelDock}
-            state={isCheckingCache ? "analyzing" : analysisState}
-            isCached={isCached}
-            errorMessage={analysisError}
-            progressPercent={progressPercent}
-            progressMessage={progressMessage}
-            onToggle={() => {
-              if (isCheckingCache) {
-                // Do nothing while checking cache
-                return
-              }
-              if (analysisState === "idle") {
-                // Start analysis when in idle state
-                if (currentVideoId) {
-                  startVideoAnalysis(currentVideoId)
+          <>
+            {/* Debug: log props sent to ToggleButton to verify shapes at runtime */}
+            {console.log("Comment Verdict: Toggle props", { analysisState, analysisStatus, videoAnalysisSummary: videoAnalysis?.summary, isCached, analysisError })}
+            <ToggleButton
+              trustScore={analysisStatus?.trustScore}
+              verdict={analysisStatus?.clickbaitVerdict}
+              dock={panelDock}
+              state={isCheckingCache ? "analyzing" : (analysisState === "complete" && isCached && !settings?.videoAnalysis?.showCachedVerdict) ? "idle" : analysisState}
+              isCached={isCached}
+              errorMessage={analysisError}
+              progressPercent={progressPercent}
+              progressMessage={progressMessage}
+              showCachedVerdict={settings?.videoAnalysis?.showCachedVerdict || false}
+              onToggle={() => {
+                if (isCheckingCache) {
+                  // Do nothing while checking cache
+                  return
                 }
-              } else if (analysisState === "complete") {
-                // Open panel when analysis is complete
-                setIsSidePanelOpen(true)
-              }
-              // Do nothing if analyzing (wait for completion)
-            }}
-            onDockChange={(pos) => {
-              setPanelDock(pos)
-              try {
-                localStorage.setItem("focus-guard-toggle-dock", pos)
-              } catch (e) {}
-            }}
-          />
+                if (analysisState === "idle") {
+                  // Start analysis when in idle state
+                  if (currentVideoId) {
+                    startVideoAnalysis(currentVideoId)
+                  }
+                } else if (analysisState === "complete") {
+                  // Open panel when analysis is complete
+                  setIsSidePanelOpen(true)
+                }
+                // Do nothing if analyzing (wait for completion)
+              }}
+              onDockChange={(pos) => {
+                setPanelDock(pos)
+                try {
+                  localStorage.setItem("focus-guard-toggle-dock", pos)
+                } catch (e) {}
+              }}
+            />
+
+            {/* Settings Button for PRO users - temporarily hidden */}
+            {false && userTierInfo?.tier === 'pro' && analysisState === 'idle' && (
+              <button
+                onClick={() => setShowSettingsModal(true)}
+                style={{
+                  position: "fixed",
+                  [panelDock]: "80px",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  width: "40px",
+                  height: "40px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "white",
+                  border: "3px solid #3b82f6",
+                  borderRadius: panelDock === "left" ? "0 12px 12px 0" : "12px 0 0 12px",
+                  cursor: "pointer",
+                  boxShadow: "0 4px 12px rgba(0, 0, 0, 0.2)",
+                  zIndex: 9999,
+                  transition: "all 0.2s"
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = "#eff6ff"
+                  e.currentTarget.style.transform = "translateY(-50%) scale(1.05)"
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = "white"
+                  e.currentTarget.style.transform = "translateY(-50%) scale(1)"
+                }}
+                title="Analysis Settings">
+                <span style={{ fontSize: "20px" }}>⚙️</span>
+              </button>
+            )}
+          </>
         )}
 
         <SidePanel
@@ -1655,6 +1886,108 @@ const ContentScript = () => {
             console.log("Bot filter changed:", enabled)
           }}
         />
+        {/* Force refresh temporarily disabled - omitting onForceRefresh prop */}
+
+        {/* Community Verdict Teaser for Free Users */}
+        {showCommunityTeaser && (
+          <CommunityVerdictTeaser
+            onUpgrade={() => {
+              const dashboardUrl = userTierInfo?.dashboardUrl || `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
+              chrome.tabs.create({ url: dashboardUrl })
+              setShowCommunityTeaser(false)
+            }}
+            onRequestAnalysis={() => {
+              // Future feature: queue analysis request
+              alert("Analysis request submitted! You'll be notified when this video is analyzed by the community.")
+              setShowCommunityTeaser(false)
+            }}
+          />
+        )}
+
+        {/* Analysis Settings Modal for PRO Users */}
+        {settings && (
+          <AnalysisSettingsModal
+            isOpen={showSettingsModal}
+            settings={settings}
+            onClose={() => setShowSettingsModal(false)}
+            onApply={(maxComments, customContext, forceRefresh) => {
+              console.log("Analysis settings applied:", { maxComments, customContext, forceRefresh })
+              
+              // Update settings
+              const newSettings = {
+                ...settings,
+                videoAnalysis: {
+                  ...settings.videoAnalysis,
+                  maxCommentDepth: maxComments
+                }
+              }
+              chrome.storage.sync.set({ settings: newSettings })
+              
+              // Start analysis with custom settings
+              if (currentVideoId) {
+                startVideoAnalysis(currentVideoId)
+              }
+            }}
+          />
+        )}
+
+        {/* Credit Confirmation Dialog */}
+        {creditConfirmData && (
+          <CreditConfirmationDialog
+            isOpen={showCreditConfirmDialog}
+            estimatedCredits={creditConfirmData.estimatedCredits}
+            currentBalance={creditConfirmData.currentBalance}
+            hasSufficientCredits={creditConfirmData.hasSufficientCredits}
+            userTier={(userTierInfo?.tier || 'free') as "free" | "starter" | "pro"}
+            isVerified={isUserVerified ?? true}
+            onConfirm={creditConfirmData.onConfirm}
+            onCancel={() => {
+              setShowCreditConfirmDialog(false)
+              setCreditConfirmData(null)
+              // Re-open sidepanel if it was closed
+              if (!isSidePanelOpen && analysisState === "complete") {
+                setIsSidePanelOpen(true)
+              }
+            }}
+            onUpgrade={() => {
+              const portalUrl = process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"
+              const tier = userTierInfo?.tier || 'free'
+              // Direct users to appropriate upgrade page based on current tier
+              const upgradeUrl = tier === 'free' 
+                ? `${portalUrl}/dashboard?tab=billing&purchase_type=tier`
+                : tier === 'starter'
+                ? `${portalUrl}/dashboard?tab=billing&purchase_type=tier`
+                : `${portalUrl}/dashboard?tab=billing&purchase_type=tier`
+              // Open URL in new tab (content scripts can't use chrome.tabs, so open directly)
+              window.open(upgradeUrl, '_blank')
+              setShowCreditConfirmDialog(false)
+              setCreditConfirmData(null)
+            }}
+            onTopUp={() => {
+              const dashboardUrl = userTierInfo?.dashboardUrl || `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
+              window.open(`${dashboardUrl}?tab=credits&purchase_type=credits`, '_blank')
+              setShowCreditConfirmDialog(false)
+              setCreditConfirmData(null)
+            }}
+            onContactSales={() => {
+              window.open("mailto:sales@commentverdict.com?subject=Enterprise%20Credits%20Inquiry", '_blank')
+              setShowCreditConfirmDialog(false)
+              setCreditConfirmData(null)
+            }}
+            onVerifyEmail={async () => {
+              // Resend verification email
+              try {
+                await FocusGuardAPI.resendVerificationEmail()
+                alert("Verification email sent! Please check your inbox.")
+              } catch (error) {
+                console.error("Failed to resend verification email:", error)
+                alert("Failed to send verification email. Please try again later.")
+              }
+              setShowCreditConfirmDialog(false)
+              setCreditConfirmData(null)
+            }}
+          />
+        )}
       </>
     )
   }

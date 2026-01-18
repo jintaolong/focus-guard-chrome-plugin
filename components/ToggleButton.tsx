@@ -20,11 +20,13 @@ interface ToggleButtonProps {
   progressPercent?: number | null
   // Progress message from backend (e.g., "Analyzing comments...")
   progressMessage?: string | null
+  // Whether to show cached verdict (from settings)
+  showCachedVerdict?: boolean
 }
 
 type DockPosition = "left" | "right"
 
-export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", onDockChange, state = "complete", isCached = null, errorMessage = null, progressPercent = null, progressMessage = null }: ToggleButtonProps) => {
+export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", onDockChange, state = "complete", isCached = null, errorMessage = null, progressPercent = null, progressMessage = null, showCachedVerdict = false }: ToggleButtonProps) => {
   const [isDragging, setIsDragging] = useState(false)
   const movedRef = useRef(false)
   const [dockPosition, setDockPosition] = useState<DockPosition>(dock)
@@ -183,6 +185,44 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
     }
 
     if (state === "idle") {
+      // If there's a cached analysis but showCachedVerdict is false, show "Verdict Available"
+      // Note: isCached=true means it's cached, showCachedVerdict controls whether to show the verdict
+      if (isCached === true && showCachedVerdict === false) {
+        return (
+          <div style={{ 
+            display: "flex", 
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "3px",
+            textAlign: "center",
+            padding: "3px 0"
+          }}>
+            <span style={{ fontSize: "22px" }}>✅</span>
+            <span style={{ 
+              fontSize: "9px", 
+              fontWeight: "700",
+              color: "white",
+              textShadow: "0 1px 2px rgba(0,0,0,0.3)",
+              lineHeight: 1.2,
+              maxWidth: "70px"
+            }}>
+              Verdict Available!
+            </span>
+            <span style={{ 
+              fontSize: "8px", 
+              fontWeight: "600",
+              color: "white",
+              textShadow: "0 1px 2px rgba(0,0,0,0.3)",
+              lineHeight: 1.2,
+              maxWidth: "70px"
+            }}>
+              View Report (Free)
+            </span>
+          </div>
+        )
+      }
+      
       // Show different text based on cache status
       const buttonText = isCached === false ? "Generate Report" : "Analyze Comments"
       
