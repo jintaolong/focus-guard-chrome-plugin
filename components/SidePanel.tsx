@@ -96,8 +96,8 @@ export const SidePanel = ({
         )}
 
         <div style={{ display: "flex", gap: "8px" }}>
-          {/* Force Refresh Button */}
-          {onForceRefresh && analysis && (
+          {/* Force Refresh Button - only show when not collapsed */}
+          {!isCollapsed && onForceRefresh && analysis && (
             <button
               onClick={onForceRefresh}
               style={{

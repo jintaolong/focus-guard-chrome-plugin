@@ -186,7 +186,8 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
 
     if (state === "idle") {
       // If there's a cached analysis but showCachedVerdict is false, show "Verdict Available"
-      if (isCached === true && !showCachedVerdict) {
+      // Note: isCached=true means it's cached, showCachedVerdict controls whether to show the verdict
+      if (isCached === true && showCachedVerdict === false) {
         return (
           <div style={{ 
             display: "flex", 
