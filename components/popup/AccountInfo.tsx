@@ -40,7 +40,7 @@ export const AccountInfo = ({ account, onManagePlan, onTopUp, onResendVerificati
 
   // Credit milestone detection
   const getCreditMilestone = () => {
-    // Email verification prompt (highest priority)
+    // Email verification prompt (highest priority) - only for unverified users
     if (account.isVerified === false) {
       return {
         type: 'email-verification',
@@ -53,13 +53,14 @@ export const AccountInfo = ({ account, onManagePlan, onTopUp, onResendVerificati
       }
     }
     
-    // Welcome message for new free users with their initial bonus (5 credits, no purchased)
-    if (isFree && creditsBalance === 5 && (!account.purchasedCredits || account.purchasedCredits === 0)) {
+    // Welcome bonus message for verified users who haven't used their bonus yet
+    // Shows for any verified user with credits who hasn't used the bonus
+    if (account.isVerified === true && account.welcomeBonusUsed === false && creditsBalance > 0) {
       return {
-        type: 'welcome',
-        title: "🎉 Welcome Credits!",
-        message: "You've received 5 free credits to get started. Try analyzing a YouTube video to see what Comment Verdict can do!",
-        cta: null, // No CTA button needed
+        type: 'welcome-bonus',
+        title: "🎉 Welcome Bonus Awarded!",
+        message: `You have ${creditsBalance} bonus credit${creditsBalance === 1 ? '' : 's'} to try Comment Verdict! Analyze a YouTube video to see insights in action.`,
+        cta: null,
         color: '#10b981',
         backgroundColor: '#f0fdf4',
         borderColor: '#a7f3d0'

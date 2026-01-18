@@ -205,6 +205,7 @@ function IndexPopup() {
             isLoggedIn: true,
             email: user.email,
             isVerified: user.is_verified,
+            welcomeBonusUsed: user.welcome_bonus_used ?? false, // Default to false - assume bonus not used yet
             tier,
             dailySearchesLimit: usage.daily_searches_limit,
             searchesUsedToday: usage.daily_searches_used,
