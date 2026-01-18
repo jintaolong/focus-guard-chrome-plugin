@@ -10,9 +10,12 @@ export interface UserAccount {
   resetTime: string
   // Credit system fields
   creditsBalance?: number // Total credits (monthly + purchased)
+  monthlyCreditsRemaining?: number // Monthly credits remaining (for quota bar)
   monthlyQuota?: number // Monthly credit quota
   purchasedCredits?: number // Purchased credits only
   nextResetDate?: string | null
+  cancelAtPeriodEnd?: boolean // Whether subscription is set to cancel
+  currentPeriodEnd?: string | null // When current period ends
 }
 
 export interface FocusGuardSettings {

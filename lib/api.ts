@@ -906,7 +906,9 @@ export class FocusGuardAPI {
    * Get user's credit balance and subscription info
    */
   static async getCreditBalance(): Promise<{
-    credits_balance: number
+    credits_balance: number // Monthly credits remaining
+    purchased_credits_balance: number // Purchased credits
+    total_credits: number // Total credits (monthly + purchased)
     monthly_quota: number
     tier: string
     next_reset_date: string | null
