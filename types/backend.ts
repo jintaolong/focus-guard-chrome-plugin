@@ -17,6 +17,7 @@ export interface UserResponse {
   full_name: string | null
   is_active: boolean
   is_verified: boolean
+  welcome_bonus_used?: boolean // Whether welcome bonus credits have been consumed
 }
 
 export interface UserUpdate {

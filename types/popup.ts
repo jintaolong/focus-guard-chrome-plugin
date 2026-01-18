@@ -2,6 +2,7 @@ export interface UserAccount {
   isLoggedIn: boolean
   email?: string
   isVerified?: boolean // Email verification status
+  welcomeBonusUsed?: boolean // Whether welcome bonus credits have been used
   tier: "free" | "starter" | "pro"
   dailySearchesLimit: number
   searchesUsedToday: number

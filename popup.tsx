@@ -507,18 +507,22 @@ function IndexPopup() {
         </div>
 
         {/* Comment Depth Slider - Always visible, disabled for free/starter */}
-        <div style={{ marginTop: "16px", opacity: account.tier === "pro" ? 1 : 0.6 }}>
+        <div style={{ marginTop: "16px", opacity: account?.tier === "pro" ? 1 : 0.6 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
             <label style={{ fontSize: "12px", fontWeight: "600", color: "#666" }}>
               Max Comments per Analysis
-              {account.tier !== "pro" && (
+              {account?.tier !== "pro" && (
                 <span style={{ fontSize: "10px", fontWeight: "400", color: "#f59e0b", marginLeft: "6px" }}>
                   🔒 PRO Only
                 </span>
               )}
             </label>
-            <span style={{ fontSize: "12px", fontWeight: "700", color: account.tier === "pro" ? "#3b82f6" : "#999" }}>
-              {settings.videoAnalysis?.maxCommentDepth || 100} • {Math.ceil((settings.videoAnalysis?.maxCommentDepth || 100) / 100)} credits
+            <span style={{ fontSize: "12px", fontWeight: "700", color: account?.tier === "pro" ? "#3b82f6" : "#999" }}>
+              {(() => {
+                const rawValue = settings.videoAnalysis?.maxCommentDepth || 100
+                const displayValue = account?.tier === "pro" ? rawValue : Math.min(rawValue, 100)
+                return `${displayValue} • ${Math.ceil(displayValue / 100)} credit${displayValue > 100 ? 's' : ''}`
+              })()}
             </span>
           </div>
           <input
@@ -526,10 +530,14 @@ function IndexPopup() {
             min="100"
             max="1000"
             step="100"
-            value={settings.videoAnalysis?.maxCommentDepth || 100}
-            disabled={account.tier !== "pro"}
+            value={(() => {
+              const rawValue = settings.videoAnalysis?.maxCommentDepth || 100
+              return account?.tier === "pro" ? rawValue : Math.min(rawValue, 100)
+            })()}
+            disabled={!account || account.tier !== "pro"}
             onChange={async (e) => {
               const newDepth = parseInt(e.target.value)
+              console.log("📊 Slider onChange: newDepth =", newDepth)
               const newSettings: FocusGuardSettings = {
                 ...settings,
                 videoAnalysis: {
@@ -541,15 +549,21 @@ function IndexPopup() {
                   maxCommentDepth: newDepth
                 }
               }
+              console.log("📊 Saving settings to storage:", newSettings)
               setSettings(newSettings)
               await chrome.storage.sync.set({ settings: newSettings })
+              console.log("✅ Settings saved to chrome.storage.sync")
+              
+              // Verify it was saved
+              const verify = await chrome.storage.sync.get(["settings"])
+              console.log("🔍 Verified saved settings:", verify.settings)
             }}
             style={{
               width: "100%",
               height: "6px",
               borderRadius: "3px",
               outline: "none",
-              cursor: account.tier === "pro" ? "pointer" : "not-allowed"
+              cursor: account?.tier === "pro" ? "pointer" : "not-allowed"
             }}
           />
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "#999", marginTop: "4px" }}>

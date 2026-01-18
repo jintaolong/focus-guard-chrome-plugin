@@ -915,6 +915,15 @@ export class FocusGuardAPI {
   }
 
   /**
+   * Resend email verification
+   */
+  static async resendVerificationEmail(): Promise<{ message: string }> {
+    return this.fetchWithAuth("/auth/resend-verification", {
+      method: "POST"
+    })
+  }
+
+  /**
    * Get available credit top-up packs
    */
   static async getTopupPacks(): Promise<{
