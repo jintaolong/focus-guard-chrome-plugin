@@ -20,6 +20,10 @@ export interface VideoAnalysis {
   videoUrl?: string
   executiveSummary?: string // AI-generated executive summary
 
+  // Comment count tracking (for transparency and credit calculation)
+  maxCommentsRequested?: number // Number of comments user requested to analyze
+  actualCommentsFetched?: number // Actual number of comments fetched/analyzed
+
   // Legacy and current shapes supported for compatibility with components
   // Summary-style (newer shape)
   summary?: {

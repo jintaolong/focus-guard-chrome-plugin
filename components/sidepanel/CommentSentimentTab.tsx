@@ -70,6 +70,28 @@ export const CommentSentimentTab = ({ analysis }: CommentSentimentTabProps) => {
 
   const content = (
     <div ref={contentRef}>
+      {/* Comment Analysis Info */}
+      {(analysis.maxCommentsRequested || analysis.actualCommentsFetched) && (
+        <div style={{
+          marginBottom: "16px",
+          padding: "12px 16px",
+          background: "linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%)",
+          border: "2px solid #2196F3",
+          borderRadius: "12px",
+          fontSize: "13px",
+          fontWeight: "500",
+          color: "#0D47A1",
+          display: "flex",
+          alignItems: "center",
+          gap: "8px"
+        }}>
+          <span style={{ fontSize: "16px" }}>📊</span>
+          <span>
+            Comment Analysis: <strong>Requested: {analysis.maxCommentsRequested ?? 'N/A'}</strong> • 
+            <strong>Analyzed: {analysis.actualCommentsFetched ?? 'N/A'}</strong>
+          </span>
+        </div>
+      )}
       {/* Sentiment Overview */}
       <div style={{ marginBottom: "32px" }}>
         <h3

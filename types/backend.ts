@@ -306,6 +306,8 @@ export interface SummaryResponseV2 {
   persona?: string // "viewer", "creator", or "analyst"
   key_takeaways?: string[] | null
   confidence?: string | null
+  max_comments_requested?: number | null // Number of comments requested for analysis
+  actual_comments_fetched?: number | null // Number of comments actually analyzed
 }
 
 export interface SummaryStatusResponse {

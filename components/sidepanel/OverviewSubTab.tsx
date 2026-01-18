@@ -7,6 +7,8 @@ interface OverviewSubTabProps {
   verdictColor: "high" | "medium" | "low" | "neutral"
   verdictLabel?: string
   keyTakeaways?: string[]
+  maxCommentsRequested?: number
+  actualCommentsFetched?: number
 }
 
 export const OverviewSubTab = ({ 
@@ -15,15 +17,65 @@ export const OverviewSubTab = ({
   setIsExecutiveSummaryExpanded, 
   verdictColor,
   verdictLabel,
-  keyTakeaways 
+  keyTakeaways,
+  maxCommentsRequested,
+  actualCommentsFetched
 }: OverviewSubTabProps) => {
   const isLongSummary = executiveSummary.length > 200
   const displaySummary = isLongSummary && !isExecutiveSummaryExpanded 
     ? executiveSummary.substring(0, 200) + "..." 
     : executiveSummary
+  
+  // Calculate credit cost based on actual comments fetched
+  const creditCost = actualCommentsFetched ? Math.ceil(actualCommentsFetched / 100) : null
 
   return (
     <div>
+      {/* Comment Analysis Info Badge */}
+      {(maxCommentsRequested || actualCommentsFetched) && (
+        <div style={{
+          marginBottom: "16px",
+          padding: "12px",
+          backgroundColor: "#f0f9ff",
+          border: "1px solid #bae6fd",
+          borderRadius: "8px",
+          display: "flex",
+          alignItems: "center",
+          gap: "12px"
+        }}>
+          <span style={{ fontSize: "20px" }}>📊</span>
+          <div style={{ flex: 1 }}>
+            <div style={{
+              fontSize: "12px",
+              fontWeight: "600",
+              color: "#0369a1",
+              marginBottom: "4px"
+            }}>
+              Comment Analysis
+            </div>
+            <div style={{
+              fontSize: "11px",
+              color: "#0c4a6e",
+              lineHeight: "1.4"
+            }}>
+              {maxCommentsRequested && actualCommentsFetched && (
+                <>
+                  Requested: <strong>{maxCommentsRequested}</strong> • 
+                  Analyzed: <strong>{actualCommentsFetched}</strong> • 
+                  Cost: <strong>{creditCost} credit{creditCost !== 1 ? 's' : ''}</strong>
+                </>
+              )}
+              {!maxCommentsRequested && actualCommentsFetched && (
+                <>
+                  Analyzed: <strong>{actualCommentsFetched}</strong> comments • 
+                  Cost: <strong>{creditCost} credit{creditCost !== 1 ? 's' : ''}</strong>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Summary */}
       <div style={{ marginBottom: "32px" }}>
         <h3

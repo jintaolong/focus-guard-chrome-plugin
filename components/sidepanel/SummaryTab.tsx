@@ -89,6 +89,8 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
             verdictColor={verdictColor}
             verdictLabel={summary.clickbaitVerdict?.label}
             keyTakeaways={keyTakeaways}
+            maxCommentsRequested={analysis.maxCommentsRequested}
+            actualCommentsFetched={analysis.actualCommentsFetched}
           />
         )}
 
