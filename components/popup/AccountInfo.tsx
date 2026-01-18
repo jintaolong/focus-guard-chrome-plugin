@@ -53,13 +53,27 @@ export const AccountInfo = ({ account, onManagePlan, onTopUp, onResendVerificati
       }
     }
     
-    // Welcome bonus message for verified users who haven't used their bonus yet
-    // Shows for any verified user with credits who hasn't used the bonus
-    if (account.isVerified === true && account.welcomeBonusUsed === false && creditsBalance > 0) {
+    // Low credit warning for free users using their bonus (1-4 credits remaining)
+    // This takes priority over the welcome bonus message once they start using credits
+    if (isFree && creditsBalance > 0 && creditsBalance < 5 && account.welcomeBonusUsed === false) {
+      return {
+        type: 'low-credits',
+        title: "⚠️ Welcome Bonus Running Low",
+        message: `You have ${creditsBalance} welcome credit${creditsBalance === 1 ? '' : 's'} left. Top up or upgrade to continue analyzing videos.`,
+        cta: "Upgrade Plan",
+        color: '#d97706',
+        backgroundColor: '#fffbeb',
+        borderColor: '#fde68a'
+      }
+    }
+    
+    // Welcome bonus message for verified users who haven't started using their bonus yet (5 credits)
+    // Shows for any verified user with full bonus who hasn't used it
+    if (account.isVerified === true && account.welcomeBonusUsed === false && creditsBalance === 5) {
       return {
         type: 'welcome-bonus',
         title: "🎉 Welcome Bonus Awarded!",
-        message: `You have ${creditsBalance} bonus credit${creditsBalance === 1 ? '' : 's'} to try Comment Verdict! Analyze a YouTube video to see insights in action.`,
+        message: `You have ${creditsBalance} bonus credits to try Comment Verdict! Analyze a YouTube video to see insights in action.`,
         cta: null,
         color: '#10b981',
         backgroundColor: '#f0fdf4',
@@ -67,8 +81,8 @@ export const AccountInfo = ({ account, onManagePlan, onTopUp, onResendVerificati
       }
     }
     
-    // Low credit warning - only for users who have started using credits (< 5)
-    if (creditsBalance < 5 && creditsBalance > 0) {
+    // Low credit warning - for paid users or users with purchased credits
+    if (creditsBalance < 5 && creditsBalance > 0 && (account.welcomeBonusUsed === true || !isFree)) {
       return {
         type: 'low-credits',
         title: "Low Credits",
