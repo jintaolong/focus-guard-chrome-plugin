@@ -1,14 +1,16 @@
 export interface UserAccount {
   isLoggedIn: boolean
   email?: string
+  isVerified?: boolean // Email verification status
   tier: "free" | "starter" | "pro"
   dailySearchesLimit: number
   searchesUsedToday: number
   searchesRemaining: number
   resetTime: string
   // Credit system fields
-  creditsBalance?: number
-  monthlyQuota?: number
+  creditsBalance?: number // Total credits (monthly + purchased)
+  monthlyQuota?: number // Monthly credit quota
+  purchasedCredits?: number // Purchased credits only
   nextResetDate?: string | null
 }
 
