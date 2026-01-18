@@ -966,19 +966,21 @@ const ContentScript = () => {
         throw new Error("Not authenticated. Please log in to analyze videos.")
       }
       
-      // Fetch user tier info early (in parallel with job processing) and cache it
+      // Fetch user tier info early and store in local variable (state updates are async!)
+      let currentTier = userTierInfo?.tier || 'free'
       if (!userTierInfo) {
         console.log("⏱️ Fetching subscription tier early (parallel with job)...")
         const tierFetchStart = Date.now()
         try {
           const subscription = await SubscriptionService.getSubscription()
-          const tier = subscription.tier?.toLowerCase() || 'free'
+          currentTier = subscription.tier?.toLowerCase() || 'free'
           const dashboardUrl = `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
           const tierFetchDuration = ((Date.now() - tierFetchStart) / 1000).toFixed(1)
-          console.log(`✅ Subscription tier fetched early in ${tierFetchDuration}s: ${tier}`)
-          setUserTierInfo({ tier, dashboardUrl })
+          console.log(`✅ Subscription tier fetched early in ${tierFetchDuration}s: ${currentTier}`)
+          setUserTierInfo({ tier: currentTier, dashboardUrl })
         } catch (error) {
           console.warn("Failed to fetch tier info early, will retry later:", error)
+          currentTier = 'free'
         }
       }
       
@@ -1000,6 +1002,7 @@ const ContentScript = () => {
       let sentimentTierRestriction = null
       let topicClustersTierRestriction = null
       let topicGapsTierRestriction = null
+      let resultData = null // Store job result data for comment count tracking
 
       if (!cacheStatus.cached) {
         // Step 2a: Not cached - check for existing job or submit new one
@@ -1013,12 +1016,11 @@ const ContentScript = () => {
           jobId = runningJobCheck.existingJobId
           setCurrentJobId(jobId)
         } else {
-          const tier = userTierInfo?.tier || 'free'
           const settingsMaxComments = currentSettings?.videoAnalysis?.maxCommentDepth || 100
           // Enforce tier-based limits: free/starter capped at 100, PRO can go higher
-          const maxComments = tier === 'pro' ? settingsMaxComments : Math.min(settingsMaxComments, 100)
+          const maxComments = currentTier === 'pro' ? settingsMaxComments : Math.min(settingsMaxComments, 100)
           console.log(`📊 Submitting summary job: video_id=${videoId}, force_refresh=${forceRefresh}, max_comments=${maxComments}`)
-          console.log(`📊 Settings breakdown: maxCommentDepth=${currentSettings?.videoAnalysis?.maxCommentDepth}, tier=${tier}, enforced_max=${maxComments}`)
+          console.log(`📊 Settings breakdown: maxCommentDepth=${currentSettings?.videoAnalysis?.maxCommentDepth}, tier=${currentTier}, enforced_max=${maxComments}`)
           const jobResponse = await FocusGuardAPI.submitSummaryJob({
             video_id: videoId,
             force_refresh: forceRefresh,
@@ -1057,7 +1059,7 @@ const ContentScript = () => {
 
         // Step 3a: Extract analysis data from job result (optimized path)
         const fetchStartTime = Date.now()
-        const resultData = jobResult.result_data
+        resultData = jobResult.result_data
         
         // Check if job result contains optimized data structure (new backend implementation)
         const hasOptimizedData = resultData && 
@@ -1437,25 +1439,13 @@ const ContentScript = () => {
       // Get user tier and enforce tier restrictions on frontend (fetch once and reuse)
       console.log("⏱️ Getting subscription tier info...")
       const tierFetchStart = Date.now()
-      let subscription
       let userTier: string
       let dashboardUrl: string
       
-      if (userTierInfo) {
-        // Use cached tier info fetched at analysis start
-        console.log(`✅ Using cached subscription tier: ${userTierInfo.tier}`)
-        userTier = userTierInfo.tier
-        dashboardUrl = userTierInfo.dashboardUrl
-      } else {
-        // Fallback: fetch if not already cached
-        subscription = await SubscriptionService.getSubscription()
-        userTier = subscription.tier?.toLowerCase() || 'free'
-        dashboardUrl = `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
-        const tierFetchDuration = ((Date.now() - tierFetchStart) / 1000).toFixed(1)
-        console.log(`✅ Subscription tier fetched in ${tierFetchDuration}s: ${userTier}`)
-        // Cache for future use
-        setUserTierInfo({ tier: userTier, dashboardUrl })
-      }
+      // Use currentTier variable from early fetch (already fetched at start of proceedWithAnalysis)
+      userTier = currentTier
+      dashboardUrl = userTierInfo?.dashboardUrl || `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
+      console.log(`✅ Using tier from early fetch: ${userTier}`)
       
       // Build report tier restriction inline instead of calling getReportTierRestriction() which would fetch subscription again
       const reportTierRestriction = userTier !== 'pro' ? {
@@ -1519,6 +1509,9 @@ const ContentScript = () => {
         trustScore: { score: verdictCertainty },
         clickbaitVerdict: { verdict: verdictRaw },
         executiveSummary: summaryData?.summary_paragraph ?? null,
+        // Comment count tracking
+        maxCommentsRequested: (resultData as any)?.max_comments_requested ?? summaryData?.max_comments_requested ?? null,
+        actualCommentsFetched: (resultData as any)?.actual_comments_fetched ?? summaryData?.actual_comments_fetched ?? null,
         channelCredibility: credibilityData ? {
           score: credibilityData.score,
           factors: credibilityData.normalized_factors ? Object.entries(credibilityData.normalized_factors).map(([name, weight]) => ({
@@ -1768,8 +1761,8 @@ const ContentScript = () => {
               }}
             />
 
-            {/* Settings Button for PRO users */}
-            {userTierInfo?.tier === 'pro' && analysisState === 'idle' && (
+            {/* Settings Button for PRO users - temporarily hidden */}
+            {false && userTierInfo?.tier === 'pro' && analysisState === 'idle' && (
               <button
                 onClick={() => setShowSettingsModal(true)}
                 style={{
