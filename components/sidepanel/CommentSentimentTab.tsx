@@ -13,31 +13,12 @@ interface CommentSentimentTabProps {
 export const CommentSentimentTab = ({ analysis }: CommentSentimentTabProps) => {
   const sentiment = (analysis as any)?.sentiment
   const viewerInsights = (analysis as any)?.viewerInsights
-  const [isDonutCollapsed, setIsDonutCollapsed] = useState(false)
   const contentRef = useRef<HTMLDivElement>(null)
   
   // Debug logging
   console.log("🔍 CommentSentimentTab - sentiment object:", sentiment)
   console.log("🔍 CommentSentimentTab - sentiment.filteringMetadata:", sentiment?.filteringMetadata)
   console.log("🔍 CommentSentimentTab - analysis object:", analysis)
-  
-  // Auto-collapse donut chart when scrolling down
-  useEffect(() => {
-    const handleScroll = (e: Event) => {
-      const target = e.target as HTMLElement
-      if (target && target.scrollTop > 100) {
-        setIsDonutCollapsed(true)
-      } else if (target && target.scrollTop < 50) {
-        setIsDonutCollapsed(false)
-      }
-    }
-    
-    const scrollContainer = contentRef.current?.closest('[style*="overflow"]') as HTMLElement
-    if (scrollContainer) {
-      scrollContainer.addEventListener('scroll', handleScroll)
-      return () => scrollContainer.removeEventListener('scroll', handleScroll)
-    }
-  }, [])
 
   // Normalize shapes: provide defaults when fields are missing
   const sentimentBreakdown = viewerInsights?.sentimentBreakdown ?? {
@@ -122,23 +103,13 @@ export const CommentSentimentTab = ({ analysis }: CommentSentimentTabProps) => {
       {/* Sentiment Overview */}
       <div style={{ marginBottom: "32px" }}>
         <h3
-          onClick={() => setIsDonutCollapsed(!isDonutCollapsed)}
           style={{
             margin: "0 0 24px 0",
             fontSize: "18px",
             fontWeight: "600",
-            color: COLORS.ui.textPrimary,
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: "8px"
+            color: COLORS.ui.textPrimary
           }}>
-          <span style={{
-            transition: "transform 0.2s",
-            transform: isDonutCollapsed ? "rotate(-90deg)" : "rotate(0deg)",
-            display: "inline-block"
-          }}>▼</span>
-          <span>Comment Mood</span>
+          Comment Mood
         </h3>
         <p style={{ 
           fontSize: "13px", 
@@ -149,8 +120,7 @@ export const CommentSentimentTab = ({ analysis }: CommentSentimentTabProps) => {
           Overall vibe based on comment tone.
         </p>
 
-        {!isDonutCollapsed && (
-          <div style={{ display: "flex", gap: "32px", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: "32px", alignItems: "center" }}>
           {/* Donut Chart */}
           <div style={{ position: "relative", width: "160px", height: "160px", flexShrink: 0 }}>
             <svg viewBox="0 0 200 200" style={{ width: "100%", height: "100%", transform: "rotate(-90deg)" }}>
@@ -268,7 +238,6 @@ export const CommentSentimentTab = ({ analysis }: CommentSentimentTabProps) => {
             ))}
           </div>
         </div>
-        )}
       </div>
 
       {/* Example Comments by Sentiment */}
