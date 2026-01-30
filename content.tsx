@@ -838,6 +838,14 @@ const ContentScript = () => {
           } : null),
           credibility: null,
           topicClusters: null,
+          topicClustersData: topicClustersData ? {
+            clusters: topicClustersData.topic_clusters || [],
+            parent_themes: topicClustersData.parent_themes || [],
+            hierarchy_map: topicClustersData.hierarchy_map || {},
+            total_parent_themes: topicClustersData.total_parent_themes || 0,
+            method: topicClustersData.method || 'unknown',
+            processing_time: topicClustersData.processing_time
+          } : undefined,
           contentGaps: {
             botPercentage: (humanLikenessData && (humanLikenessData as any).total_comments && (humanLikenessData as any).total_comments > 0)
               ? Math.round(((humanLikenessData as any).bot_count / (humanLikenessData as any).total_comments) * 100)
@@ -977,7 +985,10 @@ const ContentScript = () => {
     setIsAnalyzing(true)
     setAnalysisState("analyzing")
     setAnalysisStatus(null)
-    setVideoAnalysis(null)
+    // Only clear video analysis if NOT force refreshing (keep old data visible during refresh)
+    if (!forceRefresh) {
+      setVideoAnalysis(null)
+    }
     setAnalysisError(null)
 
     try {
@@ -1028,8 +1039,10 @@ const ContentScript = () => {
       const cacheCheckStart = Date.now()
       const cacheStatus = await FocusGuardAPI.getCacheStatus(videoId)
       const cacheCheckDuration = ((Date.now() - cacheCheckStart) / 1000).toFixed(2)
-      setIsCached(cacheStatus.cached)
-      console.log(`Cache status (${cacheCheckDuration}s):`, cacheStatus)
+      // Treat as not cached if force refreshing
+      const shouldUseCache = cacheStatus.cached && !forceRefresh
+      setIsCached(shouldUseCache)
+      console.log(`Cache status (${cacheCheckDuration}s):`, cacheStatus, `force_refresh=${forceRefresh}, using_cache=${shouldUseCache}`)
 
       let relevancyData
       let sentimentData = null
@@ -1043,7 +1056,7 @@ const ContentScript = () => {
       let topicGapsTierRestriction = null
       let resultData = null // Store job result data for comment count tracking
 
-      if (!cacheStatus.cached) {
+      if (!shouldUseCache) {
         // Step 2a: Not cached - check for existing job or submit new one
         let jobId: string
         
@@ -1605,6 +1618,14 @@ const ContentScript = () => {
         } : null),
         credibility: null,
         topicClusters: null,
+        topicClustersData: topicClustersData ? {
+          clusters: topicClustersData.topic_clusters || [],
+          parent_themes: topicClustersData.parent_themes || [],
+          hierarchy_map: topicClustersData.hierarchy_map || {},
+          total_parent_themes: topicClustersData.total_parent_themes || 0,
+          method: topicClustersData.method || 'unknown',
+          processing_time: topicClustersData.processing_time
+        } : undefined,
         contentGaps: {
           botPercentage: (humanLikenessData && (humanLikenessData as any).total_comments && (humanLikenessData as any).total_comments > 0)
             ? Math.round(((humanLikenessData as any).bot_count / (humanLikenessData as any).total_comments) * 100)
@@ -1885,8 +1906,14 @@ const ContentScript = () => {
           onBotFilterChange={(enabled) => {
             console.log("Bot filter changed:", enabled)
           }}
+          onForceRefresh={() => {
+            if (currentVideoId) {
+              startVideoAnalysis(currentVideoId, true)
+            }
+          }}
+          progressPercent={progressPercent}
+          progressMessage={progressMessage}
         />
-        {/* Force refresh temporarily disabled - omitting onForceRefresh prop */}
 
         {/* Community Verdict Teaser for Free Users */}
         {showCommunityTeaser && (
