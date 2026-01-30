@@ -41,11 +41,13 @@ export const COLORS = {
     text: {
       primary: "#111827",
       secondary: "#6b7280",
+      tertiary: "#9ca3af",
       disabled: "#9ca3af"
     },
     // Convenience flattened fields used across components
     textPrimary: "#111827",
     textSecondary: "#6b7280",
+    textTertiary: "#9ca3af",
     textDisabled: "#9ca3af",
     // simple shorthand for components that expect a single ui.text value
     // (removed duplicate simple `text` string to keep `ui.text` as object)
