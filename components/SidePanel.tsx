@@ -5,7 +5,7 @@ import { useState } from "react"
 import type { VideoAnalysis, AnalysisHistoryItem } from "~types/analysis"
 import { COLORS } from "~lib/colors"
 import { SummaryTab } from "./sidepanel/SummaryTab"
-import { ViewerInsightsTab } from "./sidepanel/ViewerInsightsTab"
+import { KeyInsightsTab } from "./sidepanel/KeyInsightsTab"
 import { CommentSentimentTab } from "./sidepanel/CommentSentimentTab"
 import { ContentGapsTab } from "./sidepanel/ContentGapsTab"
 import { ReportTab } from "./sidepanel/ReportTab"
@@ -24,6 +24,8 @@ interface SidePanelProps {
   onDownloadHistoryReport?: (videoId: string) => void
   onBotFilterChange?: (enabled: boolean) => void
   onForceRefresh?: () => void
+  progressPercent?: number | null
+  progressMessage?: string | null
 }
 
 export const SidePanel = ({
@@ -37,7 +39,9 @@ export const SidePanel = ({
   onReAnalyze,
   onDownloadHistoryReport,
   onBotFilterChange,
-  onForceRefresh
+  onForceRefresh,
+  progressPercent,
+  progressMessage
 }: SidePanelProps) => {
   const [activeTab, setActiveTab] = useState<TabId>("summary")
   const [isCollapsed, setIsCollapsed] = useState(false)
@@ -145,8 +149,8 @@ export const SidePanel = ({
               e.currentTarget.style.backgroundColor = "transparent"
             }}
             title={isCollapsed ? "Expand" : "Collapse"}>
-            <span style={{ fontSize: "16px" }}>
-              {isCollapsed ? (position === "right" ? "◀" : "▶") : position === "right" ? "▶" : "◀"}
+            <span style={{ fontSize: "14px", fontWeight: "bold" }}>
+              {isCollapsed ? (position === "right" ? "«" : "»") : position === "right" ? "»" : "«"}
             </span>
           </button>
 
@@ -260,13 +264,24 @@ export const SidePanel = ({
                   }}>
                   Analyzing Video...
                 </p>
+                {progressPercent !== null && progressPercent !== undefined ? (
+                  <p
+                    style={{
+                      margin: "8px 0 0 0",
+                      fontSize: "18px",
+                      fontWeight: "700",
+                      color: COLORS.neutral.primary
+                    }}>
+                    {progressPercent}%
+                  </p>
+                ) : null}
                 <p
                   style={{
                     margin: "8px 0 0 0",
                     fontSize: "14px",
                     color: COLORS.ui.text.secondary
                   }}>
-                  This may take 10-20 seconds
+                  {progressMessage || "This may take 10-20 seconds"}
                 </p>
                 <style>
                   {`
@@ -296,7 +311,7 @@ export const SidePanel = ({
               <>
                 {activeTab === "summary" && <SummaryTab analysis={analysis} />}
                 {activeTab === "sentiment" && <CommentSentimentTab analysis={analysis} />}
-                {activeTab === "insights" && <ViewerInsightsTab analysis={analysis} />}
+                {activeTab === "insights" && <KeyInsightsTab analysis={analysis} analysisState={isLoading ? 'analyzing' : 'complete'} analysisStatus={analysis?.summary} />}
                 {activeTab === "gaps" && (
                   <ContentGapsTab
                     analysis={analysis}
