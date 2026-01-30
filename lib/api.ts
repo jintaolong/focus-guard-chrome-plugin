@@ -341,26 +341,31 @@ export class FocusGuardAPI {
    * Submit summary job (async) - checks for existing running jobs first
    */
   static async submitSummaryJob(request: SummaryJobRequest): Promise<JobSubmitResponse> {
-    // Check if there's already a running job for this video and query context
-    const { shouldWait, existingJobId, existingJob } = await this.checkForRunningJobs(
-      request.video_id,
-      "summary",
-      request.query_context
-    )
+    // Skip checking for existing jobs if force_refresh is true
+    if (!request.force_refresh) {
+      // Check if there's already a running job for this video and query context
+      const { shouldWait, existingJobId, existingJob } = await this.checkForRunningJobs(
+        request.video_id,
+        "summary",
+        request.query_context
+      )
 
-    if (shouldWait && existingJobId && existingJob) {
-      console.log(`Using existing summary job ${existingJobId} instead of creating new one`)
-      // Return a response that looks like a job submission but references the existing job
-      return {
-        job_id: existingJobId,
-        status: existingJob.status as JobStatus,
-        status_url: `/jobs/${existingJobId}/status`,
-        result_url: `/jobs/${existingJobId}/result`,
-        message: `Job already running (${existingJob.progress_percent}% complete)`
+      if (shouldWait && existingJobId && existingJob) {
+        console.log(`Using existing summary job ${existingJobId} instead of creating new one`)
+        // Return a response that looks like a job submission but references the existing job
+        return {
+          job_id: existingJobId,
+          status: existingJob.status as JobStatus,
+          status_url: `/jobs/${existingJobId}/status`,
+          result_url: `/jobs/${existingJobId}/result`,
+          message: `Job already running (${existingJob.progress_percent}% complete)`
+        }
       }
+    } else {
+      console.log(`Force refresh requested - skipping existing job check and submitting new job`)
     }
 
-    // No matching job found, submit new one
+    // No matching job found (or force refresh), submit new one
     return this.fetchWithAuth<JobSubmitResponse>("/jobs/summary", {
       method: "POST",
       body: JSON.stringify(request)

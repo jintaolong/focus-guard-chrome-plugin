@@ -13,6 +13,48 @@ export interface VideoAnalysisStatus {
   isAnalyzing: boolean
 }
 
+// Topic Clustering Types (Enhanced)
+export interface SegmentHighlight {
+  parent_comment_text: string
+  highlighted_segment: string
+  char_range: [number, number]
+  is_full_comment: boolean
+  user: string
+  likes: number
+}
+
+export interface TopicCluster {
+  cluster_id: number
+  statement: string
+  count: number
+  supporting_quotes: string[]
+  insight_score: number
+  category: string
+  reasoning: string
+  segment_highlights: SegmentHighlight[]
+}
+
+export interface ParentTheme {
+  parent_id: number
+  child_clusters: TopicCluster[]
+  child_count: number
+  total_comment_count: number
+  avg_insight_score: number
+  categories: string[]
+  rationale: string
+  parent_statement: string
+  description: string
+}
+
+export interface TopicClustersData {
+  clusters: TopicCluster[]
+  parent_themes: ParentTheme[]
+  hierarchy_map: Record<string, number>
+  total_parent_themes: number
+  method: string
+  processing_time?: number
+}
+
 // FR-102: Complete Video Analysis data
 export interface VideoAnalysis {
   videoId: string
@@ -79,6 +121,9 @@ export interface VideoAnalysis {
         }
         tierRestriction?: TierRestriction // Added for tier gating
       }
+
+  // Topic Clusters Data (new enhanced structure)
+  topicClustersData?: TopicClustersData
 
   // Some consumers expect `sentiment` at top level
   sentiment?: {

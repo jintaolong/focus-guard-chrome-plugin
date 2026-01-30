@@ -1,0 +1,762 @@
+{
+  "job_id": "80878a41-cea0-4df4-ad9a-8a6d7da61186",
+  "job_type": "summary",
+  "status": "completed",
+  "result_data": {
+    "status": "success",
+    "task_name": "generate_summary_async",
+    "task_id": "80878a41-cea0-4df4-ad9a-8a6d7da61186",
+    "data": {
+      "video_id": "U1HyAa4Bs5o",
+      "summary_paragraph": "This video on Scorpio Ascendant predictions for 2026 offers high-quality insights into Vedic astrology, making it a worthwhile watch for those interested in astrology. Expect to learn about significant astrological influences and personal experiences shared by viewers. Overall, it's a credible source with positive feedback.",
+      "snapshot_hash": "651836fcab28eb667e861ba0407fda389f5599f6e5e6eca3acb771ea1374e622",
+      "times_accessed": 1
+    },
+    "metadata": {
+      "cache_hit": false
+    },
+    "comprehensive_data": {
+      "video_id": "U1HyAa4Bs5o",
+      "video_title": "Scorpio Ascendant 2026 Predictions Vedic Astrology",
+      "snapshot_id": 663,
+      "cache_hit": false,
+      "max_comments_requested": 1000,
+      "actual_comments_fetched": 189,
+      "summary": {
+        "summary_paragraph": "This video on Scorpio Ascendant predictions for 2026 offers high-quality insights into Vedic astrology, making it a worthwhile watch for those interested in astrology. Expect to learn about significant astrological influences and personal experiences shared by viewers. Overall, it's a credible source with positive feedback.",
+        "key_takeaways": [
+          "High-quality insights",
+          "Credible source",
+          "Positive audience feedback"
+        ],
+        "persona": "viewer"
+      },
+      "relevancy": {
+        "verdict": "LEGIT",
+        "confidence_score": 85,
+        "one_line_summary": "Most viewers confirm the video's 2026 predictions for Scorpio Ascendant",
+        "claims": [
+          {
+            "claim_text": "The video provides 2026 predictions for Scorpio Ascendant based on Vedic Astrology",
+            "status": "CONFIRMED",
+            "evidence_for": [
+              {
+                "user": "haichatacamara1167",
+                "text": "This was spot on. Scorpio ascendant and I am so over my current job and looking for bigger and better change",
+                "likes": 0
+              },
+              {
+                "user": "kierbaudy",
+                "text": "Wow you are so accurate! I’m starting my business in the new year, which is a way to change my work life.",
+                "likes": 0
+              },
+              {
+                "user": "hemanayanar13",
+                "text": "Wow.... Wow... Wow... Freaking accurate I've already experiencing this energy... this is so true words Kapiel",
+                "likes": 0
+              }
+            ],
+            "evidence_against": [
+              {
+                "user": "gunjan1122tiwari",
+                "text": "Don’t agree on any aspect or relatable",
+                "likes": 0
+              },
+              {
+                "user": "IndividualYujjj",
+                "text": "Couldn't relate to much",
+                "likes": 0
+              }
+            ]
+          },
+          {
+            "claim_text": "Kapiel Raaj is the host of the video",
+            "status": "CONFIRMED",
+            "evidence_for": [
+              {
+                "user": "oreas1372",
+                "text": "Thank you Kapiel! 🙌 Have a happy New Year everybody! 🎉",
+                "likes": 0
+              },
+              {
+                "user": "onlyeverblue",
+                "text": "i always look forward to your videos because they are filled with so much wisdom! Thank you for giving such great advice!",
+                "likes": 0
+              }
+            ],
+            "evidence_against": [],
+            "danger_warnings": []
+          }
+        ]
+      },
+      "sentiment": {
+        "positive": {
+          "count": 68,
+          "top_comments": [
+            {
+              "user": "@diminto6881",
+              "text": "Saved the best for last, we know it KRS.",
+              "likes": 83
+            },
+            {
+              "user": "@mariamaky4538",
+              "text": "Yes, Ketu is taking my mind off my career right now. I’m currently taking care of my baby. Wish you all the best for next year ✨",
+              "likes": 28
+            },
+            {
+              "user": "@eli_88",
+              "text": "I am not detached from my workplace and profession, it just seems like I have to try for ever to get something and I am exhausted of trying. I just give it to the hands of the universe",
+              "likes": 22
+            },
+            {
+              "user": "@hodlbuddy239",
+              "text": "Finally, now I know why I suddenly feel this urge to change my work this last week of december and asked why do I have to do all these things. Why do I have to stay. I wanna break free.",
+              "likes": 21
+            },
+            {
+              "user": "@angelstrumpets101",
+              "text": "Yaaaay as a virgo I'm happy for my scorpions you guys have been so so patient",
+              "likes": 15
+            },
+            {
+              "user": "@Luna64Lohtuze",
+              "text": "I just step away from a good payed job . I did not feel good in that job . I started a you tube channel and have fun with that .... always wanted to do something else we're I can walk from home .... so hoping it will go well .... thank you to you for your wonderful channel ❤",
+              "likes": 12
+            },
+            {
+              "user": "@MissMekana",
+              "text": "Yes, I feel the urge to change job to something better. “I need a change” as you said. Also I had a baby in 2025, hoping for another one in 2026. ❤",
+              "likes": 11
+            }
+          ]
+        },
+        "neutral": {
+          "count": 41,
+          "top_comments": [
+            {
+              "user": "@turnhappydice243",
+              "text": "18:47  hopefully this year i will .... struggling since 2012 .... Visiting hospital like 😢😢😢 2ivf failure",
+              "likes": 28
+            },
+            {
+              "user": "@nr9269",
+              "text": "Why is every year just such an average year for Scorpios? 😢",
+              "likes": 22
+            },
+            {
+              "user": "@vindv4217",
+              "text": "I guess kapiel dosent like scorpio😜. Thats why it came on last.",
+              "likes": 6
+            },
+            {
+              "user": "@Abhishek-r5t-w4x",
+              "text": "Sir, Please add something for students also in your predictions videos 😊",
+              "likes": 5
+            },
+            {
+              "user": "@priscilanateldepaula888",
+              "text": "I very good planning short term anyways. Im not big in long term planning. Interesting year ahead.  Good luck to all of us scorpions rising.",
+              "likes": 2
+            },
+            {
+              "user": "@Iamlovekind",
+              "text": "I feel you are very tired today you didn’t say much the prediction has nothing only investment ,,, thank you happy healthy new year .",
+              "likes": 2
+            },
+            {
+              "user": "@rxreet2365",
+              "text": "@KRSchannel I am 18 i wished you could have included a lot more things for the students related going somewhere for studies or something like that.\nNot undervaluing your work and hardwork though ❤",
+              "likes": 2
+            }
+          ]
+        },
+        "negative": {
+          "count": 12,
+          "top_comments": [
+            {
+              "user": "@Dedicated_.1",
+              "text": "This was a bit all over the place",
+              "likes": 10
+            },
+            {
+              "user": "@SimonRiley-n4z",
+              "text": "Life is shit financially negative every day for 5 yrs doorstep filled with arrear, foreclosure letters only. When this faaaking Saturn rahu ketu  Venus etc shit clear up, will bomb these planets if they don’t like scorpions",
+              "likes": 3
+            },
+            {
+              "user": "@VickyGupta-c7b",
+              "text": "Expected good news 😢",
+              "likes": 2
+            },
+            {
+              "user": "@DigitalAlchemist411",
+              "text": "I’m a Scorpio acs but my moon is in magha , I just graduated got my bs , but here the thing I’m still at a temp agency, I hate what I do now in healthcare I feel like it’s hopeless no one calling me for interviews. I have to work as a driver for spark  to pay my bills n student ( still in school for my master) but idk with my career I’m so lost I did listen to Leo and yes my clock died n my pipes under my kitchen bursted lol so I found the fascinating but I love ur work",
+              "likes": 1
+            },
+            {
+              "user": "@Mentor444-f5n",
+              "text": "I got scammed 😢😢 I am in terrible condition right now I don't know what happened next",
+              "likes": 1
+            },
+            {
+              "user": "@ImanSeg-j7v",
+              "text": "Someone explain to me why I feel like I'm not with those scorpio rising who is he talking about? \nI still have no job because I just got graduated late !😢",
+              "likes": 0
+            },
+            {
+              "user": "@AdrianGabriel-eq8if",
+              "text": "in what in the world languages are you speaking? 🤔🧐",
+              "likes": 0
+            }
+          ]
+        },
+        "excluded_count": 68,
+        "total_comments": 189
+      },
+      "channel_credibility": {
+        "channel_id": "UCAhSM44HoLZQrjGFttqvI5A",
+        "channel_name": "KRSchannel - Learn Astrology",
+        "score": 54,
+        "normalized_factors": {
+          "viewCount": 0.239775921,
+          "videoCount": 0.7198,
+          "accountAgeDays": 1,
+          "hasTopicLabels": 0,
+          "subscriberCount": 0.589
+        },
+        "factual_factors": {
+          "viewCount": 239775921,
+          "videoCount": 3599,
+          "accountAgeDays": 6163,
+          "hasTopicLabels": 0,
+          "subscriberCount": 589000
+        },
+        "computed_at": "2026-01-26T11:01:06.814335"
+      },
+      "topic_clusters": {
+        "clusters": [
+          {
+            "cluster_id": 2,
+            "statement": "Viewers are sharing personal experiences of job changes",
+            "count": 18,
+            "supporting_quotes": [
+              "I have given up my job.",
+              "I did not feel good in that job .",
+              "I've been feeling lack of motivation and distant from my job.",
+              "Now I’m going to join a new job.",
+              "Yes I'm feeling hopeless and stuck"
+            ],
+            "all_supporting_comments": [],
+            "insight_score": 8,
+            "category": "narrative",
+            "reasoning": "Many viewers express their personal journeys related to job transitions, reflecting on feelings of detachment, hope for better opportunities, and life changes influenced by astrological predictions. This cluster reveals a common theme of seeking fulfillment and change in their careers, making it relatable and insightful.",
+            "segment_highlights": [
+              {
+                "parent_comment_text": "I just came back from a 3-week pilgrimage from December 30-Jan 17. \n\nI am Scorpio vergottama. \n\n\nI have given up my job.",
+                "highlighted_segment": "I have given up my job.",
+                "char_range": [
+                  97,
+                  120
+                ],
+                "is_full_comment": false,
+                "user": "@xo7454",
+                "likes": 0
+              },
+              {
+                "parent_comment_text": "I just step away from a good payed job . I did not feel good in that job . I started a you tube channel and have fun with that .... always wanted to do something else we're I can walk from home .... so hoping it will go well .... thank you to you for your wonderful channel ❤",
+                "highlighted_segment": "I did not feel good in that job .",
+                "char_range": [
+                  41,
+                  74
+                ],
+                "is_full_comment": false,
+                "user": "@Luna64Lohtuze",
+                "likes": 12
+              },
+              {
+                "parent_comment_text": "I am scorpio Ascendant (26M), just finished ketu MD in November and moved into Venus MD. I have Venus is in magha nakshatra in 10th house. Ketu will now be moving over my Venus in March 2026. \n\nI also have moon in Pisces in Uttarabhadrapada and going through peak sade sati now with Saturn over my moon.\n\nFeels like there will soon be a double attack - ketu over my natal venus and Saturn over my natal moon respectively.\n\nSpot on with the mood with my job. I've been feeling lack of motivation and distant from my job. Confused and don't know what to do.\n\nMy nadi jyotish told me to not change my job for 9 months. I'm bummed and not sure I can hold out for soo long.\n\nYour analysis is always relatable.",
+                "highlighted_segment": "I've been feeling lack of motivation and distant from my job.",
+                "char_range": [
+                  458,
+                  519
+                ],
+                "is_full_comment": false,
+                "user": "@adityaseetharaman8700",
+                "likes": 2
+              },
+              {
+                "parent_comment_text": "I left my job when ketu transited in Leo.  It was a really toxic company with terrible people. Now I’m going to join a new job. The new job will be better or will I feel same detachment ?",
+                "highlighted_segment": "Now I’m going to join a new job.",
+                "char_range": [
+                  95,
+                  127
+                ],
+                "is_full_comment": false,
+                "user": "@priyazala6581",
+                "likes": 2
+              },
+              {
+                "parent_comment_text": "Yes I'm feeling hopeless and stuck",
+                "highlighted_segment": "Yes I'm feeling hopeless and stuck",
+                "char_range": [
+                  0,
+                  34
+                ],
+                "is_full_comment": true,
+                "user": "@AkhandBharat-mj7wg",
+                "likes": 1
+              }
+            ]
+          },
+          {
+            "cluster_id": 0,
+            "statement": "Viewers are asking if predictions apply to Scorpio moon sign",
+            "count": 15,
+            "supporting_quotes": [
+              "Is this applicable to Scorpio moon sign also?",
+              "In western astrology my sign is scorpio.",
+              "Is it applicable for Scorpio moon too?",
+              "Hi, are you talking about Sciorpio in the Western or Vedic astrology?",
+              "Does it apply to Scorpio moon?"
+            ],
+            "all_supporting_comments": [],
+            "insight_score": 7,
+            "category": "question",
+            "reasoning": "Many comments express confusion about whether the predictions for Scorpio ascendants also apply to those with Scorpio moon signs, indicating a need for clarification on the applicability of the content to different astrological placements.",
+            "segment_highlights": [
+              {
+                "parent_comment_text": "Is this applicable to Scorpio moon sign also?",
+                "highlighted_segment": "Is this applicable to Scorpio moon sign also?",
+                "char_range": [
+                  0,
+                  45
+                ],
+                "is_full_comment": true,
+                "user": "@mugdhaghatage7347",
+                "likes": 0
+              },
+              {
+                "parent_comment_text": "My \"lagna\" is scorpio. So is this the right video for me?\n\nMy \"rashi\" is kumbha(aquarius). In western astrology my sign is scorpio.\n\nSomeone help please",
+                "highlighted_segment": "In western astrology my sign is scorpio.",
+                "char_range": [
+                  91,
+                  131
+                ],
+                "is_full_comment": false,
+                "user": "@TheAlchemist1089",
+                "likes": 1
+              },
+              {
+                "parent_comment_text": "Is it applicable for Scorpio moon too?",
+                "highlighted_segment": "Is it applicable for Scorpio moon too?",
+                "char_range": [
+                  0,
+                  38
+                ],
+                "is_full_comment": true,
+                "user": "@simamoulik7477",
+                "likes": 0
+              },
+              {
+                "parent_comment_text": "Hi, are you talking about Sciorpio in the Western or Vedic astrology? In the Vedic, my western Scorpio sign is Libra (24 degrees back). It's important to note.",
+                "highlighted_segment": "Hi, are you talking about Sciorpio in the Western or Vedic astrology?",
+                "char_range": [
+                  0,
+                  69
+                ],
+                "is_full_comment": false,
+                "user": "@alexandraares",
+                "likes": 0
+              },
+              {
+                "parent_comment_text": "Does it apply to Scorpio moon?",
+                "highlighted_segment": "Does it apply to Scorpio moon?",
+                "char_range": [
+                  0,
+                  30
+                ],
+                "is_full_comment": true,
+                "user": "@accountone7204",
+                "likes": 0
+              }
+            ]
+          },
+          {
+            "cluster_id": 1,
+            "statement": "Viewers express gratitude for insightful astrology predictions",
+            "count": 29,
+            "supporting_quotes": [
+              "Thank you for this.",
+              "Thank you💛",
+              "Thank you sir 🙏",
+              "Thanks man",
+              "Thank you very much"
+            ],
+            "all_supporting_comments": [],
+            "insight_score": 3,
+            "category": "sentiment",
+            "reasoning": "The comments primarily consist of expressions of thanks and appreciation for the video's content, lacking detailed insights or critiques. While they convey positive sentiment, they do not provide substantial feedback or unique perspectives.",
+            "segment_highlights": [
+              {
+                "parent_comment_text": "Thank you for this.",
+                "highlighted_segment": "Thank you for this.",
+                "char_range": [
+                  0,
+                  19
+                ],
+                "is_full_comment": true,
+                "user": "@tiffanyclark1111",
+                "likes": 0
+              },
+              {
+                "parent_comment_text": "Thank you💛",
+                "highlighted_segment": "Thank you💛",
+                "char_range": [
+                  0,
+                  10
+                ],
+                "is_full_comment": true,
+                "user": "@gintarezvaigzdute",
+                "likes": 0
+              },
+              {
+                "parent_comment_text": "Thank you sir 🙏",
+                "highlighted_segment": "Thank you sir 🙏",
+                "char_range": [
+                  0,
+                  15
+                ],
+                "is_full_comment": true,
+                "user": "@anandramdevineni2989",
+                "likes": 0
+              },
+              {
+                "parent_comment_text": "Thanks man",
+                "highlighted_segment": "Thanks man",
+                "char_range": [
+                  0,
+                  10
+                ],
+                "is_full_comment": true,
+                "user": "@wickedawesomeedits-wae143",
+                "likes": 0
+              },
+              {
+                "parent_comment_text": "Thank you very much",
+                "highlighted_segment": "Thank you very much",
+                "char_range": [
+                  0,
+                  19
+                ],
+                "is_full_comment": true,
+                "user": "@reddisubha8938",
+                "likes": 0
+              }
+            ]
+          }
+        ],
+        "processing_time": 17.16,
+        "parent_themes": [
+          {
+            "parent_id": 1,
+            "child_clusters": [
+              {
+                "cluster_id": 0,
+                "statement": "Viewers are asking if predictions apply to Scorpio moon sign",
+                "insight_score": 7,
+                "category": "question",
+                "reasoning": "Many comments express confusion about whether the predictions for Scorpio ascendants also apply to those with Scorpio moon signs, indicating a need for clarification on the applicability of the content to different astrological placements.",
+                "count": 15,
+                "supporting_quotes": [
+                  "Is this applicable to Scorpio moon sign also?",
+                  "In western astrology my sign is scorpio.",
+                  "Is it applicable for Scorpio moon too?",
+                  "Hi, are you talking about Sciorpio in the Western or Vedic astrology?",
+                  "Does it apply to Scorpio moon?"
+                ],
+                "segment_highlights": [
+                  {
+                    "parent_comment_text": "Is this applicable to Scorpio moon sign also?",
+                    "highlighted_segment": "Is this applicable to Scorpio moon sign also?",
+                    "char_range": [
+                      0,
+                      45
+                    ],
+                    "is_full_comment": true,
+                    "user": "@mugdhaghatage7347",
+                    "likes": 0
+                  },
+                  {
+                    "parent_comment_text": "My \"lagna\" is scorpio. So is this the right video for me?\n\nMy \"rashi\" is kumbha(aquarius). In western astrology my sign is scorpio.\n\nSomeone help please",
+                    "highlighted_segment": "In western astrology my sign is scorpio.",
+                    "char_range": [
+                      91,
+                      131
+                    ],
+                    "is_full_comment": false,
+                    "user": "@TheAlchemist1089",
+                    "likes": 1
+                  },
+                  {
+                    "parent_comment_text": "Is it applicable for Scorpio moon too?",
+                    "highlighted_segment": "Is it applicable for Scorpio moon too?",
+                    "char_range": [
+                      0,
+                      38
+                    ],
+                    "is_full_comment": true,
+                    "user": "@simamoulik7477",
+                    "likes": 0
+                  },
+                  {
+                    "parent_comment_text": "Hi, are you talking about Sciorpio in the Western or Vedic astrology? In the Vedic, my western Scorpio sign is Libra (24 degrees back). It's important to note.",
+                    "highlighted_segment": "Hi, are you talking about Sciorpio in the Western or Vedic astrology?",
+                    "char_range": [
+                      0,
+                      69
+                    ],
+                    "is_full_comment": false,
+                    "user": "@alexandraares",
+                    "likes": 0
+                  },
+                  {
+                    "parent_comment_text": "Does it apply to Scorpio moon?",
+                    "highlighted_segment": "Does it apply to Scorpio moon?",
+                    "char_range": [
+                      0,
+                      30
+                    ],
+                    "is_full_comment": true,
+                    "user": "@accountone7204",
+                    "likes": 0
+                  }
+                ]
+              },
+              {
+                "cluster_id": 2,
+                "statement": "Viewers are sharing personal experiences of job changes",
+                "insight_score": 8,
+                "category": "narrative",
+                "reasoning": "Many viewers express their personal journeys related to job transitions, reflecting on feelings of detachment, hope for better opportunities, and life changes influenced by astrological predictions. This cluster reveals a common theme of seeking fulfillment and change in their careers, making it relatable and insightful.",
+                "count": 18,
+                "supporting_quotes": [
+                  "I have given up my job.",
+                  "I did not feel good in that job .",
+                  "I've been feeling lack of motivation and distant from my job.",
+                  "Now I’m going to join a new job.",
+                  "Yes I'm feeling hopeless and stuck"
+                ],
+                "segment_highlights": [
+                  {
+                    "parent_comment_text": "I just came back from a 3-week pilgrimage from December 30-Jan 17. \n\nI am Scorpio vergottama. \n\n\nI have given up my job.",
+                    "highlighted_segment": "I have given up my job.",
+                    "char_range": [
+                      97,
+                      120
+                    ],
+                    "is_full_comment": false,
+                    "user": "@xo7454",
+                    "likes": 0
+                  },
+                  {
+                    "parent_comment_text": "I just step away from a good payed job . I did not feel good in that job . I started a you tube channel and have fun with that .... always wanted to do something else we're I can walk from home .... so hoping it will go well .... thank you to you for your wonderful channel ❤",
+                    "highlighted_segment": "I did not feel good in that job .",
+                    "char_range": [
+                      41,
+                      74
+                    ],
+                    "is_full_comment": false,
+                    "user": "@Luna64Lohtuze",
+                    "likes": 12
+                  },
+                  {
+                    "parent_comment_text": "I am scorpio Ascendant (26M), just finished ketu MD in November and moved into Venus MD. I have Venus is in magha nakshatra in 10th house. Ketu will now be moving over my Venus in March 2026. \n\nI also have moon in Pisces in Uttarabhadrapada and going through peak sade sati now with Saturn over my moon.\n\nFeels like there will soon be a double attack - ketu over my natal venus and Saturn over my natal moon respectively.\n\nSpot on with the mood with my job. I've been feeling lack of motivation and distant from my job. Confused and don't know what to do.\n\nMy nadi jyotish told me to not change my job for 9 months. I'm bummed and not sure I can hold out for soo long.\n\nYour analysis is always relatable.",
+                    "highlighted_segment": "I've been feeling lack of motivation and distant from my job.",
+                    "char_range": [
+                      458,
+                      519
+                    ],
+                    "is_full_comment": false,
+                    "user": "@adityaseetharaman8700",
+                    "likes": 2
+                  },
+                  {
+                    "parent_comment_text": "I left my job when ketu transited in Leo.  It was a really toxic company with terrible people. Now I’m going to join a new job. The new job will be better or will I feel same detachment ?",
+                    "highlighted_segment": "Now I’m going to join a new job.",
+                    "char_range": [
+                      95,
+                      127
+                    ],
+                    "is_full_comment": false,
+                    "user": "@priyazala6581",
+                    "likes": 2
+                  },
+                  {
+                    "parent_comment_text": "Yes I'm feeling hopeless and stuck",
+                    "highlighted_segment": "Yes I'm feeling hopeless and stuck",
+                    "char_range": [
+                      0,
+                      34
+                    ],
+                    "is_full_comment": true,
+                    "user": "@AkhandBharat-mj7wg",
+                    "likes": 1
+                  }
+                ]
+              }
+            ],
+            "child_count": 2,
+            "total_comment_count": 33,
+            "avg_insight_score": 7.5,
+            "categories": [
+              "question",
+              "narrative"
+            ],
+            "rationale": "These clusters provide substantive insights, with viewers asking questions about the applicability of predictions and sharing personal experiences related to job changes.",
+            "parent_statement": "Scorpio Predictions & Personal Experiences",
+            "description": "This theme encompasses viewer inquiries about the applicability of predictions to different Scorpio placements and personal narratives related to job changes."
+          },
+          {
+            "parent_id": 0,
+            "child_clusters": [
+              {
+                "cluster_id": 1,
+                "statement": "Viewers express gratitude for insightful astrology predictions",
+                "insight_score": 3,
+                "category": "sentiment",
+                "reasoning": "The comments primarily consist of expressions of thanks and appreciation for the video's content, lacking detailed insights or critiques. While they convey positive sentiment, they do not provide substantial feedback or unique perspectives.",
+                "count": 29,
+                "supporting_quotes": [
+                  "Thank you for this.",
+                  "Thank you💛",
+                  "Thank you sir 🙏",
+                  "Thanks man",
+                  "Thank you very much"
+                ],
+                "segment_highlights": [
+                  {
+                    "parent_comment_text": "Thank you for this.",
+                    "highlighted_segment": "Thank you for this.",
+                    "char_range": [
+                      0,
+                      19
+                    ],
+                    "is_full_comment": true,
+                    "user": "@tiffanyclark1111",
+                    "likes": 0
+                  },
+                  {
+                    "parent_comment_text": "Thank you💛",
+                    "highlighted_segment": "Thank you💛",
+                    "char_range": [
+                      0,
+                      10
+                    ],
+                    "is_full_comment": true,
+                    "user": "@gintarezvaigzdute",
+                    "likes": 0
+                  },
+                  {
+                    "parent_comment_text": "Thank you sir 🙏",
+                    "highlighted_segment": "Thank you sir 🙏",
+                    "char_range": [
+                      0,
+                      15
+                    ],
+                    "is_full_comment": true,
+                    "user": "@anandramdevineni2989",
+                    "likes": 0
+                  },
+                  {
+                    "parent_comment_text": "Thanks man",
+                    "highlighted_segment": "Thanks man",
+                    "char_range": [
+                      0,
+                      10
+                    ],
+                    "is_full_comment": true,
+                    "user": "@wickedawesomeedits-wae143",
+                    "likes": 0
+                  },
+                  {
+                    "parent_comment_text": "Thank you very much",
+                    "highlighted_segment": "Thank you very much",
+                    "char_range": [
+                      0,
+                      19
+                    ],
+                    "is_full_comment": true,
+                    "user": "@reddisubha8938",
+                    "likes": 0
+                  }
+                ]
+              }
+            ],
+            "child_count": 1,
+            "total_comment_count": 29,
+            "avg_insight_score": 3,
+            "categories": [
+              "sentiment"
+            ],
+            "rationale": "This group contains viewer expressions of gratitude, which is a pure sentiment cluster.",
+            "parent_statement": "Positive Feedback on Predictions",
+            "description": "Viewers are expressing appreciation for the insightful astrology predictions provided in the video."
+          }
+        ],
+        "hierarchy_map": {
+          "0": 1,
+          "1": 0,
+          "2": 1
+        },
+        "total_parent_themes": 2,
+        "method": "vector-hierarchical"
+      },
+      "topic_gaps": {
+        "gaps": [
+          {
+            "question_statement": "Should we follow navamsa ascendant or birth ascendant?",
+            "supporting_comments": [
+              "Finally my sign!!! I have been waiting for it minute by minute.\nYes, we are currently renovating our home and I'm Scorpio but not doing vastu.",
+              "Good morning kapiel from Germany!\nFor people in the last half of their life is better follow navamsa ascendent or birth ascendent?I'm Scorpio ascendent, birth chart\nThank you for your answer"
+            ],
+            "all_supporting_comments": [
+              "Finally my sign!!! I have been waiting for it minute by minute.\nYes, we are currently renovating our home and I'm Scorpio but not doing vastu.",
+              "Good morning kapiel from Germany!\nFor people in the last half of their life is better follow navamsa ascendent or birth ascendent?I'm Scorpio ascendent, birth chart\nThank you for your answer"
+            ],
+            "highlight_indexes": [
+              {
+                "end_index": 34,
+                "comment_id": "25",
+                "start_index": 0
+              },
+              {
+                "end_index": 94,
+                "comment_id": "30",
+                "start_index": 0
+              }
+            ]
+          },
+          {
+            "question_statement": "Can you do predictions for students?",
+            "supporting_comments": [
+              "Sir, Please add something for students also in your predictions videos 😊"
+            ],
+            "all_supporting_comments": [
+              "Sir, Please add something for students also in your predictions videos 😊"
+            ],
+            "highlight_indexes": [
+              {
+                "end_index": 57,
+                "comment_id": "22",
+                "start_index": 0
+              }
+            ]
+          }
+        ],
+        "filtered_question_count": 189,
+        "processing_time": 13.58
+      }
+    }
+  },
+  "completed_at": "2026-01-26T12:48:02.220165"
+}
