@@ -255,6 +255,50 @@ export interface ChannelCredibilityResponseV2 {
   cache_hit: boolean
 }
 
+// NEW: Channel Trust System (5 Metrics)
+export interface MetricBreakdown {
+  score: number // 0-100
+  normalized_value: number // 0.0-1.0
+  description: string
+  raw_value: Record<string, any>
+  breakdown?: Record<string, any>
+}
+
+export interface ChannelTrustMetrics {
+  audience_reach: MetricBreakdown
+  creator_authority: MetricBreakdown
+  niche_focus: MetricBreakdown
+  community_loyalty: MetricBreakdown
+  content_freshness: MetricBreakdown
+}
+
+export interface ChannelTrustResponse {
+  status: string
+  video_id: string
+  channel_id: string
+  channel_name: string
+  trust_score: number // Overall 0-100
+  metrics: ChannelTrustMetrics
+  raw_metrics: {
+    channel: {
+      channel_id: string
+      subscriber_count: number
+      video_count: number
+      view_count: number
+      account_age_days: number
+      has_topic_labels: boolean
+      topic_categories: string[]
+    }
+    recent_videos?: any[]
+  }
+  metric_details: {
+    timestamp: string
+    total_api_calls: number
+    cache_age_days: number
+  }
+  cache_hit: boolean
+}
+
 export interface RelevancyResponseV2 {
   status: string
   video_id: string

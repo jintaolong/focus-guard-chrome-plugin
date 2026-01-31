@@ -87,6 +87,12 @@ export interface VideoAnalysis {
       score?: number // 0-100
       factors?: Array<{ name: string; value: string; weight: number }>
     }
+    // NEW: Channel Trust in summary
+    channelTrust?: {
+      trust_score: number
+      metrics: any
+      raw_metrics?: any
+    }
     persona?: string // "viewer", "creator", or "analyst"
     key_takeaways?: string[] | null
   }
@@ -152,13 +158,27 @@ export interface VideoAnalysis {
     tierRestriction?: TierRestriction // Added for tier gating
   }
 
-  // Channel credibility (can appear at top level too)
+  // Channel credibility (legacy - deprecated)
   channelCredibility?: {
     score?: number // 0-100
     verifiedStatus?: boolean
     history?: string
     bias?: string
     factors?: Array<{ name: string; value: string; weight: number }>
+  }
+
+  // NEW: Channel Trust (5 metrics system)
+  channelTrust?: {
+    trust_score: number // 0-100
+    metrics: {
+      audience_reach: any
+      creator_authority: any
+      niche_focus: any
+      community_loyalty: any
+      content_freshness: any
+    }
+    raw_metrics?: any
+    metric_details?: any
   }
 
   reportInfo?: {

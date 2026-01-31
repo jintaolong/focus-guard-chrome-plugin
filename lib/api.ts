@@ -259,9 +259,20 @@ export class FocusGuardAPI {
 
   /**
    * Get channel credibility analysis (V2 - cached-first)
+   * @deprecated Use analyzeChannelTrust instead
    */
   static async analyzeChannelCredibilityV2(videoId: string, forceRefresh = false): Promise<ChannelCredibilityResponseV2> {
     return this.fetchWithAuth<ChannelCredibilityResponseV2>("/videos/channel-credibility/v2", {
+      method: "POST",
+      body: JSON.stringify({ video_id: videoId, force_refresh: forceRefresh })
+    })
+  }
+
+  /**
+   * Get channel trust analysis (NEW - 5 metrics system)
+   */
+  static async analyzeChannelTrust(videoId: string, forceRefresh = false): Promise<ChannelTrustResponse> {
+    return this.fetchWithAuth<ChannelTrustResponse>("/videos/channel-trust", {
       method: "POST",
       body: JSON.stringify({ video_id: videoId, force_refresh: forceRefresh })
     })

@@ -6,14 +6,326 @@ interface ChannelCredibilitySubTabProps {
   credibilityFactors: any[]
 }
 
+// Metric configuration with icons and labels
+const METRIC_CONFIG = {
+  audience_reach: {
+    icon: "📊",
+    label: "Audience Reach",
+    shortLabel: "Reach"
+  },
+  creator_authority: {
+    icon: "⭐",
+    label: "Creator Authority",
+    shortLabel: "Authority"
+  },
+  niche_focus: {
+    icon: "🎯",
+    label: "Niche Focus",
+    shortLabel: "Focus"
+  },
+  community_loyalty: {
+    icon: "❤️",
+    label: "Community Loyalty",
+    shortLabel: "Loyalty"
+  },
+  content_freshness: {
+    icon: "🔄",
+    label: "Content Freshness",
+    shortLabel: "Freshness"
+  }
+}
+
 export const ChannelCredibilitySubTab = ({ 
   channelCredibility, 
   credibilityScore, 
   credibilityFactors 
 }: ChannelCredibilitySubTabProps) => {
-  // Determine color theme based on credibility score
-  const trustColorKey = getTrustScoreColor(credibilityScore)
+  // Support both old and new format
+  const isNewFormat = channelCredibility?.metrics && channelCredibility?.trust_score !== undefined
+  const score = isNewFormat ? channelCredibility.trust_score : credibilityScore
+  
+  // Determine color theme based on trust score
+  const trustColorKey = getTrustScoreColor(score)
   const chartColor = COLORS[trustColorKey].primary
+
+  // Render NEW format with 5 metrics
+  if (isNewFormat) {
+    const metrics = channelCredibility.metrics
+    const rawMetrics = channelCredibility.raw_metrics?.channel
+    
+    // Extract metrics array for spider chart
+    const metricsArray = Object.keys(METRIC_CONFIG).map(key => ({
+      key,
+      ...METRIC_CONFIG[key],
+      data: metrics[key]
+    }))
+
+    return (
+      <div>
+        {/* Channel Trust */}
+        <div style={{ marginBottom: "32px" }}>
+          <h3
+            style={{
+              margin: "0 0 16px 0",
+              fontSize: "16px",
+              fontWeight: "600",
+              color: COLORS.ui.textPrimary
+            }}>
+            Channel Trust
+          </h3>
+
+          {/* Overall Score */}
+          <div style={{ textAlign: "center", marginBottom: "24px" }}>
+            <div style={{ 
+              display: "inline-flex", 
+              alignItems: "center", 
+              gap: "12px",
+              padding: "16px 24px",
+              backgroundColor: COLORS.neutral.light,
+              borderRadius: "12px",
+              border: `2px solid ${score >= 70 ? COLORS.high.primary : score >= 40 ? COLORS.medium.primary : COLORS.low.primary}`
+            }}>
+              <div style={{
+                fontSize: "42px",
+                fontWeight: "700",
+                color: score >= 70 ? COLORS.high.primary : score >= 40 ? COLORS.medium.primary : COLORS.low.primary
+              }}>
+                {Math.round(score)}
+              </div>
+              <div style={{ textAlign: "left" }}>
+                <div style={{ fontSize: "11px", color: COLORS.ui.textSecondary, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  Overall Trust
+                </div>
+                <div style={{ fontSize: "14px", fontWeight: "600", color: COLORS.ui.textPrimary }}>
+                  out of 100
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Spider/Radar Chart */}
+          <div>
+            <div style={{ textAlign: "center", marginBottom: "16px" }}>
+              <svg viewBox="0 0 350 350" style={{ width: "100%", maxWidth: "350px", height: "auto" }}>
+                {(() => {
+                  const centerX = 175
+                  const centerY = 175
+                  const radius = 100
+                  const numMetrics = metricsArray.length
+                  const webLevels = [0.2, 0.4, 0.6, 0.8, 1.0]
+                  
+                  // Calculate data points
+                  const dataPoints = metricsArray.map((metric, i) => {
+                    const angle = (Math.PI * 2 * i) / numMetrics - Math.PI / 2
+                    const normalizedScore = (metric.data?.score || 0) / 100
+                    const x = centerX + radius * normalizedScore * Math.cos(angle)
+                    const y = centerY + radius * normalizedScore * Math.sin(angle)
+                    return { x, y, angle, score: normalizedScore, metric }
+                  })
+
+                  // Calculate axis endpoints
+                  const axisPoints = metricsArray.map((metric, i) => {
+                    const angle = (Math.PI * 2 * i) / numMetrics - Math.PI / 2
+                    return {
+                      x: centerX + radius * Math.cos(angle),
+                      y: centerY + radius * Math.sin(angle),
+                      angle,
+                      metric
+                    }
+                  })
+
+                  return (
+                    <>
+                      {/* Background web circles */}
+                      {webLevels.map((level, idx) => (
+                        <circle
+                          key={`web-${idx}`}
+                          cx={centerX}
+                          cy={centerY}
+                          r={radius * level}
+                          fill="none"
+                          stroke={COLORS.ui.border}
+                          strokeWidth="1"
+                          opacity={0.3}
+                        />
+                      ))}
+
+                      {/* Axis lines */}
+                      {axisPoints.map((point, i) => (
+                        <line
+                          key={`axis-${i}`}
+                          x1={centerX}
+                          y1={centerY}
+                          x2={point.x}
+                          y2={point.y}
+                          stroke={COLORS.ui.border}
+                          strokeWidth="1"
+                          opacity={0.5}
+                        />
+                      ))}
+
+                      {/* Data polygon */}
+                      <polygon
+                        points={dataPoints.map(p => `${p.x},${p.y}`).join(' ')}
+                        fill={chartColor}
+                        fillOpacity={0.2}
+                        stroke={chartColor}
+                        strokeWidth="2"
+                      />
+
+                      {/* Data points */}
+                      {dataPoints.map((point, i) => (
+                        <circle
+                          key={`point-${i}`}
+                          cx={point.x}
+                          cy={point.y}
+                          r="4"
+                          fill={chartColor}
+                          stroke="white"
+                          strokeWidth="2"
+                        />
+                      ))}
+
+                      {/* Labels */}
+                      {axisPoints.map((point, i) => {
+                        const labelDistance = radius + 40
+                        const labelX = centerX + labelDistance * Math.cos(point.angle)
+                        const labelY = centerY + labelDistance * Math.sin(point.angle)
+                        const words = point.metric.shortLabel.split(' ')
+                        
+                        return (
+                          <text
+                            key={`label-${i}`}
+                            x={labelX}
+                            y={labelY}
+                            textAnchor="middle"
+                            dominantBaseline="middle"
+                            fontSize="10"
+                            fontWeight="600"
+                            fill={COLORS.ui.textPrimary}
+                            style={{ userSelect: 'none' }}>
+                            {words.map((word, wordIdx) => (
+                              <tspan 
+                                key={wordIdx} 
+                                x={labelX} 
+                                dy={wordIdx === 0 ? 0 : "1.1em"}
+                                textAnchor="middle">
+                                {word}
+                              </tspan>
+                            ))}
+                          </text>
+                        )
+                      })}
+                    </>
+                  )
+                })()}
+              </svg>
+            </div>
+
+            {/* Metrics Details Cards */}
+            <div style={{ 
+              display: "flex",
+              flexDirection: "column",
+              gap: "12px",
+              marginTop: "24px"
+            }}>
+              {metricsArray.map(metric => {
+                const metricData = metric.data
+                const metricScore = metricData?.score || 0
+                const metricColor = metricScore >= 70 ? COLORS.high.primary : metricScore >= 40 ? COLORS.medium.primary : COLORS.low.primary
+                
+                return (
+                  <div
+                    key={metric.key}
+                    style={{
+                      backgroundColor: COLORS.neutral.light,
+                      borderRadius: "8px",
+                      padding: "12px",
+                      border: `1px solid ${COLORS.ui.border}`
+                    }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <span style={{ fontSize: "18px" }}>{metric.icon}</span>
+                        <span style={{ fontSize: "14px", fontWeight: "600", color: COLORS.ui.textPrimary }}>
+                          {metric.label}
+                        </span>
+                      </div>
+                      <div style={{
+                        fontSize: "20px",
+                        fontWeight: "700",
+                        color: metricColor
+                      }}>
+                        {Math.round(metricScore)}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: "12px", color: COLORS.ui.textSecondary, marginBottom: "8px" }}>
+                      {metricData?.description || "No description available"}
+                    </div>
+                    {metricData?.raw_value && (
+                      <div style={{ 
+                        fontSize: "11px", 
+                        color: COLORS.ui.textSecondary,
+                        backgroundColor: COLORS.ui.surface,
+                        padding: "6px 8px",
+                        borderRadius: "4px",
+                        marginTop: "6px"
+                      }}>
+                        {renderRawValue(metric.key, metricData.raw_value, rawMetrics)}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Channel Info Summary */}
+            {rawMetrics && (
+              <div style={{
+                marginTop: "20px",
+                backgroundColor: COLORS.neutral.light,
+                borderRadius: "8px",
+                padding: "12px",
+                border: `1px solid ${COLORS.ui.border}`
+              }}>
+                <h4 style={{ 
+                  margin: "0 0 8px 0", 
+                  fontSize: "13px", 
+                  fontWeight: "600",
+                  color: COLORS.ui.textPrimary 
+                }}>
+                  Channel Overview
+                </h4>
+                <div style={{ fontSize: "12px", color: COLORS.ui.textSecondary }}>
+                  <div style={{ marginBottom: "4px" }}>
+                    <strong>Subscribers:</strong> {formatNumber(rawMetrics.subscriber_count)}
+                  </div>
+                  <div style={{ marginBottom: "4px" }}>
+                    <strong>Total Videos:</strong> {formatNumber(rawMetrics.video_count)}
+                  </div>
+                  <div style={{ marginBottom: "4px" }}>
+                    <strong>Total Views:</strong> {formatNumber(rawMetrics.view_count)}
+                  </div>
+                  <div style={{ marginBottom: "4px" }}>
+                    <strong>Account Age:</strong> {Math.round(rawMetrics.account_age_days / 365)} years ({rawMetrics.account_age_days} days)
+                  </div>
+                  {rawMetrics.topic_categories && rawMetrics.topic_categories.length > 0 && (
+                    <div style={{ marginBottom: "4px" }}>
+                      <strong>Topic Categories:</strong> {rawMetrics.topic_categories.join(", ")}
+                    </div>
+                  )}
+                  <div>
+                    <strong>YouTube Topics Assigned:</strong> {rawMetrics.has_topic_labels ? "✓ Yes" : "✗ No"}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Render OLD format (legacy support)
   return (
     <div>
       {/* Channel Credibility */}
@@ -325,4 +637,75 @@ export const ChannelCredibilitySubTab = ({
       </div>
     </div>
   )
+}
+
+// Helper function to render raw values in a user-friendly way
+function renderRawValue(metricKey: string, rawValue: any, channelMetrics: any): string {
+  switch (metricKey) {
+    case "audience_reach":
+      return `${formatNumber(rawValue.subscribers)} subscribers • ${formatNumber(rawValue.total_views)} total views`
+    
+    case "creator_authority":
+      const years = Math.floor(rawValue.account_age_days / 365)
+      const remainingDays = rawValue.account_age_days % 365
+      return `${years}y ${remainingDays}d old • ${formatNumber(rawValue.video_count)} videos`
+    
+    case "niche_focus":
+      const categories = rawValue.categories || []
+      const primaryCat = rawValue.primary_category || "Unknown"
+      const primaryCount = rawValue.primary_count || 0
+      const total = categories.length
+      const percentage = total > 0 ? Math.round((primaryCount / total) * 100) : 0
+      return `Primary: ${getCategoryName(primaryCat)} (${percentage}% of ${total} videos)`
+    
+    case "community_loyalty":
+      const ratio = rawValue.ratio || 0
+      const percentage2 = (ratio * 100).toFixed(2)
+      return `${formatNumber(rawValue.total_likes)} likes on ${formatNumber(rawValue.total_views)} views (${percentage2}%)`
+    
+    case "content_freshness":
+      const avgGap = Math.round(rawValue.avg_gap_days)
+      const totalDays = rawValue.total_elapsed_days
+      const videoCount = rawValue.video_count
+      return `Posts every ${avgGap} days on avg (${videoCount} videos in ${totalDays} days)`
+    
+    default:
+      return JSON.stringify(rawValue)
+  }
+}
+
+// Helper to format numbers with commas
+function formatNumber(num: number): string {
+  if (num >= 1000000000) {
+    return (num / 1000000000).toFixed(1) + "B"
+  }
+  if (num >= 1000000) {
+    return (num / 1000000).toFixed(1) + "M"
+  }
+  if (num >= 1000) {
+    return (num / 1000).toFixed(1) + "K"
+  }
+  return num.toString()
+}
+
+// Helper to get category name from YouTube category ID
+function getCategoryName(categoryId: string): string {
+  const categories: Record<string, string> = {
+    "1": "Film & Animation",
+    "2": "Autos & Vehicles",
+    "10": "Music",
+    "15": "Pets & Animals",
+    "17": "Sports",
+    "19": "Travel & Events",
+    "20": "Gaming",
+    "22": "People & Blogs",
+    "23": "Comedy",
+    "24": "Entertainment",
+    "25": "News & Politics",
+    "26": "Howto & Style",
+    "27": "Education",
+    "28": "Science & Technology",
+    "29": "Nonprofits & Activism"
+  }
+  return categories[categoryId] || `Category ${categoryId}`
 }

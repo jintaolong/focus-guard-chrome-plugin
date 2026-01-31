@@ -30,10 +30,16 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
   // Extract key takeaways from summary (from summary/v2 response)
   const keyTakeaways = summary.key_takeaways || summary.keyTakeaways || []
   
-  // Channel credibility data
+  // Channel trust data - support both old and new formats
+  // Priority: channelTrust (new) > channelCredibility (old)
+  const channelTrust = summary.channelTrust || analysis.channelTrust
   const channelCredibility = summary.channelCredibility || analysis.channelCredibility || {}
-  const credibilityScore = channelCredibility.score ?? 0
-  const credibilityFactors = channelCredibility.factors || []
+  
+  // Use new format if available, otherwise fall back to old format
+  const hasNewFormat = channelTrust && channelTrust.metrics
+  const displayData = hasNewFormat ? channelTrust : channelCredibility
+  const trustScore = hasNewFormat ? channelTrust.trust_score : (channelCredibility.score ?? 0)
+  const trustFactors = hasNewFormat ? [] : (channelCredibility.factors || [])
 
   // Claims list (normalize type for TS inference)
   const claimsList = (summary.clickbaitVerdict?.claims || []) as any[]
@@ -105,9 +111,9 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
 
         {activeSubTab === "channel" && (
           <ChannelCredibilitySubTab
-            channelCredibility={channelCredibility}
-            credibilityScore={credibilityScore}
-            credibilityFactors={credibilityFactors}
+            channelCredibility={displayData}
+            credibilityScore={trustScore}
+            credibilityFactors={trustFactors}
           />
         )}
       </div>
