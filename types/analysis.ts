@@ -158,13 +158,54 @@ export interface VideoAnalysis {
     tierRestriction?: TierRestriction // Added for tier gating
   }
 
-  // Channel credibility (legacy - deprecated)
+  // Channel credibility (legacy - deprecated, but still populated for backward compatibility)
   channelCredibility?: {
     score?: number // 0-100
     verifiedStatus?: boolean
     history?: string
     bias?: string
     factors?: Array<{ name: string; value: string; weight: number }>
+    // NEW: Include full new format data when available
+    metrics?: {
+      audience_reach: {
+        score: number
+        raw_value: any
+        normalized_value: number
+        description: string
+        breakdown?: any
+      }
+      creator_authority: {
+        score: number
+        raw_value: any
+        normalized_value: number
+        description: string
+        breakdown?: any
+      }
+      niche_focus: {
+        score: number
+        raw_value: any
+        normalized_value: number
+        description: string
+        breakdown?: any
+      }
+      community_loyalty: {
+        score: number
+        raw_value: any
+        normalized_value: number
+        description: string
+        breakdown?: any
+      }
+      content_freshness: {
+        score: number
+        raw_value: any
+        normalized_value: number
+        description: string
+        breakdown?: any
+      }
+    }
+    trust_score?: number
+    raw_metrics?: any
+    metric_details?: any
   }
 
   // NEW: Channel Trust (5 metrics system)
