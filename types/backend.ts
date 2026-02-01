@@ -260,7 +260,7 @@ export interface MetricBreakdown {
   score: number // 0-100
   normalized_value: number // 0.0-1.0
   description: string
-  raw_value: Record<string, any>
+  raw_value: any // Can be various types depending on metric
   breakdown?: Record<string, any>
 }
 

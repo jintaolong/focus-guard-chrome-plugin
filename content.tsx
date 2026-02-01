@@ -151,7 +151,18 @@ const ContentScript = () => {
   const [isLoading, setIsLoading] = useState(false)
   const [userStats, setUserStats] = useState<UserStats | null>(null)
   const [isYouTubeHome, setIsYouTubeHome] = useState(false)
-  const [settings, setSettings] = useState<FocusGuardSettings | null>(null)
+  // Initialize settings with defaults to ensure toggle button always shows
+  const [settings, setSettings] = useState<FocusGuardSettings | null>({
+    isEnabled: true,
+    videoAnalysis: {
+      showPreWatchPopover: true,
+      autoAnalyze: false,
+      botDetectionEnabled: true,
+      showCachedVerdict: false,
+      confirmCreditUsage: true,
+      maxCommentDepth: 100
+    }
+  })
 
   // FR-102 & FR-103: Watch page analysis state
   const [currentVideoId, setCurrentVideoId] = useState<string | null>(null)
@@ -205,7 +216,7 @@ const ContentScript = () => {
 
   useEffect(() => {
     // Check if we're on YouTube home page or watch page
-    console.log("Comment Verdict content script loaded");
+    console.log("🎬 Comment Verdict content script loaded - settings:", settings);
     // Print build-time debug flag so we can confirm whether the bundle
     // was built with `COMMENT_VERDICT_DEBUG=1`.
     console.log("Comment Verdict BUILD_DEBUG=", BUILD_DEBUG)
@@ -344,13 +355,43 @@ const ContentScript = () => {
     // Optionally load user data for richer UI during development / debug
     loadUserStats()
     loadAnalysisHistory()
-    // Load saved settings (do not assume defaults here to avoid unexpectedly hiding feed)
+    // Load saved settings with defaults if not present
     const loadSettings = async () => {
       try {
         const result = await chrome.storage.sync.get(["settings"])
-        if (result.settings) setSettings(result.settings)
+        if (result.settings) {
+          setSettings(result.settings)
+        } else {
+          // Set default settings if none exist
+          const defaultSettings: FocusGuardSettings = {
+            isEnabled: true,
+            videoAnalysis: {
+              showPreWatchPopover: true,
+              autoAnalyze: false,
+              botDetectionEnabled: true,
+              showCachedVerdict: false,
+              confirmCreditUsage: true,
+              maxCommentDepth: 100
+            }
+          }
+          setSettings(defaultSettings)
+          // Save defaults to storage
+          await chrome.storage.sync.set({ settings: defaultSettings })
+        }
       } catch (e) {
-        // ignore
+        console.error("Comment Verdict: Failed to load settings, using defaults", e)
+        // Fallback to defaults even if storage fails
+        setSettings({
+          isEnabled: true,
+          videoAnalysis: {
+            showPreWatchPopover: true,
+            autoAnalyze: false,
+            botDetectionEnabled: true,
+            showCachedVerdict: false,
+            confirmCreditUsage: true,
+            maxCommentDepth: 100
+          }
+        })
       }
     }
 
@@ -1793,7 +1834,11 @@ const ContentScript = () => {
 
   // FR-102: Render Side Panel on watch page
   // Only render if Comment Verdict is enabled
-  if (onWatchPage && settings?.isEnabled) {
+  // Use ?? true as failsafe to show toggle button even if settings somehow becomes null
+  const shouldRender = onWatchPage && (settings?.isEnabled ?? true)
+  console.log("🔍 Content render check: onWatchPage=", onWatchPage, "settings?.isEnabled=", settings?.isEnabled, "shouldRender=", shouldRender)
+  
+  if (shouldRender) {
     return (
       <>
         {/* FR-101: Pre-Watch Popover */}

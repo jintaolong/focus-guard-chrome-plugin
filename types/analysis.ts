@@ -169,16 +169,60 @@ export interface VideoAnalysis {
 
   // NEW: Channel Trust (5 metrics system)
   channelTrust?: {
+    channel_id: string
+    channel_name: string
     trust_score: number // 0-100
     metrics: {
-      audience_reach: any
-      creator_authority: any
-      niche_focus: any
-      community_loyalty: any
-      content_freshness: any
+      audience_reach: {
+        score: number
+        raw_value: any
+        normalized_value: number
+        description: string
+        breakdown?: any
+      }
+      creator_authority: {
+        score: number
+        raw_value: any
+        normalized_value: number
+        description: string
+        breakdown?: any
+      }
+      niche_focus: {
+        score: number
+        raw_value: any
+        normalized_value: number
+        description: string
+        breakdown?: any
+      }
+      community_loyalty: {
+        score: number
+        raw_value: any
+        normalized_value: number
+        description: string
+        breakdown?: any
+      }
+      content_freshness: {
+        score: number
+        raw_value: any
+        normalized_value: number
+        description: string
+        breakdown?: any
+      }
     }
-    raw_metrics?: any
-    metric_details?: any
+    raw_metrics?: {
+      channel: {
+        channel_id: string
+        subscriber_count: number
+        video_count: number
+        view_count: number
+        account_age_days: number
+        has_topic_labels: boolean
+        topic_categories: string[]
+      }
+      recent_videos?: any[]
+    }
+    computed_at?: string | null
+    api_calls_used?: number
   }
 
   reportInfo?: {

@@ -20,9 +20,6 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
   
   // Support both legacy and new data shapes
   const summary = (analysis.summary || {}) as any
-  const trustScore = summary.trustScore ?? analysis.trustScore?.score ?? 0
-  const trustColor = getTrustScoreColor(trustScore)
-  const verdictColor = getClickbaitVerdictColor(summary.clickbaitVerdict?.label ?? "unknown")
   
   // Extract executive summary from analysis
   const executiveSummary = analysis.executiveSummary || "This video has been analyzed by Focus Guard AI to assess its relevancy, credibility, and viewer insights based on comments, transcript, and metadata."
@@ -38,7 +35,9 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
   // Use new format if available, otherwise fall back to old format
   const hasNewFormat = channelTrust && channelTrust.metrics
   const displayData = hasNewFormat ? channelTrust : channelCredibility
-  const trustScore = hasNewFormat ? channelTrust.trust_score : (channelCredibility.score ?? 0)
+  const trustScore = hasNewFormat ? channelTrust.trust_score : (summary.trustScore ?? analysis.trustScore?.score ?? channelCredibility.score ?? 0)
+  const trustColor = getTrustScoreColor(trustScore)
+  const verdictColor = getClickbaitVerdictColor(summary.clickbaitVerdict?.label ?? "unknown")
   const trustFactors = hasNewFormat ? [] : (channelCredibility.factors || [])
 
   // Claims list (normalize type for TS inference)

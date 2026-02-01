@@ -54,7 +54,7 @@ export const ChannelCredibilitySubTab = ({
     const rawMetrics = channelCredibility.raw_metrics?.channel
     
     // Extract metrics array for spider chart
-    const metricsArray = Object.keys(METRIC_CONFIG).map(key => ({
+    const metricsArray = (Object.keys(METRIC_CONFIG) as Array<keyof typeof METRIC_CONFIG>).map(key => ({
       key,
       ...METRIC_CONFIG[key],
       data: metrics[key]
@@ -204,7 +204,7 @@ export const ChannelCredibilitySubTab = ({
                             fontWeight="600"
                             fill={COLORS.ui.textPrimary}
                             style={{ userSelect: 'none' }}>
-                            {words.map((word, wordIdx) => (
+                            {words.map((word: string, wordIdx: number) => (
                               <tspan 
                                 key={wordIdx} 
                                 x={labelX} 
@@ -278,44 +278,135 @@ export const ChannelCredibilitySubTab = ({
               })}
             </div>
 
-            {/* Channel Info Summary */}
+            {/* Raw Metrics Table - Aligned with PDF Report */}
             {rawMetrics && (
               <div style={{
-                marginTop: "20px",
-                backgroundColor: COLORS.neutral.light,
+                marginTop: "24px",
+                backgroundColor: COLORS.ui.surface,
                 borderRadius: "8px",
-                padding: "12px",
+                padding: "16px",
                 border: `1px solid ${COLORS.ui.border}`
               }}>
                 <h4 style={{ 
-                  margin: "0 0 8px 0", 
-                  fontSize: "13px", 
+                  margin: "0 0 12px 0", 
+                  fontSize: "14px", 
                   fontWeight: "600",
-                  color: COLORS.ui.textPrimary 
+                  color: COLORS.ui.textPrimary,
+                  borderBottom: `2px solid ${COLORS.ui.border}`,
+                  paddingBottom: "8px"
                 }}>
-                  Channel Overview
+                  📊 Raw Channel Metrics
                 </h4>
-                <div style={{ fontSize: "12px", color: COLORS.ui.textSecondary }}>
-                  <div style={{ marginBottom: "4px" }}>
-                    <strong>Subscribers:</strong> {formatNumber(rawMetrics.subscriber_count)}
-                  </div>
-                  <div style={{ marginBottom: "4px" }}>
-                    <strong>Total Videos:</strong> {formatNumber(rawMetrics.video_count)}
-                  </div>
-                  <div style={{ marginBottom: "4px" }}>
-                    <strong>Total Views:</strong> {formatNumber(rawMetrics.view_count)}
-                  </div>
-                  <div style={{ marginBottom: "4px" }}>
-                    <strong>Account Age:</strong> {Math.round(rawMetrics.account_age_days / 365)} years ({rawMetrics.account_age_days} days)
-                  </div>
-                  {rawMetrics.topic_categories && rawMetrics.topic_categories.length > 0 && (
-                    <div style={{ marginBottom: "4px" }}>
-                      <strong>Topic Categories:</strong> {rawMetrics.topic_categories.join(", ")}
-                    </div>
-                  )}
-                  <div>
-                    <strong>YouTube Topics Assigned:</strong> {rawMetrics.has_topic_labels ? "✓ Yes" : "✗ No"}
-                  </div>
+                
+                <table style={{ 
+                  width: "100%", 
+                  fontSize: "12px",
+                  borderCollapse: "collapse"
+                }}>
+                  <thead>
+                    <tr style={{ 
+                      backgroundColor: COLORS.neutral.light,
+                      borderBottom: `2px solid ${COLORS.ui.border}`
+                    }}>
+                      <th style={{ 
+                        textAlign: "left", 
+                        padding: "8px",
+                        fontWeight: "600",
+                        color: COLORS.ui.textPrimary
+                      }}>Metric</th>
+                      <th style={{ 
+                        textAlign: "left", 
+                        padding: "8px",
+                        fontWeight: "600",
+                        color: COLORS.ui.textPrimary
+                      }}>Category</th>
+                      <th style={{ 
+                        textAlign: "right", 
+                        padding: "8px",
+                        fontWeight: "600",
+                        color: COLORS.ui.textPrimary
+                      }}>Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {/* Audience Reach Metrics */}
+                    <tr style={{ borderBottom: `1px solid ${COLORS.ui.border}` }}>
+                      <td style={{ padding: "10px 8px", fontWeight: "500" }}>Subscribers</td>
+                      <td style={{ padding: "10px 8px", color: COLORS.ui.textSecondary, fontSize: "11px" }}>
+                        <span style={{ color: METRIC_CONFIG.audience_reach.icon === "📊" ? "#3b82f6" : "inherit" }}>
+                          {METRIC_CONFIG.audience_reach.icon}
+                        </span> Audience Reach
+                      </td>
+                      <td style={{ padding: "10px 8px", textAlign: "right", fontWeight: "600" }}>
+                        {formatNumber(rawMetrics.subscriber_count)}
+                      </td>
+                    </tr>
+                    <tr style={{ borderBottom: `1px solid ${COLORS.ui.border}` }}>
+                      <td style={{ padding: "10px 8px", fontWeight: "500" }}>Total Views</td>
+                      <td style={{ padding: "10px 8px", color: COLORS.ui.textSecondary, fontSize: "11px" }}>
+                        <span style={{ color: "#3b82f6" }}>{METRIC_CONFIG.audience_reach.icon}</span> Audience Reach
+                      </td>
+                      <td style={{ padding: "10px 8px", textAlign: "right", fontWeight: "600" }}>
+                        {formatNumber(rawMetrics.view_count)}
+                      </td>
+                    </tr>
+                    
+                    {/* Creator Authority Metrics */}
+                    <tr style={{ borderBottom: `1px solid ${COLORS.ui.border}` }}>
+                      <td style={{ padding: "10px 8px", fontWeight: "500" }}>Account Age</td>
+                      <td style={{ padding: "10px 8px", color: COLORS.ui.textSecondary, fontSize: "11px" }}>
+                        <span style={{ color: "#f59e0b" }}>{METRIC_CONFIG.creator_authority.icon}</span> Creator Authority
+                      </td>
+                      <td style={{ padding: "10px 8px", textAlign: "right", fontWeight: "600" }}>
+                        {Math.floor(rawMetrics.account_age_days / 365)}y {rawMetrics.account_age_days % 365}d
+                      </td>
+                    </tr>
+                    <tr style={{ borderBottom: `1px solid ${COLORS.ui.border}` }}>
+                      <td style={{ padding: "10px 8px", fontWeight: "500" }}>Video Count</td>
+                      <td style={{ padding: "10px 8px", color: COLORS.ui.textSecondary, fontSize: "11px" }}>
+                        <span style={{ color: "#f59e0b" }}>{METRIC_CONFIG.creator_authority.icon}</span> Creator Authority
+                      </td>
+                      <td style={{ padding: "10px 8px", textAlign: "right", fontWeight: "600" }}>
+                        {formatNumber(rawMetrics.video_count)} videos
+                      </td>
+                    </tr>
+                    
+                    {/* Niche Focus Metrics */}
+                    {rawMetrics.topic_categories && rawMetrics.topic_categories.length > 0 && (
+                      <tr style={{ borderBottom: `1px solid ${COLORS.ui.border}` }}>
+                        <td style={{ padding: "10px 8px", fontWeight: "500" }}>Topic Categories</td>
+                        <td style={{ padding: "10px 8px", color: COLORS.ui.textSecondary, fontSize: "11px" }}>
+                          <span style={{ color: "#10b981" }}>{METRIC_CONFIG.niche_focus.icon}</span> Niche Focus
+                        </td>
+                        <td style={{ padding: "10px 8px", textAlign: "right", fontWeight: "600", fontSize: "11px" }}>
+                          {rawMetrics.topic_categories.slice(0, 2).join(", ")}
+                          {rawMetrics.topic_categories.length > 2 && ` +${rawMetrics.topic_categories.length - 2} more`}
+                        </td>
+                      </tr>
+                    )}
+                    <tr style={{ borderBottom: `1px solid ${COLORS.ui.border}` }}>
+                      <td style={{ padding: "10px 8px", fontWeight: "500" }}>YouTube Topics</td>
+                      <td style={{ padding: "10px 8px", color: COLORS.ui.textSecondary, fontSize: "11px" }}>
+                        <span style={{ color: "#10b981" }}>{METRIC_CONFIG.niche_focus.icon}</span> Niche Focus
+                      </td>
+                      <td style={{ padding: "10px 8px", textAlign: "right", fontWeight: "600" }}>
+                        {rawMetrics.has_topic_labels ? "✓ Assigned" : "✗ None"}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+                
+                <div style={{
+                  marginTop: "12px",
+                  padding: "8px",
+                  backgroundColor: COLORS.neutral.light,
+                  borderRadius: "4px",
+                  fontSize: "10px",
+                  color: COLORS.ui.textSecondary,
+                  fontStyle: "italic",
+                  textAlign: "center"
+                }}>
+                  💡 These raw metrics feed into the 5-pillar trust score calculation above
                 </div>
               </div>
             )}
@@ -376,27 +467,49 @@ export const ChannelCredibilitySubTab = ({
 
         {/* Spider/Radar Chart */}
         {credibilityFactors.length > 0 && (() => {
-          // Debug: log raw factor data
-          console.log("SummaryTab: Raw credibilityFactors:", credibilityFactors)
+          // Map old factor names to new metric names
+          const factorNameMapping: Record<string, string> = {
+            'subscriberCount': 'Audience Reach',
+            'subscriber_count': 'Audience Reach',
+            'videoCount': 'Creator Authority',
+            'video_count': 'Creator Authority',
+            'viewCount': 'Audience Reach',
+            'view_count': 'Audience Reach',
+            'accountAgeDays': 'Creator Authority',
+            'account_age_days': 'Creator Authority',
+            'hasTopicLabels': 'Niche Focus',
+            'has_topic_labels': 'Niche Focus',
+            'topicLabels': 'Niche Focus'
+          }
           
-          // Normalize factor weights to 0-100 range first (in case they're 0-1)
-          const factorsWithScores = credibilityFactors.map((factor: any) => {
-            const rawWeight = Number(factor.weight) || 0
-            // If weight is between 0-1, convert to 0-100
-            const normalizedWeight = rawWeight <= 1 ? rawWeight * 100 : rawWeight
-            return { ...factor, normalizedWeight }
+          // Debug: log raw factor data
+          console.log("ChannelCredibilitySubTab: Raw credibilityFactors:", credibilityFactors)
+          
+          // Use backend values directly, but handle 0-1 normalized range
+          const visualFactors = credibilityFactors.map((factor: any) => {
+            const backendWeight = Number(factor.weight) || 0
+            // If backend sends 0-1 range (normalized), convert to 0-100 for display
+            // Otherwise use the value as-is (already in 0-100 range)
+            const displayScore = backendWeight <= 1 ? backendWeight * 100 : backendWeight
+            
+            // Get the display name from mapping, or format the original name
+            let displayName = factorNameMapping[factor.name] || factor.name
+              .replace(/_/g, ' ')
+              .replace(/([A-Z])/g, ' $1')
+              .trim()
+              .split(' ')
+              .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
+              .join(' ')
+            
+            return { 
+              ...factor, 
+              displayName,
+              displayScore,
+              visualScore: displayScore // Use for chart
+            }
           })
           
-          console.log("SummaryTab: Factors after first normalization:", factorsWithScores)
-          
-          // Use the normalized weights directly for visualization (no min-max scaling)
-          // This ensures that the visual representation matches the actual percentage values
-          const visualFactors = factorsWithScores.map((f: any) => ({
-            ...f,
-            visualScore: f.normalizedWeight // Use actual percentage for chart
-          }))
-          
-          console.log("SummaryTab: Visual factors for radar chart:", visualFactors)
+          console.log("ChannelCredibilitySubTab: Visual factors (backend values):", visualFactors)
           
           const centerX = 175
           const centerY = 175
@@ -485,19 +598,8 @@ export const ChannelCredibilitySubTab = ({
                     const labelX = centerX + labelDistance * Math.cos(point.angle)
                     const labelY = centerY + labelDistance * Math.sin(point.angle)
                     
-                    // Format factor name for display (capitalized words)
-                    const displayName = factor.name
-                      .replace(/_/g, ' ')
-                      .replace(/([A-Z])/g, ' $1') // Handle camelCase
-                      .trim()
-                      .split(' ')
-                      .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
-                      .join(' ')
-                    
-                    // Special case for HasTopicLabels
-                    const finalDisplayName = displayName.toLowerCase().includes('has topic labels') 
-                      ? 'Topic Consistency' 
-                      : displayName
+                    // Use the pre-computed display name from the factor
+                    const displayName = factor.displayName || factor.name
                     
                     return (
                       <text
@@ -514,7 +616,7 @@ export const ChannelCredibilitySubTab = ({
                           maxWidth: '70px'
                         }}>
                         {/* Split long names into multiple lines */}
-                        {finalDisplayName.split(' ').map((word: string, wordIdx: number, arr: string[]) => (
+                        {displayName.split(' ').map((word: string, wordIdx: number, arr: string[]) => (
                           <tspan 
                             key={wordIdx} 
                             x={labelX} 
@@ -546,25 +648,11 @@ export const ChannelCredibilitySubTab = ({
                   borderBottom: `1px solid ${COLORS.ui.border}`,
                   color: COLORS.ui.textSecondary
                 }}>
-                  <div>Factor</div>
-                  <div style={{ textAlign: "right" }}>Normalized Score</div>
-                  <div style={{ textAlign: "right" }}>Value</div>
+                  <div>Metric Category</div>
+                  <div style={{ textAlign: "right" }}>Score</div>
+                  <div style={{ textAlign: "right" }}>Raw Value</div>
                 </div>
                 {visualFactors.map((factor: any, index: number) => {
-                  // Format factor name for display (capitalized words)
-                  const displayName = factor.name
-                    .replace(/_/g, ' ')
-                    .replace(/([A-Z])/g, ' $1') // Handle camelCase
-                    .trim()
-                    .split(' ')
-                    .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
-                    .join(' ')
-                  
-                  // Special case for HasTopicLabels
-                  const finalDisplayName = displayName.toLowerCase().includes('has topic labels') 
-                    ? 'Topic Consistency' 
-                    : displayName
-                  
                   return (
                     <div
                       key={index}
@@ -582,14 +670,14 @@ export const ChannelCredibilitySubTab = ({
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap"
                       }}>
-                        {finalDisplayName}
+                        {factor.displayName}
                       </div>
                       <div style={{ 
                         textAlign: "right",
                         fontWeight: "700",
-                        color: factor.normalizedWeight >= 70 ? COLORS.high.primary : factor.normalizedWeight >= 40 ? COLORS.medium.primary : COLORS.low.primary
+                        color: factor.displayScore >= 70 ? COLORS.high.primary : factor.displayScore >= 40 ? COLORS.medium.primary : COLORS.low.primary
                       }}>
-                        {Math.round(factor.normalizedWeight)}%
+                        {Math.round(factor.displayScore)}
                       </div>
                       <div style={{ 
                         textAlign: "right",
@@ -599,11 +687,13 @@ export const ChannelCredibilitySubTab = ({
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap"
                       }}>
-                        {/* Special handling for boolean metrics */}
+                        {/* Format values appropriately */}
                         {factor.name.toLowerCase().includes('hastopiclabels') || factor.name.toLowerCase().includes('has_topic_labels')
-                          ? (factor.value == 1 || factor.value === true || factor.value === 'true' ? 'True' : 'False')
+                          ? (factor.value == 1 || factor.value === true || factor.value === 'true' ? '✓ Yes' : '✗ No')
                           : factor.name.toLowerCase() === 'verified' 
-                          ? (factor.value == 1 || factor.value === true || factor.value === 'true' ? 'Yes' : 'No')
+                          ? (factor.value == 1 || factor.value === true || factor.value === 'true' ? '✓ Yes' : '✗ No')
+                          : typeof factor.value === 'number' && factor.value >= 1000
+                          ? formatNumber(factor.value)
                           : factor.value
                         }
                       </div>
@@ -620,16 +710,7 @@ export const ChannelCredibilitySubTab = ({
                 textAlign: "center",
                 fontStyle: "italic"
               }}>
-                Normalized Score shows how much each item contributes (0-100).
-              </div>
-
-              <div style={{
-                marginTop: "8px",
-                fontSize: "11px",
-                color: COLORS.ui.textSecondary,
-                textAlign: "center"
-              }}>
-                <em>Topic Consistency is based on whether YouTube has assigned topic tags to this channel.</em>
+                Scores are normalized (0-100) based on channel metrics across the platform.
               </div>
             </div>
           )
