@@ -40,8 +40,15 @@ export const ChannelCredibilitySubTab = ({
   credibilityScore, 
   credibilityFactors 
 }: ChannelCredibilitySubTabProps) => {
+  // Debug logging
+  console.log("ChannelCredibilitySubTab - channelCredibility:", channelCredibility)
+  console.log("ChannelCredibilitySubTab - credibilityScore:", credibilityScore)
+  console.log("ChannelCredibilitySubTab - credibilityFactors:", credibilityFactors)
+  
   // Support both old and new format
   const isNewFormat = channelCredibility?.metrics && channelCredibility?.trust_score !== undefined
+  console.log("ChannelCredibilitySubTab - isNewFormat:", isNewFormat)
+  
   const score = isNewFormat ? channelCredibility.trust_score : credibilityScore
   
   // Determine color theme based on trust score
@@ -52,13 +59,76 @@ export const ChannelCredibilitySubTab = ({
   if (isNewFormat) {
     const metrics = channelCredibility.metrics
     const rawMetrics = channelCredibility.raw_metrics?.channel
+    const metricDetails = channelCredibility.metric_details || {}
     
     // Extract metrics array for spider chart
+    // Backend returns MetricBreakdown objects directly (score, normalized_value, description, raw_value)
     const metricsArray = (Object.keys(METRIC_CONFIG) as Array<keyof typeof METRIC_CONFIG>).map(key => ({
       key,
       ...METRIC_CONFIG[key],
-      data: metrics[key]
+      // metrics[key] is already a MetricBreakdown object
+      metricData: metrics[key]
     }))
+    
+    // Helper functions to get category labels (matching report_generation_service.py)
+    const getReachLabel = (subscribers: number): string => {
+      if (subscribers >= 1000000) return "Mega Channel"
+      if (subscribers >= 100000) return "Large Channel"
+      if (subscribers >= 10000) return "Medium Channel"
+      if (subscribers >= 1000) return "Small Channel"
+      return "Micro Channel"
+    }
+    
+    const getAuthorityLabel = (ageYears: number, videoCount: number): string => {
+      if (ageYears >= 5 && videoCount >= 500) return "Veteran Creator"
+      if (ageYears >= 3 && videoCount >= 200) return "Established Creator"
+      if (ageYears >= 1 && videoCount >= 50) return "Growing Creator"
+      if (videoCount >= 20) return "New Creator"
+      return "Beginner"
+    }
+    
+    const getFocusLabel = (score: number): string => {
+      if (score >= 80) return "Highly Focused"
+      if (score >= 60) return "Moderately Focused"
+      if (score >= 40) return "Diverse Topics"
+      return "Scattered Content"
+    }
+    
+    const getLoyaltyLabel = (likeRatio: number | null): string => {
+      if (likeRatio === null || likeRatio === undefined) return "N/A"
+      if (likeRatio >= 0.04) return "Exceptional"
+      if (likeRatio >= 0.02) return "Strong"
+      if (likeRatio >= 0.01) return "Good"
+      if (likeRatio >= 0.005) return "Fair"
+      return "Weak"
+    }
+    
+    const getFreshnessLabel = (avgGapDays: number | null): string => {
+      if (avgGapDays === null || avgGapDays === undefined) return "N/A"
+      if (avgGapDays < 7) return "Daily Upload"
+      if (avgGapDays < 30) return "Weekly Upload"
+      if (avgGapDays < 90) return "Monthly Upload"
+      return "Dormant"
+    }
+    
+    // Extract raw metric values from each metric's raw_value field
+    const audienceReachData = metrics.audience_reach?.raw_value || {}
+    const authorityData = metrics.creator_authority?.raw_value || {}
+    const focusData = metrics.niche_focus?.raw_value || {}
+    const loyaltyData = metrics.community_loyalty?.raw_value || {}
+    const freshnessData = metrics.content_freshness?.raw_value || {}
+    
+    // Extract channel-level metrics from audience_reach and creator_authority
+    const subscribers = audienceReachData.subscribers || 0
+    const totalViews = audienceReachData.total_views || 0
+    const ageDays = authorityData.account_age_days || 0
+    const videoCount = authorityData.video_count || 0
+    const ageYears = ageDays / 365.25
+    const hasTopicLabels = focusData.has_topic_labels || false
+    
+    const primaryCategory = focusData.primary_category
+    const likeRatio = loyaltyData.like_ratio
+    const avgGapDays = freshnessData.avg_gap_days
 
     return (
       <div>
@@ -117,7 +187,8 @@ export const ChannelCredibilitySubTab = ({
                   // Calculate data points
                   const dataPoints = metricsArray.map((metric, i) => {
                     const angle = (Math.PI * 2 * i) / numMetrics - Math.PI / 2
-                    const normalizedScore = (metric.data?.score || 0) / 100
+                    // metricData.score is the 0-100 score from MetricBreakdown
+                    const normalizedScore = (metric.metricData?.score || 0) / 100
                     const x = centerX + radius * normalizedScore * Math.cos(angle)
                     const y = centerY + radius * normalizedScore * Math.sin(angle)
                     return { x, y, angle, score: normalizedScore, metric }
@@ -222,251 +293,224 @@ export const ChannelCredibilitySubTab = ({
               </svg>
             </div>
 
-            {/* Metrics Details Cards */}
-            <div style={{ 
-              display: "flex",
-              flexDirection: "column",
-              gap: "12px",
-              marginTop: "24px"
+            {/* 5-Pillar Trust Framework Table */}
+            <div style={{
+              marginTop: "24px",
+              backgroundColor: COLORS.ui.surface,
+              borderRadius: "8px",
+              padding: "16px",
+              border: `1px solid ${COLORS.ui.border}`
             }}>
-              {metricsArray.map(metric => {
-                const metricData = metric.data
-                const metricScore = metricData?.score || 0
-                const metricColor = metricScore >= 70 ? COLORS.high.primary : metricScore >= 40 ? COLORS.medium.primary : COLORS.low.primary
-                
-                return (
-                  <div
-                    key={metric.key}
-                    style={{
-                      backgroundColor: COLORS.neutral.light,
-                      borderRadius: "8px",
-                      padding: "12px",
-                      border: `1px solid ${COLORS.ui.border}`
-                    }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                        <span style={{ fontSize: "18px" }}>{metric.icon}</span>
-                        <span style={{ fontSize: "14px", fontWeight: "600", color: COLORS.ui.textPrimary }}>
-                          {metric.label}
-                        </span>
-                      </div>
-                      <div style={{
-                        fontSize: "20px",
-                        fontWeight: "700",
-                        color: metricColor
-                      }}>
-                        {Math.round(metricScore)}
-                      </div>
-                    </div>
-                    <div style={{ fontSize: "12px", color: COLORS.ui.textSecondary, marginBottom: "8px" }}>
-                      {metricData?.description || "No description available"}
-                    </div>
-                    {metricData?.raw_value && (
-                      <div style={{ 
-                        fontSize: "11px", 
-                        color: COLORS.ui.textSecondary,
-                        backgroundColor: COLORS.ui.surface,
-                        padding: "6px 8px",
-                        borderRadius: "4px",
-                        marginTop: "6px"
-                      }}>
-                        {renderRawValue(metric.key, metricData.raw_value, rawMetrics)}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-
-            {/* Raw Metrics Table - Aligned with PDF Report */}
-            {rawMetrics && (
-              <div style={{
-                marginTop: "24px",
-                backgroundColor: COLORS.ui.surface,
-                borderRadius: "8px",
-                padding: "16px",
-                border: `1px solid ${COLORS.ui.border}`
+              <h4 style={{ 
+                margin: "0 0 16px 0", 
+                fontSize: "14px", 
+                fontWeight: "600",
+                color: COLORS.ui.textPrimary,
+                borderBottom: `2px solid ${COLORS.ui.border}`,
+                paddingBottom: "8px"
               }}>
-                <h4 style={{ 
-                  margin: "0 0 12px 0", 
-                  fontSize: "14px", 
-                  fontWeight: "600",
-                  color: COLORS.ui.textPrimary,
-                  borderBottom: `2px solid ${COLORS.ui.border}`,
-                  paddingBottom: "8px"
-                }}>
-                  📊 Raw Channel Metrics
-                </h4>
-                
-                <table style={{ 
-                  width: "100%", 
-                  fontSize: "12px",
-                  borderCollapse: "collapse"
-                }}>
-                  <thead>
-                    <tr style={{ 
-                      backgroundColor: COLORS.neutral.light,
-                      borderBottom: `2px solid ${COLORS.ui.border}`
-                    }}>
-                      <th style={{ 
-                        textAlign: "left", 
-                        padding: "8px",
-                        fontWeight: "600",
-                        color: COLORS.ui.textPrimary
-                      }}>Metric</th>
-                      <th style={{ 
-                        textAlign: "left", 
-                        padding: "8px",
-                        fontWeight: "600",
-                        color: COLORS.ui.textPrimary
-                      }}>Category</th>
-                      <th style={{ 
-                        textAlign: "right", 
-                        padding: "8px",
-                        fontWeight: "600",
-                        color: COLORS.ui.textPrimary
-                      }}>Value</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {/* Audience Reach Metrics */}
-                    <tr style={{ borderBottom: `1px solid ${COLORS.ui.border}` }}>
-                      <td style={{ padding: "10px 8px", fontWeight: "500" }}>Subscribers</td>
-                      <td style={{ padding: "10px 8px", color: COLORS.ui.textSecondary, fontSize: "11px" }}>
-                        <span style={{ color: METRIC_CONFIG.audience_reach.icon === "📊" ? "#3b82f6" : "inherit" }}>
-                          {METRIC_CONFIG.audience_reach.icon}
-                        </span> Audience Reach
-                      </td>
-                      <td style={{ padding: "10px 8px", textAlign: "right", fontWeight: "600" }}>
-                        {formatNumber(rawMetrics.subscriber_count)}
-                      </td>
-                    </tr>
-                    <tr style={{ borderBottom: `1px solid ${COLORS.ui.border}` }}>
-                      <td style={{ padding: "10px 8px", fontWeight: "500" }}>Total Views</td>
-                      <td style={{ padding: "10px 8px", color: COLORS.ui.textSecondary, fontSize: "11px" }}>
-                        <span style={{ color: "#3b82f6" }}>{METRIC_CONFIG.audience_reach.icon}</span> Audience Reach
-                      </td>
-                      <td style={{ padding: "10px 8px", textAlign: "right", fontWeight: "600" }}>
-                        {formatNumber(rawMetrics.view_count)}
-                      </td>
-                    </tr>
-                    
-                    {/* Creator Authority Metrics */}
-                    <tr style={{ borderBottom: `1px solid ${COLORS.ui.border}` }}>
-                      <td style={{ padding: "10px 8px", fontWeight: "500" }}>Account Age</td>
-                      <td style={{ padding: "10px 8px", color: COLORS.ui.textSecondary, fontSize: "11px" }}>
-                        <span style={{ color: "#f59e0b" }}>{METRIC_CONFIG.creator_authority.icon}</span> Creator Authority
-                      </td>
-                      <td style={{ padding: "10px 8px", textAlign: "right", fontWeight: "600" }}>
-                        {Math.floor(rawMetrics.account_age_days / 365)}y {rawMetrics.account_age_days % 365}d
-                      </td>
-                    </tr>
-                    <tr style={{ borderBottom: `1px solid ${COLORS.ui.border}` }}>
-                      <td style={{ padding: "10px 8px", fontWeight: "500" }}>Video Count</td>
-                      <td style={{ padding: "10px 8px", color: COLORS.ui.textSecondary, fontSize: "11px" }}>
-                        <span style={{ color: "#f59e0b" }}>{METRIC_CONFIG.creator_authority.icon}</span> Creator Authority
-                      </td>
-                      <td style={{ padding: "10px 8px", textAlign: "right", fontWeight: "600" }}>
-                        {formatNumber(rawMetrics.video_count)} videos
-                      </td>
-                    </tr>
-                    
-                    {/* Niche Focus Metrics */}
-                    {rawMetrics.topic_categories && rawMetrics.topic_categories.length > 0 && (
-                      <tr style={{ borderBottom: `1px solid ${COLORS.ui.border}` }}>
-                        <td style={{ padding: "10px 8px", fontWeight: "500" }}>Topic Categories</td>
-                        <td style={{ padding: "10px 8px", color: COLORS.ui.textSecondary, fontSize: "11px" }}>
-                          <span style={{ color: "#10b981" }}>{METRIC_CONFIG.niche_focus.icon}</span> Niche Focus
-                        </td>
-                        <td style={{ padding: "10px 8px", textAlign: "right", fontWeight: "600", fontSize: "11px" }}>
-                          {rawMetrics.topic_categories.slice(0, 2).join(", ")}
-                          {rawMetrics.topic_categories.length > 2 && ` +${rawMetrics.topic_categories.length - 2} more`}
-                        </td>
-                      </tr>
-                    )}
-                    <tr style={{ borderBottom: `1px solid ${COLORS.ui.border}` }}>
-                      <td style={{ padding: "10px 8px", fontWeight: "500" }}>YouTube Topics</td>
-                      <td style={{ padding: "10px 8px", color: COLORS.ui.textSecondary, fontSize: "11px" }}>
-                        <span style={{ color: "#10b981" }}>{METRIC_CONFIG.niche_focus.icon}</span> Niche Focus
-                      </td>
-                      <td style={{ padding: "10px 8px", textAlign: "right", fontWeight: "600" }}>
-                        {rawMetrics.has_topic_labels ? "✓ Assigned" : "✗ None"}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-                
-                <div style={{
-                  marginTop: "12px",
-                  padding: "8px",
-                  backgroundColor: COLORS.neutral.light,
-                  borderRadius: "4px",
-                  fontSize: "10px",
-                  color: COLORS.ui.textSecondary,
-                  fontStyle: "italic",
-                  textAlign: "center"
-                }}>
-                  💡 These raw metrics feed into the 5-pillar trust score calculation above
+                5-Pillar Trust Framework
+              </h4>
+              
+              {/* Metric 1: Audience Reach */}
+              <div style={{ marginBottom: "20px", borderBottom: `1px solid ${COLORS.ui.border}`, paddingBottom: "16px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                  <div>
+                    <div style={{ fontSize: "14px", fontWeight: "700", color: COLORS.ui.textPrimary }}>
+                      📊 Audience Reach
+                    </div>
+                    <div style={{ fontSize: "11px", color: COLORS.high.primary, fontWeight: "600", marginTop: "2px" }}>
+                      {getReachLabel(subscribers)}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: "24px", fontWeight: "700", color: metrics.audience_reach?.score >= 70 ? COLORS.high.primary : COLORS.medium.primary }}>
+                    {Math.round(metrics.audience_reach?.score || 0)}
+                  </div>
+                </div>
+                <div style={{ fontSize: "11px", color: COLORS.ui.textSecondary, fontStyle: "italic", marginBottom: "8px" }}>
+                  Shows the 'size of the room' this creator speaks to. Balances subscribers with views to filter out 'dead' channels.
+                </div>
+                <div style={{ fontSize: "11px", color: COLORS.ui.textSecondary, marginBottom: "6px" }}>
+                  Formula: Geometric mean of subscriber and view counts, normalized to 0-100 scale
+                </div>
+                <div style={{ fontSize: "12px", color: COLORS.ui.textPrimary }}>
+                  <div>• Subscribers: <strong>{formatNumber(subscribers)}</strong></div>
+                  <div>• Total Views: <strong>{formatNumber(totalViews)}</strong></div>
                 </div>
               </div>
-            )}
+              
+              {/* Metric 2: Creator Authority */}
+              <div style={{ marginBottom: "20px", borderBottom: `1px solid ${COLORS.ui.border}`, paddingBottom: "16px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                  <div>
+                    <div style={{ fontSize: "14px", fontWeight: "700", color: COLORS.ui.textPrimary }}>
+                      ⭐ Creator Authority
+                    </div>
+                    <div style={{ fontSize: "11px", color: COLORS.high.primary, fontWeight: "600", marginTop: "2px" }}>
+                      {getAuthorityLabel(ageYears, videoCount)}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: "24px", fontWeight: "700", color: metrics.creator_authority?.score >= 70 ? COLORS.high.primary : COLORS.medium.primary }}>
+                    {Math.round(metrics.creator_authority?.score || 0)}
+                  </div>
+                </div>
+                <div style={{ fontSize: "11px", color: COLORS.ui.textSecondary, fontStyle: "italic", marginBottom: "8px" }}>
+                  Separates 'viral hit wonders' from seasoned veterans. Rewards longevity and library depth, signaling reliability.
+                </div>
+                <div style={{ fontSize: "11px", color: COLORS.ui.textSecondary, marginBottom: "6px" }}>
+                  Formula: Weighted combination of channel age (years) and video count, normalized to 0-100
+                </div>
+                <div style={{ fontSize: "12px", color: COLORS.ui.textPrimary }}>
+                  <div>• Channel Age: <strong>{ageYears.toFixed(1)} years</strong> ({ageDays} days)</div>
+                  <div>• Total Videos: <strong>{formatNumber(videoCount)}</strong></div>
+                </div>
+              </div>
+              
+              {/* Metric 3: Niche Focus */}
+              <div style={{ marginBottom: "20px", borderBottom: `1px solid ${COLORS.ui.border}`, paddingBottom: "16px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                  <div>
+                    <div style={{ fontSize: "14px", fontWeight: "700", color: COLORS.ui.textPrimary }}>
+                      🎯 Niche Focus
+                    </div>
+                    <div style={{ fontSize: "11px", color: metrics.niche_focus?.score >= 60 ? COLORS.high.primary : COLORS.medium.primary, fontWeight: "600", marginTop: "2px" }}>
+                      {getFocusLabel(metrics.niche_focus?.score || 0)}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: "24px", fontWeight: "700", color: metrics.niche_focus?.score >= 70 ? COLORS.high.primary : metrics.niche_focus?.score >= 40 ? COLORS.medium.primary : COLORS.low.primary }}>
+                    {Math.round(metrics.niche_focus?.score || 0)}
+                  </div>
+                </div>
+                <div style={{ fontSize: "11px", color: COLORS.ui.textSecondary, fontStyle: "italic", marginBottom: "8px" }}>
+                  High consistency = dedicated expert; chaos = trend-chaser. Measures content specialization vs 'jack of all trades' approach.
+                </div>
+                <div style={{ fontSize: "11px", color: COLORS.ui.textSecondary, marginBottom: "6px" }}>
+                  Formula: Category consistency in recent 10 videos, scaled to 0-100
+                </div>
+                <div style={{ fontSize: "12px", color: COLORS.ui.textPrimary }}>
+                  <div>• Primary Category: <strong>{primaryCategory || "None found"}</strong></div>
+                  <div>• Topic Labels: <strong>{hasTopicLabels ? "✓ Enabled" : "✗ Disabled"}</strong></div>
+                </div>
+              </div>
+              
+              {/* Metric 4: Community Loyalty */}
+              <div style={{ marginBottom: "20px", borderBottom: `1px solid ${COLORS.ui.border}`, paddingBottom: "16px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                  <div>
+                    <div style={{ fontSize: "14px", fontWeight: "700", color: COLORS.ui.textPrimary }}>
+                      ❤️ Community Loyalty
+                    </div>
+                    <div style={{ fontSize: "11px", color: likeRatio ? COLORS.medium.primary : COLORS.ui.textSecondary, fontWeight: "600", marginTop: "2px" }}>
+                      {getLoyaltyLabel(likeRatio)}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: "24px", fontWeight: "700", color: metrics.community_loyalty?.score >= 70 ? COLORS.high.primary : COLORS.medium.primary }}>
+                    {Math.round(metrics.community_loyalty?.score || 0)}
+                  </div>
+                </div>
+                <div style={{ fontSize: "11px", color: COLORS.ui.textSecondary, fontStyle: "italic", marginBottom: "8px" }}>
+                  Views can be bought; engagement ratios prove real fans. High like-to-view ratio means the audience actually cares.
+                </div>
+                <div style={{ fontSize: "11px", color: COLORS.ui.textSecondary, marginBottom: "6px" }}>
+                  Formula: Like-to-view ratio clamped between 0.5% (floor) and 5% (ceiling), scaled to 0-100
+                </div>
+                <div style={{ fontSize: "12px", color: COLORS.ui.textPrimary }}>
+                  {likeRatio ? (
+                    <div>• Like Ratio: <strong>{(likeRatio * 100).toFixed(2)}%</strong></div>
+                  ) : (
+                    <div>• Like Ratio: <strong>N/A</strong> (no engagement data available)</div>
+                  )}
+                </div>
+              </div>
+              
+              {/* Metric 5: Content Freshness */}
+              <div style={{ marginBottom: "8px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                  <div>
+                    <div style={{ fontSize: "14px", fontWeight: "700", color: COLORS.ui.textPrimary }}>
+                      🔄 Content Freshness
+                    </div>
+                    <div style={{ fontSize: "11px", color: avgGapDays ? COLORS.medium.primary : COLORS.ui.textSecondary, fontWeight: "600", marginTop: "2px" }}>
+                      {getFreshnessLabel(avgGapDays)}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: "24px", fontWeight: "700", color: metrics.content_freshness?.score >= 70 ? COLORS.high.primary : COLORS.medium.primary }}>
+                    {Math.round(metrics.content_freshness?.score || 0)}
+                  </div>
+                </div>
+                <div style={{ fontSize: "11px", color: COLORS.ui.textSecondary, fontStyle: "italic", marginBottom: "8px" }}>
+                  Dead channels shouldn't be rated 'credible'. Active creators provide current, relevant information.
+                </div>
+                <div style={{ fontSize: "11px", color: COLORS.ui.textSecondary, marginBottom: "6px" }}>
+                  Formula: Average upload gap in days, inverted and scaled (shorter gap = higher score)
+                </div>
+                <div style={{ fontSize: "12px", color: COLORS.ui.textPrimary }}>
+                  <div>• Average Upload Gap: <strong>{avgGapDays ? `${avgGapDays.toFixed(1)} days` : "N/A"}</strong></div>
+                  <div style={{ fontSize: "10px", color: COLORS.ui.textSecondary, marginTop: "4px" }}>
+                    (&lt;7d = Daily | &lt;30d = Weekly | &lt;90d = Monthly | &gt;90d = Dormant)
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
     )
   }
 
-  // Render OLD format (legacy support)
-  return (
-    <div>
-      {/* Channel Credibility */}
-      <div style={{ marginBottom: "32px" }}>
-        <h3
-          style={{
-            margin: "0 0 16px 0",
-            fontSize: "16px",
-            fontWeight: "600",
-            color: COLORS.ui.textPrimary
-          }}>
-          Channel Trust
-        </h3>
-
-        {/* Note: Factor scores are normalized percentages (0-100) representing relative weight/importance 
-            in credibility calculation, NOT raw values. For example, 300K subscribers might show as 30% 
-            because it represents moderate weight in the overall credibility score calculation. 
-            See "Value" column for actual raw values. */}
-
-        {/* Overall Score */}
-        <div style={{ textAlign: "center", marginBottom: "24px" }}>
-          <div style={{ 
-            display: "inline-flex", 
-            alignItems: "center", 
-            gap: "12px",
-            padding: "16px 24px",
-            backgroundColor: COLORS.neutral.light,
-            borderRadius: "12px",
-            border: `2px solid ${credibilityScore >= 70 ? COLORS.high.primary : credibilityScore >= 40 ? COLORS.medium.primary : COLORS.low.primary}`
-          }}>
-            <div style={{
-              fontSize: "42px",
-              fontWeight: "700",
-              color: credibilityScore >= 70 ? COLORS.high.primary : credibilityScore >= 40 ? COLORS.medium.primary : COLORS.low.primary
+  // Render OLD format (legacy support) - ONLY if not in new format
+  // This prevents showing old credibilityFactors table when new format is available
+  if (!isNewFormat) {
+    return (
+      <div>
+        {/* Channel Credibility */}
+        <div style={{ marginBottom: "32px" }}>
+          <h3
+            style={{
+              margin: "0 0 16px 0",
+              fontSize: "16px",
+              fontWeight: "600",
+              color: COLORS.ui.textPrimary
             }}>
-              {credibilityScore}
-            </div>
-            <div style={{ textAlign: "left" }}>
-              <div style={{ fontSize: "11px", color: COLORS.ui.textSecondary, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                Channel Trust
+            Channel Trust
+          </h3>
+
+          {/* Note: Factor scores are normalized percentages (0-100) representing relative weight/importance 
+              in credibility calculation, NOT raw values. For example, 300K subscribers might show as 30% 
+              because it represents moderate weight in the overall credibility score calculation. 
+              See "Value" column for actual raw values. */}
+
+          {/* Overall Score */}
+          <div style={{ textAlign: "center", marginBottom: "24px" }}>
+            <div style={{ 
+              display: "inline-flex", 
+              alignItems: "center", 
+              gap: "12px",
+              padding: "16px 24px",
+              backgroundColor: COLORS.neutral.light,
+              borderRadius: "12px",
+              border: `2px solid ${credibilityScore >= 70 ? COLORS.high.primary : credibilityScore >= 40 ? COLORS.medium.primary : COLORS.low.primary}`
+            }}>
+              <div style={{
+                fontSize: "42px",
+                fontWeight: "700",
+                color: credibilityScore >= 70 ? COLORS.high.primary : credibilityScore >= 40 ? COLORS.medium.primary : COLORS.low.primary
+              }}>
+                {credibilityScore}
               </div>
-              <div style={{ fontSize: "14px", fontWeight: "600", color: COLORS.ui.textPrimary }}>
-                out of 100
+              <div style={{ textAlign: "left" }}>
+                <div style={{ fontSize: "11px", color: COLORS.ui.textSecondary, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  Channel Trust
+                </div>
+                <div style={{ fontSize: "14px", fontWeight: "600", color: COLORS.ui.textPrimary }}>
+                  out of 100
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Spider/Radar Chart */}
-        {credibilityFactors.length > 0 && (() => {
+          {/* Spider/Radar Chart */}
+          {credibilityFactors.length > 0 && (() => {
           // Map old factor names to new metric names
           const factorNameMapping: Record<string, string> = {
             'subscriberCount': 'Audience Reach',
@@ -716,6 +760,14 @@ export const ChannelCredibilitySubTab = ({
           )
         })()}
       </div>
+    </div>
+  )
+  }
+  
+  // If neither old nor new format, show error message
+  return (
+    <div style={{ padding: "20px", textAlign: "center", color: COLORS.ui.textSecondary }}>
+      <p>Channel trust data is not available in a recognized format.</p>
     </div>
   )
 }
