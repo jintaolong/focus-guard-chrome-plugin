@@ -126,8 +126,8 @@ export const ChannelCredibilitySubTab = ({
     const ageYears = ageDays / 365.25
     const hasTopicLabels = focusData.has_topic_labels || false
     
-    const primaryCategory = focusData.primary_category
-    const likeRatio = loyaltyData.like_ratio
+    const primaryCategory = focusData.primary_category_name
+    const likeRatio = loyaltyData.ratio
     const avgGapDays = freshnessData.avg_gap_days
 
     return (
