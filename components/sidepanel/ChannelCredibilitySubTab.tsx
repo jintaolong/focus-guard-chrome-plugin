@@ -128,6 +128,7 @@ export const ChannelCredibilitySubTab = ({
     
     const primaryCategory = focusData.primary_category_name
     const likeRatio = loyaltyData.ratio
+    const totalLikes = loyaltyData.total_likes ?? null
     const avgGapDays = freshnessData.avg_gap_days
 
     return (
@@ -400,7 +401,7 @@ export const ChannelCredibilitySubTab = ({
                     <div style={{ fontSize: "14px", fontWeight: "700", color: COLORS.ui.textPrimary }}>
                       ❤️ Community Loyalty
                     </div>
-                    <div style={{ fontSize: "11px", color: likeRatio ? COLORS.medium.primary : COLORS.ui.textSecondary, fontWeight: "600", marginTop: "2px" }}>
+                    <div style={{ fontSize: "11px", color: ((likeRatio !== null && likeRatio !== undefined) || (totalLikes !== null && totalLikes !== undefined)) ? COLORS.medium.primary : COLORS.ui.textSecondary, fontWeight: "600", marginTop: "2px" }}>
                       {getLoyaltyLabel(likeRatio)}
                     </div>
                   </div>
@@ -415,8 +416,15 @@ export const ChannelCredibilitySubTab = ({
                   Formula: Like-to-view ratio clamped between 0.5% (floor) and 5% (ceiling), scaled to 0-100
                 </div>
                 <div style={{ fontSize: "12px", color: COLORS.ui.textPrimary }}>
-                  {likeRatio ? (
-                    <div>• Like Ratio: <strong>{(likeRatio * 100).toFixed(2)}%</strong></div>
+                  {((likeRatio !== null && likeRatio !== undefined) || (totalLikes !== null && totalLikes !== undefined)) ? (
+                    (likeRatio !== null && likeRatio !== undefined) ? (
+                      <div>
+                        • Like Ratio: <strong>{(likeRatio * 100).toFixed(2)}%</strong>
+                        {totalLikes ? <span> • <strong>{formatNumber(totalLikes)}</strong> likes</span> : null}
+                      </div>
+                    ) : (
+                      <div>• Total Likes: <strong>{formatNumber(totalLikes)}</strong></div>
+                    )
                   ) : (
                     <div>• Like Ratio: <strong>N/A</strong> (no engagement data available)</div>
                   )}
