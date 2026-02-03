@@ -151,7 +151,18 @@ const ContentScript = () => {
   const [isLoading, setIsLoading] = useState(false)
   const [userStats, setUserStats] = useState<UserStats | null>(null)
   const [isYouTubeHome, setIsYouTubeHome] = useState(false)
-  const [settings, setSettings] = useState<FocusGuardSettings | null>(null)
+  // Initialize settings with defaults to ensure toggle button always shows
+  const [settings, setSettings] = useState<FocusGuardSettings | null>({
+    isEnabled: true,
+    videoAnalysis: {
+      showPreWatchPopover: true,
+      autoAnalyze: false,
+      botDetectionEnabled: true,
+      showCachedVerdict: false,
+      confirmCreditUsage: true,
+      maxCommentDepth: 100
+    }
+  })
 
   // FR-102 & FR-103: Watch page analysis state
   const [currentVideoId, setCurrentVideoId] = useState<string | null>(null)
@@ -205,7 +216,7 @@ const ContentScript = () => {
 
   useEffect(() => {
     // Check if we're on YouTube home page or watch page
-    console.log("Comment Verdict content script loaded");
+    console.log("🎬 Comment Verdict content script loaded - settings:", settings);
     // Print build-time debug flag so we can confirm whether the bundle
     // was built with `COMMENT_VERDICT_DEBUG=1`.
     console.log("Comment Verdict BUILD_DEBUG=", BUILD_DEBUG)
@@ -344,13 +355,43 @@ const ContentScript = () => {
     // Optionally load user data for richer UI during development / debug
     loadUserStats()
     loadAnalysisHistory()
-    // Load saved settings (do not assume defaults here to avoid unexpectedly hiding feed)
+    // Load saved settings with defaults if not present
     const loadSettings = async () => {
       try {
         const result = await chrome.storage.sync.get(["settings"])
-        if (result.settings) setSettings(result.settings)
+        if (result.settings) {
+          setSettings(result.settings)
+        } else {
+          // Set default settings if none exist
+          const defaultSettings: FocusGuardSettings = {
+            isEnabled: true,
+            videoAnalysis: {
+              showPreWatchPopover: true,
+              autoAnalyze: false,
+              botDetectionEnabled: true,
+              showCachedVerdict: false,
+              confirmCreditUsage: true,
+              maxCommentDepth: 100
+            }
+          }
+          setSettings(defaultSettings)
+          // Save defaults to storage
+          await chrome.storage.sync.set({ settings: defaultSettings })
+        }
       } catch (e) {
-        // ignore
+        console.error("Comment Verdict: Failed to load settings, using defaults", e)
+        // Fallback to defaults even if storage fails
+        setSettings({
+          isEnabled: true,
+          videoAnalysis: {
+            showPreWatchPopover: true,
+            autoAnalyze: false,
+            botDetectionEnabled: true,
+            showCachedVerdict: false,
+            confirmCreditUsage: true,
+            maxCommentDepth: 100
+          }
+        })
       }
     }
 
@@ -536,7 +577,7 @@ const ContentScript = () => {
         console.log("Comment Verdict: ⚡ Fetching secondary data in background...")
         const secondaryPromise = Promise.allSettled([
           FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: false }),
-          FocusGuardAPI.analyzeChannelCredibilityV2(videoId, false),
+          FocusGuardAPI.analyzeChannelTrust(videoId, false),
           FocusGuardAPI.analyzeTopicClusteringV2(videoId, false).catch(err => {
             console.warn("Topic clustering failed (non-blocking):", err)
             return null
@@ -603,6 +644,10 @@ const ContentScript = () => {
         console.log("🔍 DEBUG sentimentData.filtering_metadata:", sentimentData?.filtering_metadata)
         console.log("Comment Verdict: Summary data on landing:", summaryData)
         console.log("Comment Verdict: Credibility data on landing:", credibilityData)
+        console.log("🔍 DEBUG credibilityData keys:", credibilityData ? Object.keys(credibilityData) : 'null')
+        console.log("🔍 DEBUG credibilityData.metrics:", credibilityData?.metrics)
+        console.log("🔍 DEBUG credibilityData.raw_metrics:", credibilityData?.raw_metrics)
+        console.log("🔍 DEBUG credibilityData.metric_details:", credibilityData?.metric_details)
         console.log("Comment Verdict: Human Likeness data on landing:", humanLikenessData)
         console.log("Comment Verdict: Topic Clusters data on landing:", topicClustersData)
         console.log("Comment Verdict: Topic Gaps data on landing:", topicGapsData)
@@ -640,14 +685,35 @@ const ContentScript = () => {
             claims: relevancyData?.data?.claims || (summaryData as any)?.clickbaitVerdict?.claims || (summaryData as any)?.claims || [],
             onLineSummary: (summaryData as any)?.one_line_summary || (summaryData as any)?.onLineSummary
           },
-          channelCredibility: credibilityData ? {
-            score: credibilityData.score,
-            factors: credibilityData.normalized_factors ? Object.entries(credibilityData.normalized_factors).map(([name, weight]) => ({
-              name,
-              weight,
-              value: credibilityData.factual_factors?.[name] ?? 'N/A'
-            })) : []
-          } : undefined,
+          channelCredibility: credibilityData ? (() => {
+            // Handle both new (trust_score + metrics) and old (score + normalized_factors) formats
+            if ('trust_score' in credibilityData && 'metrics' in credibilityData) {
+              // NEW format: ChannelTrustResponse
+              return {
+                score: credibilityData.trust_score,
+                factors: Object.entries(credibilityData.metrics).map(([name, metricData]: [string, any]) => ({
+                  name,
+                  weight: metricData.normalized_value,
+                  value: metricData.score.toString()
+                })),
+                // Include full new format data
+                metrics: credibilityData.metrics,
+                trust_score: credibilityData.trust_score,
+                raw_metrics: credibilityData.raw_metrics,
+                metric_details: credibilityData.metric_details
+              }
+            } else {
+              // OLD format: ChannelCredibilityResponseV2
+              return {
+                score: credibilityData.score,
+                factors: credibilityData.normalized_factors ? Object.entries(credibilityData.normalized_factors).map(([name, weight]) => ({
+                  name,
+                  weight,
+                  value: credibilityData.factual_factors?.[name] ?? 'N/A'
+                })) : []
+              }
+            }
+          })() : undefined,
           key_takeaways: (summaryData as any)?.key_takeaways || (summaryData as any)?.keyTakeaways || []
         }
 
@@ -787,14 +853,35 @@ const ContentScript = () => {
           executiveSummary: summaryData?.summary_paragraph ?? null,
           maxCommentsRequested: summaryData?.max_comments_requested ?? null,
           actualCommentsFetched: summaryData?.actual_comments_fetched ?? null,
-          channelCredibility: credibilityData ? {
-            score: credibilityData.score,
-            factors: credibilityData.normalized_factors ? Object.entries(credibilityData.normalized_factors).map(([name, weight]) => ({
-              name,
-              weight,
-              value: credibilityData.factual_factors?.[name] ?? 'N/A'
-            })) : []
-          } : null,
+          channelCredibility: credibilityData ? (() => {
+            // Handle both new (trust_score + metrics) and old (score + normalized_factors) formats
+            if ('trust_score' in credibilityData && 'metrics' in credibilityData) {
+              // NEW format: ChannelTrustResponse
+              return {
+                score: credibilityData.trust_score,
+                factors: Object.entries(credibilityData.metrics).map(([name, metricData]: [string, any]) => ({
+                  name,
+                  weight: metricData.normalized_value,
+                  value: metricData.score.toString()
+                })),
+                // Include full new format data
+                metrics: credibilityData.metrics,
+                trust_score: credibilityData.trust_score,
+                raw_metrics: credibilityData.raw_metrics,
+                metric_details: credibilityData.metric_details
+              }
+            } else {
+              // OLD format: ChannelCredibilityResponseV2
+              return {
+                score: credibilityData.score,
+                factors: credibilityData.normalized_factors ? Object.entries(credibilityData.normalized_factors).map(([name, weight]) => ({
+                  name,
+                  weight,
+                  value: credibilityData.factual_factors?.[name] ?? 'N/A'
+                })) : []
+              }
+            }
+          })() : null,
           sentiment: sentimentDistribution ? {
             overall: (() => {
               const positiveCount = typeof sentimentData!.data.positive === 'number' ? sentimentData!.data.positive : (sentimentData!.data.positive?.count ?? 0)
@@ -1227,7 +1314,7 @@ const ContentScript = () => {
           const results = await Promise.allSettled([
             FocusGuardAPI.analyzeRelevancyV2(videoId, false),
             FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: false }),
-            FocusGuardAPI.analyzeChannelCredibilityV2(videoId, false),
+            FocusGuardAPI.analyzeChannelTrust(videoId, false),
             FocusGuardAPI.analyzeTopicClusteringV2(videoId, false),
             FocusGuardAPI.analyzeTopicGapV2(videoId, false)
           ])
@@ -1313,7 +1400,7 @@ const ContentScript = () => {
         // Step 2: Fetch remaining data in parallel (after summary is guaranteed to exist)
         const remainingResults = await Promise.allSettled([
           sentimentData ? Promise.resolve(sentimentData) : FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: false }),
-          credibilityData ? Promise.resolve(credibilityData) : FocusGuardAPI.analyzeChannelCredibilityV2(videoId, false),
+          credibilityData ? Promise.resolve(credibilityData) : FocusGuardAPI.analyzeChannelTrust(videoId, false),
           topicClustersData ? Promise.resolve(topicClustersData) : FocusGuardAPI.analyzeTopicClusteringV2(videoId, false),
           topicGapsData ? Promise.resolve(topicGapsData) : FocusGuardAPI.analyzeTopicGapV2(videoId, false)
         ])
@@ -1418,14 +1505,35 @@ const ContentScript = () => {
           claims: relevancyData?.data?.claims || (summaryData as any)?.clickbaitVerdict?.claims || (summaryData as any)?.claims || [],
           onLineSummary: (summaryData as any)?.one_line_summary || (summaryData as any)?.onLineSummary
         },
-        channelCredibility: credibilityData ? {
-          score: credibilityData.score,
-          factors: credibilityData.normalized_factors ? Object.entries(credibilityData.normalized_factors).map(([name, weight]) => ({
-            name,
-            weight,
-            value: credibilityData.factual_factors?.[name] ?? 'N/A'
-          })) : []
-        } : undefined,
+        channelCredibility: credibilityData ? (() => {
+          // Handle both new (trust_score + metrics) and old (score + normalized_factors) formats
+          if ('trust_score' in credibilityData && 'metrics' in credibilityData) {
+            // NEW format: ChannelTrustResponse
+            return {
+              score: credibilityData.trust_score,
+              factors: Object.entries(credibilityData.metrics).map(([name, metricData]: [string, any]) => ({
+                name,
+                weight: metricData.normalized_value,
+                value: metricData.score.toString()
+              })),
+              // Include full new format data
+              metrics: credibilityData.metrics,
+              trust_score: credibilityData.trust_score,
+              raw_metrics: credibilityData.raw_metrics,
+              metric_details: credibilityData.metric_details
+            }
+          } else {
+            // OLD format: ChannelCredibilityResponseV2
+            return {
+              score: credibilityData.score,
+              factors: credibilityData.normalized_factors ? Object.entries(credibilityData.normalized_factors).map(([name, weight]) => ({
+                name,
+                weight,
+                value: credibilityData.factual_factors?.[name] ?? 'N/A'
+              })) : []
+            }
+          }
+        })() : undefined,
         key_takeaways: (summaryData as any)?.key_takeaways || (summaryData as any)?.keyTakeaways || []
       }
       
@@ -1566,14 +1674,35 @@ const ContentScript = () => {
         // Comment count tracking
         maxCommentsRequested: (resultData as any)?.max_comments_requested ?? summaryData?.max_comments_requested ?? null,
         actualCommentsFetched: (resultData as any)?.actual_comments_fetched ?? summaryData?.actual_comments_fetched ?? null,
-        channelCredibility: credibilityData ? {
-          score: credibilityData.score,
-          factors: credibilityData.normalized_factors ? Object.entries(credibilityData.normalized_factors).map(([name, weight]) => ({
-            name,
-            weight,
-            value: credibilityData.factual_factors?.[name] ?? 'N/A'
-          })) : []
-        } : null,
+        channelCredibility: credibilityData ? (() => {
+          // Handle both new (trust_score + metrics) and old (score + normalized_factors) formats
+          if ('trust_score' in credibilityData && 'metrics' in credibilityData) {
+            // NEW format: ChannelTrustResponse
+            return {
+              score: credibilityData.trust_score,
+              factors: Object.entries(credibilityData.metrics).map(([name, metricData]: [string, any]) => ({
+                name,
+                weight: metricData.normalized_value,
+                value: metricData.score.toString()
+              })),
+              // Include full new format data
+              metrics: credibilityData.metrics,
+              trust_score: credibilityData.trust_score,
+              raw_metrics: credibilityData.raw_metrics,
+              metric_details: credibilityData.metric_details
+            }
+          } else {
+            // OLD format: ChannelCredibilityResponseV2
+            return {
+              score: credibilityData.score,
+              factors: credibilityData.normalized_factors ? Object.entries(credibilityData.normalized_factors).map(([name, weight]) => ({
+                name,
+                weight,
+                value: credibilityData.factual_factors?.[name] ?? 'N/A'
+              })) : []
+            }
+          }
+        })() : null,
         // Minimal placeholders for other tabs
         sentiment: sentimentDistribution ? {
           overall: (() => {
@@ -1793,7 +1922,11 @@ const ContentScript = () => {
 
   // FR-102: Render Side Panel on watch page
   // Only render if Comment Verdict is enabled
-  if (onWatchPage && settings?.isEnabled) {
+  // Use ?? true as failsafe to show toggle button even if settings somehow becomes null
+  const shouldRender = onWatchPage && (settings?.isEnabled ?? true)
+  console.log("🔍 Content render check: onWatchPage=", onWatchPage, "settings?.isEnabled=", settings?.isEnabled, "shouldRender=", shouldRender)
+  
+  if (shouldRender) {
     return (
       <>
         {/* FR-101: Pre-Watch Popover */}

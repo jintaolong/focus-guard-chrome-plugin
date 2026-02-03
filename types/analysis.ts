@@ -87,6 +87,12 @@ export interface VideoAnalysis {
       score?: number // 0-100
       factors?: Array<{ name: string; value: string; weight: number }>
     }
+    // NEW: Channel Trust in summary
+    channelTrust?: {
+      trust_score: number
+      metrics: any
+      raw_metrics?: any
+    }
     persona?: string // "viewer", "creator", or "analyst"
     key_takeaways?: string[] | null
   }
@@ -152,13 +158,112 @@ export interface VideoAnalysis {
     tierRestriction?: TierRestriction // Added for tier gating
   }
 
-  // Channel credibility (can appear at top level too)
+  // Channel credibility (legacy - deprecated, but still populated for backward compatibility)
   channelCredibility?: {
     score?: number // 0-100
     verifiedStatus?: boolean
     history?: string
     bias?: string
     factors?: Array<{ name: string; value: string; weight: number }>
+    // NEW: Include full new format data when available
+    metrics?: {
+      audience_reach: {
+        score: number
+        raw_value: any
+        normalized_value: number
+        description: string
+        breakdown?: any
+      }
+      creator_authority: {
+        score: number
+        raw_value: any
+        normalized_value: number
+        description: string
+        breakdown?: any
+      }
+      niche_focus: {
+        score: number
+        raw_value: any
+        normalized_value: number
+        description: string
+        breakdown?: any
+      }
+      community_loyalty: {
+        score: number
+        raw_value: any
+        normalized_value: number
+        description: string
+        breakdown?: any
+      }
+      content_freshness: {
+        score: number
+        raw_value: any
+        normalized_value: number
+        description: string
+        breakdown?: any
+      }
+    }
+    trust_score?: number
+    raw_metrics?: any
+    metric_details?: any
+  }
+
+  // NEW: Channel Trust (5 metrics system)
+  channelTrust?: {
+    channel_id: string
+    channel_name: string
+    trust_score: number // 0-100
+    metrics: {
+      audience_reach: {
+        score: number
+        raw_value: any
+        normalized_value: number
+        description: string
+        breakdown?: any
+      }
+      creator_authority: {
+        score: number
+        raw_value: any
+        normalized_value: number
+        description: string
+        breakdown?: any
+      }
+      niche_focus: {
+        score: number
+        raw_value: any
+        normalized_value: number
+        description: string
+        breakdown?: any
+      }
+      community_loyalty: {
+        score: number
+        raw_value: any
+        normalized_value: number
+        description: string
+        breakdown?: any
+      }
+      content_freshness: {
+        score: number
+        raw_value: any
+        normalized_value: number
+        description: string
+        breakdown?: any
+      }
+    }
+    raw_metrics?: {
+      channel: {
+        channel_id: string
+        subscriber_count: number
+        video_count: number
+        view_count: number
+        account_age_days: number
+        has_topic_labels: boolean
+        topic_categories: string[]
+      }
+      recent_videos?: any[]
+    }
+    computed_at?: string | null
+    api_calls_used?: number
   }
 
   reportInfo?: {

@@ -18,6 +18,7 @@ import type {
   SentimentResponseV2,
   TopicClusterResponseV2,
   TopicGapResponseV2,
+  ChannelTrustResponse,
   ChannelCredibilityResponseV2,
   HumanLikenessResponseV2,
   RelevancyResponseV2,
@@ -259,9 +260,20 @@ export class FocusGuardAPI {
 
   /**
    * Get channel credibility analysis (V2 - cached-first)
+   * @deprecated Use analyzeChannelTrust instead
    */
   static async analyzeChannelCredibilityV2(videoId: string, forceRefresh = false): Promise<ChannelCredibilityResponseV2> {
     return this.fetchWithAuth<ChannelCredibilityResponseV2>("/videos/channel-credibility/v2", {
+      method: "POST",
+      body: JSON.stringify({ video_id: videoId, force_refresh: forceRefresh })
+    })
+  }
+
+  /**
+   * Get channel trust analysis (NEW - 5 metrics system)
+   */
+  static async analyzeChannelTrust(videoId: string, forceRefresh = false): Promise<ChannelTrustResponse> {
+    return this.fetchWithAuth<ChannelTrustResponse>("/videos/channel-trust", {
       method: "POST",
       body: JSON.stringify({ video_id: videoId, force_refresh: forceRefresh })
     })
@@ -518,7 +530,7 @@ export class FocusGuardAPI {
         // Fetch additional components in parallel (including relevancy)
         const [sentiment, credibility, humanLikeness, topicClusters, topicGaps, relevancy] = await Promise.all([
           this.analyzeSentimentV2({ video_id: videoId, force_refresh: false }),
-          this.analyzeChannelCredibilityV2(videoId, false),
+          this.analyzeChannelTrust(videoId, false),
           this.analyzeHumanLikenessV2(videoId, false),
           this.analyzeTopicClusteringV2(videoId, false),
           this.analyzeTopicGapV2(videoId, false),
@@ -587,7 +599,7 @@ export class FocusGuardAPI {
 
     const [sentiment, credibility, humanLikeness, topicClusters, topicGaps, relevancy] = await Promise.all([
       this.analyzeSentimentV2({ video_id: videoId, force_refresh: false }),
-      this.analyzeChannelCredibilityV2(videoId, false),
+      this.analyzeChannelTrust(videoId, false),
       this.analyzeHumanLikenessV2(videoId, false),
       this.analyzeTopicClusteringV2(videoId, false),
       this.analyzeTopicGapV2(videoId, false),
@@ -676,12 +688,15 @@ export class FocusGuardAPI {
     videoId: string,
     summary: SummaryResponseV2,
     sentiment: SentimentResponseV2,
-    credibility: ChannelCredibilityResponseV2,
+    credibility: ChannelTrustResponse | ChannelCredibilityResponseV2,
     humanLikeness: HumanLikenessResponseV2,
     topicClusters: TopicClusterResponseV2,
     topicGaps: TopicGapResponseV2,
     relevancy?: RelevancyResponseV2
   ): VideoAnalysis {
+    console.log('🔄 TRANSFORM: transformToVideoAnalysis called for videoId:', videoId);
+    console.log('🔄 TRANSFORM: credibility parameter:', credibility);
+    
     const normalizeConfidence = (v: number) => {
       if (!Number.isFinite(v)) return 0
       if (v > 1.5) return v / 100
@@ -828,17 +843,49 @@ export class FocusGuardAPI {
         botDetectionEnabled: true
       },
 
-      channelCredibility: {
-        score: credibility.score,
-        verifiedStatus: false,
-        history: credibility.channel_name || "Unknown",
-        bias: "Unknown",
-        factors: Object.entries(credibility.normalized_factors).map(([name, value]) => ({
-          name,
-          value: value.toString(),
-          weight: value
-        }))
-      },
+      channelCredibility: (() => {
+        console.log('🔍 TRANSFORM DEBUG - credibility object:', credibility);
+        console.log('🔍 TRANSFORM DEBUG - has trust_score?', 'trust_score' in credibility);
+        console.log('🔍 TRANSFORM DEBUG - has metrics?', 'metrics' in credibility);
+        console.log('🔍 TRANSFORM DEBUG - credibility keys:', Object.keys(credibility));
+        
+        // Check if it's the new ChannelTrustResponse format
+        if ('trust_score' in credibility && 'metrics' in credibility) {
+          const trustResponse = credibility as ChannelTrustResponse;
+          console.log('✅ TRANSFORM: Using NEW format');
+          return {
+            score: trustResponse.trust_score,
+            verifiedStatus: false,
+            history: trustResponse.channel_id || "Unknown",
+            bias: "Unknown",
+            factors: Object.entries(trustResponse.metrics).map(([name, metricData]) => ({
+              name,
+              value: metricData.score.toString(),
+              weight: metricData.normalized_value
+            })),
+            // Store the full new format data for the UI
+            metrics: trustResponse.metrics,
+            trust_score: trustResponse.trust_score,
+            raw_metrics: trustResponse.raw_metrics,
+            metric_details: trustResponse.metric_details
+          };
+        } else {
+          // Old ChannelCredibilityResponseV2 format
+          console.log('⚠️ TRANSFORM: Using OLD format');
+          const oldResponse = credibility as ChannelCredibilityResponseV2;
+          return {
+            score: oldResponse.score,
+            verifiedStatus: false,
+            history: oldResponse.channel_name || "Unknown",
+            bias: "Unknown",
+            factors: Object.entries(oldResponse.normalized_factors || {}).map(([name, value]) => ({
+              name,
+              value: value.toString(),
+              weight: value
+            }))
+          };
+        }
+      })(),
 
       reportInfo: {
         availableFormats: ["PDF", "TXT"],
