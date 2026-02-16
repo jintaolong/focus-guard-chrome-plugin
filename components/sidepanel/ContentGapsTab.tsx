@@ -278,6 +278,7 @@ export const ContentGapsTab = ({ analysis, onBotFilterChange }: ContentGapsTabPr
                 key={gap.id}
                 insight={gap}
                 showBotScores={botFilterEnabled}
+                videoId={analysis.videoId}
               />
             ))}
           </>

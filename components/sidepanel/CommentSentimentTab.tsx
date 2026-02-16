@@ -5,6 +5,7 @@ import { useState, useRef, useEffect } from "react"
 import type { VideoAnalysis } from "~types/analysis"
 import { COLORS, getSentimentColor } from "~lib/colors"
 import { BlurredContent } from "~components/UpgradePrompt"
+import { CommentDisplay } from "~components/CommentDisplay"
 
 interface CommentSentimentTabProps {
   analysis: VideoAnalysis
@@ -271,7 +272,6 @@ export const CommentSentimentTab = ({ analysis }: CommentSentimentTabProps) => {
 // Helper to render example comments for each sentiment type
 function renderExampleComments(analysis: VideoAnalysis) {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({})
-  const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({})
   
   const sentiment = (analysis as any)?.sentiment
   const exampleComments = sentiment?.distribution?.exampleComments
@@ -292,10 +292,6 @@ function renderExampleComments(analysis: VideoAnalysis) {
 
   const toggleSection = (type: string) => {
     setExpandedSections(prev => ({ ...prev, [type]: !prev[type] }))
-  }
-
-  const toggleComment = (commentId: string) => {
-    setExpandedComments(prev => ({ ...prev, [commentId]: !prev[commentId] }))
   }
 
   return (
@@ -338,47 +334,17 @@ function renderExampleComments(analysis: VideoAnalysis) {
             </button>
             {isExpanded && (
               <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                {topComments.map((comment: any, idx: number) => {
-                  const commentId = `${type}-${idx}`
-                  const commentText = comment.text || comment
-                  const isLong = commentText.length > 150
-                  const isCommentExpanded = expandedComments[commentId]
-                  const displayText = isLong && !isCommentExpanded 
-                    ? commentText.substring(0, 150) + "..." 
-                    : commentText
-
-                  return (
-                    <div
-                      key={idx}
-                      style={{
-                        padding: "10px 12px",
-                        backgroundColor: COLORS.ui.background,
-                        borderLeft: `3px solid ${COLORS[getSentimentColor(type as any)].primary}`,
-                        borderRadius: "4px",
-                        fontSize: "13px",
-                        lineHeight: "1.5",
-                        color: COLORS.ui.textPrimary
-                      }}>
-                      {displayText}
-                      {isLong && (
-                        <button
-                          onClick={() => toggleComment(commentId)}
-                          style={{
-                            marginLeft: "8px",
-                            padding: "2px 6px",
-                            fontSize: "11px",
-                            color: COLORS.neutral.primary,
-                            backgroundColor: "transparent",
-                            border: "none",
-                            cursor: "pointer",
-                            textDecoration: "underline"
-                          }}>
-                          {isCommentExpanded ? "Show less" : "Show more"}
-                        </button>
-                      )}
-                    </div>
-                  )
-                })}
+                {topComments.map((comment: any, idx: number) => (
+                  <CommentDisplay
+                    key={idx}
+                    comment={comment}
+                    videoId={analysis.videoId}
+                    maxLength={150}
+                    borderColor={COLORS[getSentimentColor(type as any)].primary}
+                    showLikes={true}
+                    showAuthor={true}
+                  />
+                ))}
               </div>
             )}
           </div>

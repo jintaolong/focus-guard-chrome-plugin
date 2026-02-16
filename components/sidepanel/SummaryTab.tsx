@@ -105,6 +105,7 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
             trustScore={trustScore}
             verdictColor={verdictColor}
             claimsList={claimsList}
+            videoId={analysis.videoId}
           />
         )}
 
