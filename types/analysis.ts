@@ -13,21 +13,40 @@ export interface VideoAnalysisStatus {
   isAnalyzing: boolean
 }
 
+// CommentObject from V2 API - GDPR compliant comment structure
+export interface CommentObject {
+  id: number
+  text: string
+  author_display_name: string | null
+  author_channel_id: string | null
+  likes: number
+  created_at: string | null
+  youtube_comment_id: string | null
+  is_cleaned?: boolean // True if comment was deleted (30-day retention)
+}
+
 // Topic Clustering Types (Enhanced)
 export interface SegmentHighlight {
   parent_comment_text: string
   highlighted_segment: string
   char_range: [number, number]
   is_full_comment: boolean
-  user: string
+  user: string | null
   likes: number
+  // V2 API additions for author attribution
+  author_display_name?: string | null
+  author_channel_id?: string | null
+  youtube_comment_id?: string | null
+  comment_id?: number
+  created_at?: string | null
+  is_cleaned?: boolean
 }
 
 export interface TopicCluster {
   cluster_id: number
   statement: string
   count: number
-  supporting_quotes: string[]
+  supporting_quotes: Array<string | CommentObject> // Updated to support both formats
   insight_score: number
   category: string
   reasoning: string
@@ -141,12 +160,18 @@ export interface VideoAnalysis {
       mixed?: number
       totalCommentsAnalyzed?: number
       exampleComments?: {
-        positive?: string[]
-        neutral?: string[]
-        negative?: string[]
+        positive?: Array<string | CommentObject>
+        neutral?: Array<string | CommentObject>
+        negative?: Array<string | CommentObject>
       }
     }
     tierRestriction?: TierRestriction // Added for tier gating
+    filteringMetadata?: {
+      total_input?: number
+      filtered_count?: number
+      after_layer1?: number
+      after_layer2?: number
+    }
   }
 
   // Content gaps (keep original name and shape)
@@ -156,6 +181,12 @@ export interface VideoAnalysis {
     unansweredQuestions?: InsightWithComments[]
     botDetectionEnabled?: boolean
     tierRestriction?: TierRestriction // Added for tier gating
+    filteringMetadata?: {
+      total_input?: number
+      after_layer1?: number
+      after_layer2?: number
+      filtered_question_count?: number
+    }
   }
 
   // Channel credibility (legacy - deprecated, but still populated for backward compatibility)
@@ -282,7 +313,7 @@ export interface InsightWithComments {
   statement: string
   type: "benefit" | "issue" | "gap" // determines color coding
   commentCount: number
-  supportingComments: Comment[]
+  supportingComments: Array<Comment | CommentObject> // Updated to support both formats
   isExpanded?: boolean
 }
 
@@ -292,6 +323,13 @@ export interface Comment {
   humanLikenessScore: number // 0-10 for bot detection
   timestamp?: string
   author?: string // redacted
+  // V2 API additions
+  author_display_name?: string | null
+  author_channel_id?: string | null
+  youtube_comment_id?: string | null
+  likes?: number
+  created_at?: string | null
+  is_cleaned?: boolean
 }
 
 // Analysis History (Tab 4)
