@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 
 import { AccountInfo } from "~components/popup/AccountInfo"
 import { LoginForm } from "~components/popup/LoginForm"
@@ -43,91 +43,35 @@ function IndexPopup() {
   })
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const loadUserDataInFlight = useRef<Promise<void> | null>(null)
+  const lastLoadTime = useRef(0)
+  const settingsRef = useRef(settings)
 
   useEffect(() => {
-    console.log("Comment Verdict popup loaded");
-    // Test storage first (defensive: some test environments may not expose this helper)
-    if (typeof AuthService.testStorage === "function") {
-      Promise.resolve()
-        .then(() => AuthService.testStorage())
-        .then(() => console.log("Storage test passed"))
-        .catch((err) => console.error("Storage test failed:", err))
-    } else {
-      console.warn("AuthService.testStorage not available in this environment")
-    }
-    loadUserData()
-    
-    // Reload data when popup becomes visible (e.g., user reopens it)
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        console.log("Popup: Became visible, refreshing user data")
-        loadUserData()
-      }
-    }
-    
-    // Also reload on window focus (for when popup is already open but user returns to it)
-    const handleFocus = () => {
-      console.log("Popup: Got focus, refreshing user data")
-      loadUserData()
-    }
-    
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    window.addEventListener('focus', handleFocus)
-    
-    // Listen for storage changes (e.g., OAuth completion in background or portal sync)
-    const storageListener = (changes: any, areaName: string) => {
-      if (areaName === 'sync') {
-        // Check for token, user, or account changes
-        if (changes.focus_guard_access_token || changes.focus_guard_user || changes.account || changes.isAuthenticated) {
-          console.log("Popup: Detected auth change in storage, reloading data")
-          loadUserData()
-        }
-      }
-    }
-    
-    // Listen for runtime messages (e.g., SESSION_EXPIRED or OAUTH_COMPLETE from background)
-    const messageListener = (message: any) => {
-      if (message.type === 'SESSION_EXPIRED') {
-        console.log("Popup: Session expired, logging out")
-        setAccount(null)
-        setError("Your session has expired. Please log in again.")
-        return
-      }
-
-      if (message.type === 'OAUTH_COMPLETE') {
-        console.log('Popup: OAUTH_COMPLETE received, reloading user data')
-        // small delay to allow storage propagation
-        setTimeout(() => {
-          loadUserData()
-        }, 100)
-        return
-      }
-
-      if (message.type === 'AUTH_STATE_CHANGED') {
-        console.log('Popup: AUTH_STATE_CHANGED received, reloading user data', message.isAuthenticated)
-        // Reload user data to reflect new auth state
-        loadUserData()
-        return
-      }
-    }
-    
-    chrome.storage.onChanged.addListener(storageListener)
-    chrome.runtime.onMessage.addListener(messageListener)
-    
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-      window.removeEventListener('focus', handleFocus)
-      chrome.storage.onChanged.removeListener(storageListener)
-      chrome.runtime.onMessage.removeListener(messageListener)
-    }
+    settingsRef.current = settings
   }, [])
 
-  const loadUserData = async () => {
-    try {
-      console.log("Popup: Loading user data...")
+  const loadUserData = useCallback(async (reason: string = "manual") => {
+    const now = Date.now()
+    const minIntervalMs = 1000
+    if (loadUserDataInFlight.current) {
+      console.log("Popup: loadUserData already in progress, skipping", reason)
+      return loadUserDataInFlight.current
+    }
+    if (now - lastLoadTime.current < minIntervalMs) {
+      console.log("Popup: loadUserData throttled", reason)
+      return
+    }
+    lastLoadTime.current = now
+
+    const run = (async () => {
+      try {
+        console.log("Popup: Loading user data...", reason)
+        const currentSettings = settingsRef.current
       
       // Load settings from chrome storage
       const result = await chrome.storage.sync.get(["settings"])
+      const storedSettings = result.settings || currentSettings
       if (result.settings) {
         setSettings(result.settings)
       } else {
@@ -225,18 +169,18 @@ function IndexPopup() {
           setAccount(newAccount)
           
           // Sanitize settings based on current tier
-          const currentMaxCommentDepth = settings.videoAnalysis?.maxCommentDepth ?? 100
+          const currentMaxCommentDepth = storedSettings.videoAnalysis?.maxCommentDepth ?? 100
           const shouldEnforceLimit = tier !== "pro" && currentMaxCommentDepth > 100
           const needsUpdate = result.settings?.videoAnalysis?.confirmCreditUsage === undefined || shouldEnforceLimit
           
           if (needsUpdate) {
             const updatedSettings: FocusGuardSettings = {
-              ...settings,
+              ...storedSettings,
               videoAnalysis: {
-                showPreWatchPopover: settings.videoAnalysis?.showPreWatchPopover ?? true,
-                autoAnalyze: settings.videoAnalysis?.autoAnalyze ?? false,
-                botDetectionEnabled: settings.videoAnalysis?.botDetectionEnabled ?? true,
-                showCachedVerdict: settings.videoAnalysis?.showCachedVerdict ?? false,
+                showPreWatchPopover: storedSettings.videoAnalysis?.showPreWatchPopover ?? true,
+                autoAnalyze: storedSettings.videoAnalysis?.autoAnalyze ?? false,
+                botDetectionEnabled: storedSettings.videoAnalysis?.botDetectionEnabled ?? true,
+                showCachedVerdict: storedSettings.videoAnalysis?.showCachedVerdict ?? false,
                 confirmCreditUsage: tier === "free", // ON for free, OFF for starter/pro
                 maxCommentDepth: tier === "pro" ? currentMaxCommentDepth : Math.min(currentMaxCommentDepth, 100) // Enforce 100 cap for free/starter
               }
@@ -253,14 +197,98 @@ function IndexPopup() {
         console.log("Popup: Not authenticated, setting account to null")
         setAccount(null)
       }
-    } catch (error) {
-      console.error("Popup: Failed to load user data:", error)
-      // If there's an error, user is likely not authenticated
-      setAccount(null)
+      } catch (error) {
+        console.error("Popup: Failed to load user data:", error)
+        // If there's an error, user is likely not authenticated
+        setAccount(null)
+      } finally {
+        setIsLoading(false)
+      }
+    })()
+
+    loadUserDataInFlight.current = run
+    try {
+      await run
     } finally {
-      setIsLoading(false)
+      loadUserDataInFlight.current = null
     }
-  }
+  }, [settings])
+
+  useEffect(() => {
+    console.log("Comment Verdict popup loaded")
+    // Test storage in development only (avoid extra work in prod)
+    if (process.env.NODE_ENV === "development" && typeof AuthService.testStorage === "function") {
+      Promise.resolve()
+        .then(() => AuthService.testStorage())
+        .then(() => console.log("Storage test passed"))
+        .catch((err) => console.error("Storage test failed:", err))
+    }
+    loadUserData("initial")
+    
+    // Reload data when popup becomes visible (e.g., user reopens it)
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        console.log("Popup: Became visible, refreshing user data")
+        loadUserData("visibility")
+      }
+    }
+    
+    // Also reload on window focus (for when popup is already open but user returns to it)
+    const handleFocus = () => {
+      console.log("Popup: Got focus, refreshing user data")
+      loadUserData("focus")
+    }
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('focus', handleFocus)
+    
+    // Listen for storage changes (e.g., OAuth completion in background or portal sync)
+    const storageListener = (changes: any, areaName: string) => {
+      if (areaName === 'sync') {
+        // Check for token, user, or account changes
+        if (changes.focus_guard_access_token || changes.focus_guard_user || changes.account || changes.isAuthenticated) {
+          console.log("Popup: Detected auth change in storage, reloading data")
+          loadUserData("storage-change")
+        }
+      }
+    }
+    
+    // Listen for runtime messages (e.g., SESSION_EXPIRED or OAUTH_COMPLETE from background)
+    const messageListener = (message: any) => {
+      if (message.type === 'SESSION_EXPIRED') {
+        console.log("Popup: Session expired, logging out")
+        setAccount(null)
+        setError("Your session has expired. Please log in again.")
+        return
+      }
+
+      if (message.type === 'OAUTH_COMPLETE') {
+        console.log('Popup: OAUTH_COMPLETE received, reloading user data')
+        // small delay to allow storage propagation
+        setTimeout(() => {
+          loadUserData("oauth-complete")
+        }, 100)
+        return
+      }
+
+      if (message.type === 'AUTH_STATE_CHANGED') {
+        console.log('Popup: AUTH_STATE_CHANGED received, reloading user data', message.isAuthenticated)
+        // Reload user data to reflect new auth state
+        loadUserData("auth-state")
+        return
+      }
+    }
+    
+    chrome.storage.onChanged.addListener(storageListener)
+    chrome.runtime.onMessage.addListener(messageListener)
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('focus', handleFocus)
+      chrome.storage.onChanged.removeListener(storageListener)
+      chrome.runtime.onMessage.removeListener(messageListener)
+    }
+  }, [loadUserData])
 
   const handleLogin = async (email: string, password: string) => {
     setIsLoading(true)
