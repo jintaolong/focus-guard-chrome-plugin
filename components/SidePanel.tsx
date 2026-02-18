@@ -49,7 +49,7 @@ export const SidePanel = ({
 
   const tabs = [
     { id: "summary" as TabId, label: "Summary", icon: "📊" },
-    { id: "sentiment" as TabId, label: "Content Satisfaction", icon: "💭" },
+    { id: "sentiment" as TabId, label: "Content Satisfaction", icon: "�" },
     { id: "insights" as TabId, label: "Viewer Insights", icon: "💬" },
     { id: "gaps" as TabId, label: "Content Gaps", icon: "🔍" },
     { id: "report" as TabId, label: "Report", icon: "📄" }
@@ -310,13 +310,72 @@ export const SidePanel = ({
             ) : (
               <>
                 {activeTab === "summary" && <SummaryTab analysis={analysis} />}
-                {activeTab === "sentiment" && <CommentSentimentTab analysis={analysis} />}
-                {activeTab === "insights" && <KeyInsightsTab analysis={analysis} analysisState={isLoading ? 'analyzing' : 'complete'} analysisStatus={analysis?.summary} />}
+                {activeTab === "sentiment" && (
+                  analysis.sentiment?.distribution ? (
+                    <CommentSentimentTab analysis={analysis} />
+                  ) : (
+                    <div style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: "48px 24px",
+                      color: COLORS.ui.text.secondary
+                    }}>
+                      <div style={{
+                        fontSize: "32px",
+                        marginBottom: "16px",
+                        animation: "spin 1s linear infinite"
+                      }}>⏳</div>
+                      <p style={{ margin: 0, fontSize: "14px", fontWeight: "500" }}>Loading sentiment analysis...</p>
+                      <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+                    </div>
+                  )
+                )}
+                {activeTab === "insights" && (
+                  analysis.viewerInsights && !Array.isArray(analysis.viewerInsights) && analysis.viewerInsights.sentimentBreakdown ? (
+                    <KeyInsightsTab analysis={analysis} analysisState={isLoading ? 'analyzing' : 'complete'} analysisStatus={analysis?.summary} />
+                  ) : (
+                    <div style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: "48px 24px",
+                      color: COLORS.ui.text.secondary
+                    }}>
+                      <div style={{
+                        fontSize: "32px",
+                        marginBottom: "16px",
+                        animation: "spin 1s linear infinite"
+                      }}>⏳</div>
+                      <p style={{ margin: 0, fontSize: "14px", fontWeight: "500" }}>Loading viewer insights...</p>
+                    </div>
+                  )
+                )}
                 {activeTab === "gaps" && (
-                  <ContentGapsTab
-                    analysis={analysis}
-                    onBotFilterChange={onBotFilterChange}
-                  />
+                  analysis.contentGaps?.unansweredQuestions ? (
+                    <ContentGapsTab
+                      analysis={analysis}
+                      onBotFilterChange={onBotFilterChange}
+                    />
+                  ) : (
+                    <div style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: "48px 24px",
+                      color: COLORS.ui.text.secondary
+                    }}>
+                      <div style={{
+                        fontSize: "32px",
+                        marginBottom: "16px",
+                        animation: "spin 1s linear infinite"
+                      }}>⏳</div>
+                      <p style={{ margin: 0, fontSize: "14px", fontWeight: "500" }}>Loading content gaps...</p>
+                    </div>
+                  )
                 )}
                 {activeTab === "report" && (
                   <ReportTab

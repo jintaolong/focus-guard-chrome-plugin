@@ -275,7 +275,7 @@ export const ContentGapsTab = ({ analysis, onBotFilterChange }: ContentGapsTabPr
             </p>
             {(contentGaps.unansweredQuestions || []).map((gap: any) => (
               <StatementBlock
-                key={gap.id}
+                key={`${gap.id}-${gap.commentCount}`}
                 insight={gap}
                 showBotScores={botFilterEnabled}
                 videoId={analysis.videoId}

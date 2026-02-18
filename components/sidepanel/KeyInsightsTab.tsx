@@ -2,9 +2,10 @@
 // Features: category filters, insight score sorting/filtering, parent theme grouping
 
 import { useState, useMemo } from "react"
-import type { VideoAnalysis } from "~types/analysis"
+import type { VideoAnalysis, CommentObject } from "~types/analysis"
 import { COLORS } from "~lib/colors"
 import { BlurredContent } from "~components/UpgradePrompt"
+import { CommentDisplay } from "~components/CommentDisplay"
 
 interface SegmentHighlight {
   parent_comment_text: string
@@ -26,7 +27,7 @@ interface TopicCluster {
   cluster_id: number
   statement: string
   count: number
-  supporting_quotes: string[]
+  supporting_quotes: Array<string | CommentObject>
   insight_score: number
   category: string
   reasoning: string
@@ -151,11 +152,13 @@ export const KeyInsightsTab = ({ analysis, analysisState, analysisStatus }: KeyI
     
     // Group by parent themes
     const groups: { parent: ParentTheme | null, clusters: TopicCluster[] }[] = []
+    const clusterById = new Map(topicClustersData.clusters.map(cluster => [cluster.cluster_id, cluster]))
+    const filteredIds = new Set(filteredClusters.map(cluster => cluster.cluster_id))
     
     topicClustersData.parent_themes.forEach(parent => {
-      const parentClusters = parent.child_clusters.filter(cluster => 
-        filteredClusters.some(fc => fc.cluster_id === cluster.cluster_id)
-      )
+      const parentClusters = parent.child_clusters
+        .map(cluster => clusterById.get(cluster.cluster_id) || cluster)
+        .filter(cluster => filteredIds.has(cluster.cluster_id))
       
       if (parentClusters.length > 0) {
         // Sort clusters within parent
@@ -563,6 +566,7 @@ export const KeyInsightsTab = ({ analysis, analysisState, analysisStatus }: KeyI
                       onToggleReasoning={() => toggleReasoning(cluster.cluster_id)}
                       getInsightScoreColor={getInsightScoreColor}
                       getCategoryColor={getCategoryColor}
+                      videoId={analysis.videoId}
                     />
                   ))}
                 </div>
@@ -666,6 +670,7 @@ export const KeyInsightsTab = ({ analysis, analysisState, analysisStatus }: KeyI
                           onToggleReasoning={() => toggleReasoning(cluster.cluster_id)}
                           getInsightScoreColor={getInsightScoreColor}
                           getCategoryColor={getCategoryColor}
+                          videoId={analysis.videoId}
                         />
                       </div>
                     ))}
@@ -714,6 +719,7 @@ interface ClusterCardProps {
   onToggleReasoning: () => void
   getInsightScoreColor: (score: number) => string
   getCategoryColor: (category: string) => string
+  videoId: string
 }
 
 const ClusterCard = ({ 
@@ -725,7 +731,8 @@ const ClusterCard = ({
   isReasoningExpanded, 
   onToggleReasoning, 
   getInsightScoreColor, 
-  getCategoryColor 
+  getCategoryColor,
+  videoId
 }: ClusterCardProps) => {
   return (
     <div style={{
@@ -857,8 +864,35 @@ const ClusterCard = ({
             )}
           </div>
           
-          {/* Segment Highlights */}
-          {cluster.segment_highlights && cluster.segment_highlights.length > 0 && (
+          {/* V2 Backend: Prefer supporting_quotes (full CommentObjects with youtube_comment_id) */}
+          {cluster.supporting_quotes && cluster.supporting_quotes.length > 0 ? (
+            <div>
+              <h5 style={{
+                margin: "0 0 12px 0",
+                fontSize: "13px",
+                fontWeight: "600",
+                color: COLORS.ui.text.secondary,
+                textTransform: "uppercase",
+                letterSpacing: "0.5px"
+              }}>
+                Supporting Quotes ({cluster.supporting_quotes.length})
+              </h5>
+              <div style={{ maxHeight: "300px", overflowY: "auto" }}>
+                {cluster.supporting_quotes.map((quote, idx) => (
+                  <div key={`${cluster.cluster_id}-quote-${idx}`} style={{ marginBottom: idx < cluster.supporting_quotes.length - 1 ? "8px" : 0 }}>
+                    <CommentDisplay
+                      comment={quote}
+                      videoId={videoId}
+                      showLikes={true}
+                      showAuthor={true}
+                      borderColor={getCategoryColor(cluster.category)}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : cluster.segment_highlights && cluster.segment_highlights.length > 0 ? (
+            /* Fallback: Old backend or edge cases with segment_highlights only */
             <div>
               <h5 style={{
                 margin: "0 0 12px 0",
@@ -875,8 +909,8 @@ const ClusterCard = ({
                   const commentKey = `${cluster.cluster_id}-${idx}`
                   const isCommentExpanded = expandedComments.has(commentKey)
                   const youtubeCommentId = highlight.youtube_comment_id || null
-                  const commentLink = youtubeCommentId && analysis.videoId && analysis.videoId !== ""
-                    ? `https://www.youtube.com/watch?v=${analysis.videoId}&lc=${youtubeCommentId}`
+                  const commentLink = youtubeCommentId && videoId && videoId !== ""
+                    ? `https://www.youtube.com/watch?v=${videoId}&lc=${youtubeCommentId}`
                     : null
                   
                   // Handler to scroll to comment on YouTube page
@@ -893,9 +927,9 @@ const ClusterCard = ({
                     const currentVideoId = currentUrl.searchParams.get('v')
                     const targetVideoId = targetUrl.searchParams.get('v')
                     
-                    if (currentVideoId === targetVideoId && analysis.videoId) {
+                    if (currentVideoId === targetVideoId && videoId) {
                       // Same video - update URL without page reload
-                      const newUrl = `${window.location.pathname}?v=${analysis.videoId}&lc=${youtubeCommentId}`
+                      const newUrl = `${window.location.pathname}?v=${videoId}&lc=${youtubeCommentId}`
                       
                       // Update URL without reload
                       window.history.pushState({}, '', newUrl)
@@ -922,7 +956,7 @@ const ClusterCard = ({
                         const allElements = document.querySelectorAll('[id], [data-comment-id]')
                         for (const el of allElements) {
                           const id = el.getAttribute('id') || el.getAttribute('data-comment-id') || ''
-                          if (id && id.indexOf(youtubeCommentId) !== -1) {
+                          if (id && youtubeCommentId && id.indexOf(youtubeCommentId) !== -1) {
                             return el
                           }
                         }
@@ -1243,7 +1277,7 @@ const ClusterCard = ({
                 })}
               </div>
             </div>
-          )}
+          ) : null}
         </div>
       )}
     </div>

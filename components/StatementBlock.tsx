@@ -1,7 +1,7 @@
 // FR-401: Statement and Supporting Comments Pattern
 // Reusable component for Tabs 2 and 3
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import type { InsightWithComments } from "~types/analysis"
 import { COLORS, getInsightTypeColor, getColorSet } from "~lib/colors"
 import { CommentDisplay } from "~components/CommentDisplay"
@@ -14,6 +14,11 @@ interface StatementBlockProps {
 
 export const StatementBlock = ({ insight, showBotScores = false, videoId = "" }: StatementBlockProps) => {
   const [isExpanded, setIsExpanded] = useState(insight.isExpanded || false)
+  
+  // Sync internal state with prop changes (important for when data updates)
+  useEffect(() => {
+    setIsExpanded(insight.isExpanded || false)
+  }, [insight.isExpanded, insight.id]) // Re-sync when prop changes or insight ID changes
   
   const comments = Array.isArray(insight.supportingComments) ? insight.supportingComments : []
   const commentCount = insight.commentCount || comments.length || 0
