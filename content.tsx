@@ -72,6 +72,101 @@ function isWatchPage(): boolean {
   return false
 }
 
+// Scroll to a linked comment when the page URL contains ?lc=COMMENT_ID.
+// YouTube's native lc= handler fires once on load and gives up quickly if
+// comments haven't rendered yet. This runs from our content script and keeps
+// retrying for up to 60 seconds, scrolling down to trigger YouTube's lazy
+// comment loading, so it works reliably even on slow connections.
+let _scrollToLinkedCommentActive = false
+function scrollToLinkedComment() {
+  const params = new URLSearchParams(window.location.search)
+  const commentId = params.get("lc")
+  if (!commentId || _scrollToLinkedCommentActive) return
+  _scrollToLinkedCommentActive = true
+
+  const findComment = (): Element | null => {
+    // Strategy 1: attribute selectors on comment thread elements
+    let el: Element | null =
+      document.querySelector(`ytd-comment-thread-renderer[has-comment-id="${commentId}"]`) ||
+      document.querySelector(`ytd-comment-thread-renderer[comment-id="${commentId}"]`)
+    if (el) return el
+
+    // Strategy 2: check __data on all thread renderers
+    for (const c of document.querySelectorAll('ytd-comment-thread-renderer')) {
+      const d = (c as any).__data
+      const id = d?.commentId || d?.comment?.commentId || d?.commentIdStr
+      if (id === commentId) return c
+    }
+
+    // Strategy 3: id / data-comment-id attributes
+    for (const c of document.querySelectorAll('[id], [data-comment-id]')) {
+      const id = c.getAttribute('id') || c.getAttribute('data-comment-id') || ''
+      if (id.indexOf(commentId) !== -1) return c
+    }
+
+    // Strategy 4: permalink anchors
+    for (const a of document.querySelectorAll('a[href*="&lc="]')) {
+      if ((a as HTMLAnchorElement).href.indexOf(`&lc=${commentId}`) !== -1) {
+        const thread = (a as HTMLElement).closest('ytd-comment-thread-renderer') || a.closest('ytd-comment-renderer')
+        return thread || a
+      }
+    }
+
+    return null
+  }
+
+  const highlight = (el: Element) => {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    const h = el as HTMLElement
+    const origBg = h.style.backgroundColor
+    const origTrans = h.style.transition
+    h.style.transition = 'background-color 0.2s ease'
+    h.style.backgroundColor = '#fff3cd'
+    setTimeout(() => {
+      h.style.backgroundColor = origBg
+      setTimeout(() => { h.style.transition = origTrans }, 200)
+    }, 1200)
+    _scrollToLinkedCommentActive = false
+  }
+
+  // Wait for comments section to exist, then scroll down to load comments
+  const maxWaitMs = 60_000
+  const tickMs = 600
+  let elapsed = 0
+
+  const tick = () => {
+    // Abort if the user navigated away from the linked comment URL
+    if (new URLSearchParams(window.location.search).get("lc") !== commentId) {
+      _scrollToLinkedCommentActive = false
+      return
+    }
+
+    elapsed += tickMs
+    if (elapsed > maxWaitMs) {
+      _scrollToLinkedCommentActive = false
+      return
+    }
+
+    const found = findComment()
+    if (found) {
+      highlight(found)
+      return
+    }
+
+    // Scroll down to trigger YouTube lazy loading
+    const commentsSection = document.querySelector('ytd-comments#comments') || document.querySelector('#comments')
+    if (commentsSection) {
+      commentsSection.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      window.scrollBy({ top: 600, behavior: 'smooth' })
+    }
+
+    setTimeout(tick, tickMs)
+  }
+
+  // Give the page a moment to paint before starting
+  setTimeout(tick, 1500)
+}
+
 // Calculate evidence score from claims (0-100 scale)
 // Measures strength of user evidence for/against claims
 // Formula: weighted_for = sum(for.count * (1 + likes*0.1))
@@ -120,11 +215,16 @@ function normalizeGapComments(gap: any): any[] {
 
 function normalizeCommentForDisplay(comment: any, fallbackId: string, youtubeCommentId?: string) {
   if (comment && typeof comment === "object") {
-    const text = typeof comment.text === "string"
-      ? comment.text
-      : (typeof comment.comment_text === "string"
-        ? comment.comment_text
-        : (typeof comment.content === "string" ? comment.content : ""))
+    // Try every plausible text field name the API might use
+    const text =
+      (typeof comment.text === "string" ? comment.text : null) ??
+      (typeof comment.comment_text === "string" ? comment.comment_text : null) ??
+      (typeof comment.content === "string" ? comment.content : null) ??
+      (typeof comment.body === "string" ? comment.body : null) ??
+      (typeof comment.message === "string" ? comment.message : null) ??
+      // Nested: comment.text might itself be a CommentObject
+      (comment.text && typeof comment.text === "object" && typeof comment.text.text === "string" ? comment.text.text : null) ??
+      ""
 
     const derivedYoutubeCommentId = typeof comment.youtube_comment_id === "string"
       ? comment.youtube_comment_id
@@ -287,6 +387,10 @@ const ContentScript = () => {
 
       // FR-202: Auto-activate analysis on watch page
       if (isWatch) {
+        // If URL contains lc= (opened via our "Go to Comment on YouTube" deeplink),
+        // run our patient scroll-to-comment logic instead of relying on YouTube's
+        // native handler which gives up ~7s after load on slow connections.
+        scrollToLinkedComment()
         const videoId = getVideoIdFromUrl(window.location.href)
         console.log("Comment Verdict: detected videoId=", videoId, "currentVideoIdRef=", currentVideoIdRef.current)
         if (videoId && videoId !== currentVideoIdRef.current) {
@@ -1357,7 +1461,7 @@ const ContentScript = () => {
           console.log("⏱️ Fetching summary first (required by backend)...")
           const summaryFetchStart = Date.now()
           try {
-            summaryData = await FocusGuardAPI.analyzeSummaryV2({ video_id: videoId, force_refresh: false })
+            summaryData = await FocusGuardAPI.analyzeSummaryV2({ video_id: videoId, force_refresh: forceRefresh })
             const summaryDuration = ((Date.now() - summaryFetchStart) / 1000).toFixed(1)
             console.log(`✅ Summary data fetched in ${summaryDuration}s`)
           } catch (error) {
@@ -1368,11 +1472,11 @@ const ContentScript = () => {
           console.log("⏱️ Fetching remaining analysis data in parallel...")
           const parallelFetchStart = Date.now()
           const results = await Promise.allSettled([
-            FocusGuardAPI.analyzeRelevancyV2(videoId, false),
-            FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: false }),
-            FocusGuardAPI.analyzeChannelTrust(videoId, false),
-            FocusGuardAPI.analyzeTopicClusteringV2(videoId, false),
-            FocusGuardAPI.analyzeTopicGapV2(videoId, false)
+            FocusGuardAPI.analyzeRelevancyV2(videoId, forceRefresh),
+            FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: forceRefresh }),
+            FocusGuardAPI.analyzeChannelTrust(videoId, forceRefresh),
+            FocusGuardAPI.analyzeTopicClusteringV2(videoId, forceRefresh),
+            FocusGuardAPI.analyzeTopicGapV2(videoId, forceRefresh)
           ])
           const parallelDuration = ((Date.now() - parallelFetchStart) / 1000).toFixed(1)
           const totalFetchDuration = ((Date.now() - fetchStartTime) / 1000).toFixed(1)
@@ -1446,7 +1550,7 @@ const ContentScript = () => {
         if (!summaryData) {
           console.log("Comment Verdict: Fetching summary first (required by backend)...")
           try {
-            summaryData = await FocusGuardAPI.analyzeSummaryV2({ video_id: videoId, force_refresh: false })
+            summaryData = await FocusGuardAPI.analyzeSummaryV2({ video_id: videoId, force_refresh: forceRefresh })
             console.log("Comment Verdict: Summary data received")
           } catch (error) {
             console.error("Failed to fetch summary:", error)
@@ -1455,10 +1559,10 @@ const ContentScript = () => {
         
         // Step 2: Fetch remaining data in parallel (after summary is guaranteed to exist)
         const remainingResults = await Promise.allSettled([
-          sentimentData ? Promise.resolve(sentimentData) : FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: false }),
-          credibilityData ? Promise.resolve(credibilityData) : FocusGuardAPI.analyzeChannelTrust(videoId, false),
-          topicClustersData ? Promise.resolve(topicClustersData) : FocusGuardAPI.analyzeTopicClusteringV2(videoId, false),
-          topicGapsData ? Promise.resolve(topicGapsData) : FocusGuardAPI.analyzeTopicGapV2(videoId, false)
+          sentimentData ? Promise.resolve(sentimentData) : FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: forceRefresh }),
+          credibilityData ? Promise.resolve(credibilityData) : FocusGuardAPI.analyzeChannelTrust(videoId, forceRefresh),
+          topicClustersData ? Promise.resolve(topicClustersData) : FocusGuardAPI.analyzeTopicClusteringV2(videoId, forceRefresh),
+          topicGapsData ? Promise.resolve(topicGapsData) : FocusGuardAPI.analyzeTopicGapV2(videoId, forceRefresh)
         ])
         
         sentimentData = sentimentData || (remainingResults[0].status === 'fulfilled' ? remainingResults[0].value : null)
@@ -1629,12 +1733,18 @@ const ContentScript = () => {
           statement: cluster.statement,
           type: "benefit" as const,
           commentCount: cluster.count,
-          supportingComments: cluster.supporting_quotes.map((quote: any, qIdx: number) => ({
-            id: `comment-${idx}-${qIdx}`,
-            text: quote,
-            timestamp: undefined,
-            author: undefined
-          })),
+          supportingComments: cluster.supporting_quotes.map((quote: any, qIdx: number) => {
+            if (quote && typeof quote === "object") {
+              // Full CommentObject — pass through directly
+              return { ...quote, id: quote.id ?? `comment-${idx}-${qIdx}` }
+            }
+            return {
+              id: `comment-${idx}-${qIdx}`,
+              text: typeof quote === "string" ? quote : "",
+              timestamp: undefined,
+              author: undefined
+            }
+          }),
           isExpanded: false
         })) || []
 
@@ -1935,7 +2045,7 @@ const ContentScript = () => {
 
   const handleReAnalyze = async (videoId: string) => {
     if (videoId === currentVideoId) {
-      startVideoAnalysis(videoId)
+      startVideoAnalysis(videoId, true)
     }
   }
 
@@ -1992,6 +2102,7 @@ const ContentScript = () => {
           <PreWatchPopover
             analysis={videoAnalysis}
             isLoading={isAnalyzing}
+            panelDock={panelDock}
             onDismiss={() => {
               setShowPreWatchPopover(false)
               setPreWatchDismissed(true)
@@ -2104,6 +2215,7 @@ const ContentScript = () => {
           }}
           progressPercent={progressPercent}
           progressMessage={progressMessage}
+          panelDock={panelDock}
         />
 
         {/* Community Verdict Teaser for Free Users */}
@@ -2143,7 +2255,7 @@ const ContentScript = () => {
               
               // Start analysis with custom settings
               if (currentVideoId) {
-                startVideoAnalysis(currentVideoId)
+                startVideoAnalysis(currentVideoId, forceRefresh)
               }
             }}
           />

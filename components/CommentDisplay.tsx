@@ -15,6 +15,7 @@ interface CommentDisplayProps {
   borderColor?: string // Border color for the comment box
   backgroundColor?: string // Background color for the comment box
   className?: string
+  panelDock?: "left" | "right" // Side panel docking position for toast alignment
 }
 
 export const CommentDisplay = ({
@@ -26,20 +27,39 @@ export const CommentDisplay = ({
   showDate = false,
   borderColor = COLORS.ui.border,
   backgroundColor = COLORS.ui.surface,
-  className = ""
+  className = "",
+  panelDock = "right"
 }: CommentDisplayProps) => {
   const [isExpanded, setIsExpanded] = useState(false)
 
   // Normalize comment to work with both string and CommentObject formats
   const isCommentObject = typeof comment === 'object' && comment !== null
   
-  const commentText = isCommentObject 
-    ? (comment.text || "") 
-    : (typeof comment === 'string' ? comment : "")
-  
-  const authorName = isCommentObject 
+  const normalizeText = (value: any): string => {
+    if (typeof value === "string") return value
+    if (!value || typeof value !== "object") return ""
+    // Nested CommentObject: { text: "..." }
+    if (typeof value.text === "string") return value.text
+    if (typeof value.content === "string") return value.content
+    if (typeof value.body === "string") return value.body
+    if (typeof value.message === "string") return value.message
+    if (typeof value.comment_text === "string") return value.comment_text
+    // Deeply nested: { text: { text: "..." } }
+    if (value.text && typeof value.text === "object" && typeof value.text.text === "string") return value.text.text
+    return ""
+  }
+
+  const commentText = isCommentObject
+    ? normalizeText(comment.text)
+    : normalizeText(comment)
+
+  const rawAuthor = isCommentObject
     ? (comment.author_display_name || comment.user || comment.author || null)
     : null
+
+  const authorName = typeof rawAuthor === "string"
+    ? rawAuthor
+    : (rawAuthor && typeof rawAuthor.name === "string" ? rawAuthor.name : null)
   
   const likes = isCommentObject 
     ? (comment.likes || 0) 
@@ -53,9 +73,22 @@ export const CommentDisplay = ({
     ? (comment.created_at || null)
     : null
   
-  const isCleaned = isCommentObject 
-    ? (comment.is_cleaned || false)
-    : false
+  // Only show the "cleaned" banner when the comment is *genuinely* deleted:
+  // - must be a CommentObject (not a plain string)
+  // - is_cleaned must be strictly true (not 1, not "true")
+  // - and there must be no recoverable text anywhere in the object
+  const hasAnyText = !!(commentText ||
+    (isCommentObject && (
+      (typeof comment.text === "string" && comment.text) ||
+      (typeof comment.body === "string" && comment.body) ||
+      (typeof comment.message === "string" && comment.message) ||
+      (comment.text && typeof comment.text === "object" && comment.text.text)
+    ))
+  )
+  if (isCommentObject && comment.is_cleaned === true && !hasAnyText) {
+    console.warn("CommentDisplay: showing cleaned banner for comment", comment)
+  }
+  const isCleaned = isCommentObject && comment.is_cleaned === true && !hasAnyText
 
   // Build YouTube comment anchor link - only if both videoId and commentId exist
   const commentLink = youtubeCommentId && videoId && videoId !== "" 
@@ -181,150 +214,134 @@ export const CommentDisplay = ({
         console.log('Comment not found, offering jump to comments...', youtubeCommentId)
         const commentsSection = document.querySelector('ytd-comments#comments') || document.querySelector('#comments')
 
-        // Helper to show a subtle toast with optional action
-        const showToast = (msg: string, actionLabel?: string, onAction?: () => void) => {
+        // Enhanced toast with multiple action buttons
+        const showToast = (msg: string, actions?: Array<{ label: string; callback: () => void }>) => {
           try {
             const id = `cv-toast-${Math.random().toString(36).slice(2,8)}`
             const el = document.createElement('div')
             el.id = id
             el.style.position = 'fixed'
-            el.style.right = '18px'
+            // Position toast on the same side as the panel to avoid overlapping it
+            if (panelDock === 'left') {
+              el.style.left = '18px'
+              el.style.right = ''
+            } else {
+              el.style.right = '18px'
+              el.style.left = ''
+            }
             el.style.bottom = '18px'
-            el.style.padding = '8px 12px'
-            el.style.background = 'rgba(0,0,0,0.8)'
+            el.style.padding = '12px 16px'
+            el.style.background = 'rgba(0,0,0,0.9)'
             el.style.color = 'white'
             el.style.fontSize = '12px'
             el.style.borderRadius = '8px'
             el.style.zIndex = '2147483647'
-            el.style.boxShadow = '0 6px 18px rgba(0,0,0,0.2)'
-            el.style.cursor = actionLabel ? 'pointer' : 'default'
-            el.textContent = msg
-            if (actionLabel && onAction) {
-              const btn = document.createElement('span')
-              btn.style.marginLeft = '8px'
-              btn.style.padding = '4px 8px'
-              btn.style.background = 'rgba(255,255,255,0.06)'
-              btn.style.borderRadius = '6px'
-              btn.style.fontWeight = '700'
-              btn.style.marginRight = '0'
-              btn.textContent = actionLabel
-              el.appendChild(btn)
-              el.onclick = (ev) => { ev.stopPropagation(); onAction(); document.body.removeChild(el) }
+            el.style.boxShadow = '0 6px 18px rgba(0,0,0,0.3)'
+            el.style.maxWidth = '320px'
+            el.style.fontWeight = '500'
+            el.innerHTML = `<div>${msg}</div><div style="font-size: 10px; margin-top: 4px; opacity: 0.7; font-weight: 400;">Comments are loaded as needed. Try scrolling down on YouTube to load more.</div>`
+            
+            if (actions && actions.length > 0) {
+              const buttonContainer = document.createElement('div')
+              buttonContainer.style.display = 'flex'
+              buttonContainer.style.gap = '6px'
+              buttonContainer.style.marginTop = '8px'
+              buttonContainer.style.flexWrap = 'wrap'
+              
+              actions.forEach(({ label, callback }) => {
+                const btn = document.createElement('button')
+                btn.textContent = label
+                btn.style.padding = '4px 8px'
+                btn.style.background = 'rgba(255,255,255,0.15)'
+                btn.style.border = '1px solid rgba(255,255,255,0.25)'
+                btn.style.borderRadius = '4px'
+                btn.style.color = 'white'
+                btn.style.fontSize = '11px'
+                btn.style.fontWeight = '600'
+                btn.style.cursor = 'pointer'
+                btn.style.transition = 'all 0.2s'
+                btn.onmouseenter = () => {
+                  btn.style.background = 'rgba(255,255,255,0.25)'
+                  btn.style.borderColor = 'rgba(255,255,255,0.4)'
+                }
+                btn.onmouseleave = () => {
+                  btn.style.background = 'rgba(255,255,255,0.15)'
+                  btn.style.borderColor = 'rgba(255,255,255,0.25)'
+                }
+                btn.onclick = (ev) => {
+                  ev.stopPropagation()
+                  callback()
+                  if (document.body.contains(el)) {
+                    document.body.removeChild(el)
+                  }
+                }
+                buttonContainer.appendChild(btn)
+              })
+              
+              el.appendChild(buttonContainer)
             }
+            
             document.body.appendChild(el)
-            setTimeout(() => { try { if (document.body.contains(el)) document.body.removeChild(el) } catch(e){} }, 3500)
+            setTimeout(() => { try { if (document.body.contains(el)) document.body.removeChild(el) } catch(e){} }, 5000)
           } catch (er) { /* ignore */ }
         }
 
-        const startPollingAndObserve = () => {
+        // Progressively scroll down the comments section to trigger YouTube lazy-loading
+        const scrollToLoadMore = (onFound: (el: Element) => void, onNotFound: () => void) => {
           if (!commentsSection) {
-            showToast('Comments section not available on this page.')
+            onNotFound()
             return
           }
+          // Scroll to comments section first
           commentsSection.scrollIntoView({ behavior: 'smooth', block: 'start' })
 
-          // Wait for YouTube to load the comment (with timeout). Use both polling and a MutationObserver that
-          // looks for anchors with &lc= or new comment thread nodes.
-          let attempts = 0
-          const maxAttempts = 30 // ~15 seconds
-          const intervalMs = 500
+          let scrollAttempts = 0
+          const maxScrollAttempts = 20 // scroll up to 20 times (~10 seconds)
+          const scrollIntervalMs = 500
 
-          // Observer to detect new nodes or anchor links
-          const observer = new MutationObserver((mutations, obs) => {
+          const scrollInterval = setInterval(() => {
+            scrollAttempts++
+            // Try finding the comment after each scroll
             const found = findCommentElement()
             if (found) {
-              obs.disconnect()
-              clearInterval(checkInterval)
-              found.scrollIntoView({ behavior: 'smooth', block: 'center' })
-              const originalBg = (found as HTMLElement).style.backgroundColor
-              const originalTransition = (found as HTMLElement).style.transition
-              ;(found as HTMLElement).style.transition = 'background-color 0.2s ease'
-              ;(found as HTMLElement).style.backgroundColor = '#fff3cd'
-              setTimeout(() => {
-                (found as HTMLElement).style.backgroundColor = originalBg
-                setTimeout(() => {
-                  (found as HTMLElement).style.transition = originalTransition
-                }, 150)
-              }, 800)
+              clearInterval(scrollInterval)
+              onFound(found)
+              return
             }
-          })
-
-          observer.observe(document.body, { childList: true, subtree: true })
-
-          const checkInterval = setInterval(() => {
-            attempts++
-            const loadedComment = findCommentElement()
-
-            if (loadedComment || attempts >= maxAttempts) {
-              clearInterval(checkInterval)
-              observer.disconnect()
-              if (loadedComment) {
-                loadedComment.scrollIntoView({ behavior: 'smooth', block: 'center' })
-                const originalBg = (loadedComment as HTMLElement).style.backgroundColor
-                const originalTransition = (loadedComment as HTMLElement).style.transition
-                ;(loadedComment as HTMLElement).style.transition = 'background-color 0.2s ease'
-                ;(loadedComment as HTMLElement).style.backgroundColor = '#fff3cd'
-                setTimeout(() => {
-                  (loadedComment as HTMLElement).style.backgroundColor = originalBg
-                  setTimeout(() => {
-                    (loadedComment as HTMLElement).style.transition = originalTransition
-                  }, 150)
-                }, 800)
-              } else {
-                console.warn('Comment not found after waiting:', youtubeCommentId)
-                try {
-                  const anchors = Array.from(document.querySelectorAll('a[href*="&lc="]'))
-                    .map(a => (a as HTMLAnchorElement).href)
-                    .filter(h => h.includes(`&lc=${youtubeCommentId}`))
-                  console.log('Permalink anchors matching comment id:', anchors)
-                } catch (err) {
-                  // ignore
-                }
-
-                // Fallback: try to find the comment by matching a text snippet and/or author name
-                const findByTextAuthor = () => {
-                  const snippet = commentText ? commentText.substring(0, 40).trim() : ''
-                  const author = authorName ? authorName.trim() : ''
-                  const candidates = Array.from(document.querySelectorAll('ytd-comment-renderer, ytd-comment-thread-renderer'))
-                  for (const c of candidates) {
-                    try {
-                      const contentEl = (c as Element).querySelector && (c as Element).querySelector('#content-text')
-                      const content = contentEl ? (contentEl.textContent || '') : ((c as HTMLElement).textContent || '')
-                      const authorEl = (c as Element).querySelector && ((c as Element).querySelector('#author-text')?.textContent || '')
-                      if (snippet && content && content.indexOf(snippet) !== -1) return c
-                      if (author && authorEl && authorEl.indexOf(author) !== -1) return c
-                    } catch (er) {
-                      // ignore DOM reading errors
-                    }
-                  }
-                  return null
-                }
-
-                const fuzzy = findByTextAuthor()
-                if (fuzzy) {
-                  console.log('Found comment by text/author fallback for', youtubeCommentId)
-                  fuzzy.scrollIntoView({ behavior: 'smooth', block: 'center' })
-                  const originalBg = (fuzzy as HTMLElement).style.backgroundColor
-                  const originalTransition = (fuzzy as HTMLElement).style.transition
-                  ;(fuzzy as HTMLElement).style.transition = 'background-color 0.2s ease'
-                  ;(fuzzy as HTMLElement).style.backgroundColor = '#fff3cd'
-                  setTimeout(() => {
-                    (fuzzy as HTMLElement).style.backgroundColor = originalBg
-                    setTimeout(() => {
-                      (fuzzy as HTMLElement).style.transition = originalTransition
-                    }, 150)
-                  }, 800)
-                } else {
-                  // Final fallback: show a subtle toast offering to open the permalink
-                  showToast('Comment not found on this page.', 'Open', () => { if (commentLink) window.location.href = commentLink })
-                }
-              }
+            if (scrollAttempts >= maxScrollAttempts) {
+              clearInterval(scrollInterval)
+              onNotFound()
+              return
             }
-          }, intervalMs)
+            // Scroll down incrementally to load more comments
+            window.scrollBy({ top: 800, behavior: 'smooth' })
+          }, scrollIntervalMs)
         }
 
-        // Offer jump action to the user instead of auto-scrolling
-        showToast('Comment not found on page.', 'Jump', startPollingAndObserve)
+        const highlightElement = (el: Element) => {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          const originalBg = (el as HTMLElement).style.backgroundColor
+          const originalTransition = (el as HTMLElement).style.transition
+          ;(el as HTMLElement).style.transition = 'background-color 0.2s ease'
+          ;(el as HTMLElement).style.backgroundColor = '#fff3cd'
+          setTimeout(() => {
+            (el as HTMLElement).style.backgroundColor = originalBg
+            setTimeout(() => { (el as HTMLElement).style.transition = originalTransition }, 150)
+          }, 800)
+        }
+
+        // Toast: only the two useful options
+        showToast('Comment not loaded yet. Comments load as you scroll down:', [
+          { label: 'Scroll to Load More', callback: () => {
+            scrollToLoadMore(
+              (el) => highlightElement(el),
+              () => showToast('Comment not found. It may have been removed by the author or creator.', [
+                { label: 'Go to Comment on YouTube', callback: () => { if (commentLink) window.open(commentLink) } }
+              ])
+            )
+          }},
+          { label: 'Go to Comment on YouTube', callback: () => { if (commentLink) window.open(commentLink) } }
+        ])
       }
     } else {
       // Different video - navigate normally
@@ -338,29 +355,15 @@ export const CommentDisplay = ({
     ? commentText.substring(0, maxLength) + "..."
     : commentText
 
-  // Handle deleted/cleaned comments
+  // Hide deleted/cleaned comments entirely — they provide no useful information
+  // Comments get cleaned by backend after 30-day retention; a force-refresh re-fetches them
   if (isCleaned) {
-    return (
-      <div
-        className={className}
-        style={{
-          padding: "10px 12px",
-          backgroundColor: COLORS.ui.background,
-          borderLeft: `3px solid ${borderColor}`,
-          borderRadius: "4px",
-          opacity: 0.6
-        }}>
-        <div
-          style={{
-            fontSize: "12px",
-            color: COLORS.ui.textSecondary,
-            fontStyle: "italic"
-          }}
-          title="Comment removed after 30-day retention period per YouTube Data Policy">
-          [Comment removed after 30-day retention period]
-        </div>
-      </div>
-    )
+    return null
+  }
+
+  // Also hide comments with no displayable text at all (empty/corrupt data)
+  if (!commentText.trim()) {
+    return null
   }
 
   return (
@@ -417,7 +420,7 @@ export const CommentDisplay = ({
                 onMouseLeave={(e) => {
                   e.currentTarget.style.opacity = "0.6"
                 }}
-                title="Jump to this comment on YouTube">
+                title="Jump to this comment on YouTube. If not found, you can scroll to Comments or open the full video page.">
                 🔗
               </a>
             )}
