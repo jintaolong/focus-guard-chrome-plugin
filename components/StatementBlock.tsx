@@ -10,9 +10,10 @@ interface StatementBlockProps {
   insight: InsightWithComments
   showBotScores?: boolean
   videoId?: string // Required for YouTube anchor links
+  panelDock?: "left" | "right"
 }
 
-export const StatementBlock = ({ insight, showBotScores = false, videoId = "" }: StatementBlockProps) => {
+export const StatementBlock = ({ insight, showBotScores = false, videoId = "", panelDock = "right" }: StatementBlockProps) => {
   const [isExpanded, setIsExpanded] = useState(insight.isExpanded || false)
   
   // Sync internal state with prop changes (important for when data updates)
@@ -195,6 +196,7 @@ export const StatementBlock = ({ insight, showBotScores = false, videoId = "" }:
                     showLikes={true}
                     showAuthor={true}
                     borderColor={colorSet.primary}
+                    panelDock={panelDock}
                   />
                   
                   {/* Bot Score Tag (Optional) - shown below comment if available */}

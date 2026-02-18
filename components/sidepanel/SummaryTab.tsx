@@ -10,9 +10,10 @@ import { ChannelCredibilitySubTab } from "./ChannelCredibilitySubTab"
 
 interface SummaryTabProps {
   analysis?: VideoAnalysis | null
+  panelDock?: "left" | "right"
 }
 
-export const SummaryTab = ({ analysis }: SummaryTabProps) => {
+export const SummaryTab = ({ analysis, panelDock = "right" }: SummaryTabProps) => {
   const [activeSubTab, setActiveSubTab] = useState<"overview" | "video" | "channel">("video")
   const [isExecutiveSummaryExpanded, setIsExecutiveSummaryExpanded] = useState(false)
   
@@ -106,6 +107,7 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
             verdictColor={verdictColor}
             claimsList={claimsList}
             videoId={analysis.videoId}
+            panelDock={panelDock}
           />
         )}
 

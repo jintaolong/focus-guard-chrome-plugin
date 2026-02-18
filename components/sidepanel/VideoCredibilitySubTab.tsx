@@ -57,6 +57,7 @@ interface VideoCredibilitySubTabProps {
   verdictColor: "high" | "medium" | "low" | "neutral"
   claimsList: any[]
   videoId?: string // For YouTube anchor links
+  panelDock?: "left" | "right"
 }
 
 export const VideoCredibilitySubTab = ({ 
@@ -64,7 +65,8 @@ export const VideoCredibilitySubTab = ({
   trustScore, 
   verdictColor, 
   claimsList,
-  videoId = ""
+  videoId = "",
+  panelDock = "right"
 }: VideoCredibilitySubTabProps) => {
   const [showClaims, setShowClaims] = useState(false)
   const [expandedClaims, setExpandedClaims] = useState<Set<number>>(new Set())
@@ -441,6 +443,7 @@ export const VideoCredibilitySubTab = ({
                                         showAuthor={true}
                                         borderColor={COLORS.high.primary}
                                         backgroundColor={COLORS.high.light}
+                                        panelDock={panelDock}
                                       />
                                     ))}
                                   </div>
@@ -463,6 +466,7 @@ export const VideoCredibilitySubTab = ({
                                         showAuthor={true}
                                         borderColor={COLORS.low.primary}
                                         backgroundColor={COLORS.low.light}
+                                        panelDock={panelDock}
                                       />
                                     ))}
                                   </div>
@@ -485,6 +489,7 @@ export const VideoCredibilitySubTab = ({
                                         showAuthor={true}
                                         borderColor={COLORS.medium.primary}
                                         backgroundColor={COLORS.medium.light}
+                                        panelDock={panelDock}
                                       />
                                     ))}
                                   </div>

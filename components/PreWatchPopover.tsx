@@ -19,6 +19,7 @@ interface PreWatchPopoverProps {
   onDismiss: () => void
   onViewFullAnalysis: () => void
   onWatchAnyway: () => void
+  panelDock?: "left" | "right"
 }
 
 export const PreWatchPopover = ({
@@ -26,7 +27,8 @@ export const PreWatchPopover = ({
   isLoading,
   onDismiss,
   onViewFullAnalysis,
-  onWatchAnyway
+  onWatchAnyway,
+  panelDock = "right"
 }: PreWatchPopoverProps) => {
   const [isVisible, setIsVisible] = useState(true)
   const [shouldRender, setShouldRender] = useState(true)
@@ -344,6 +346,7 @@ export const PreWatchPopover = ({
                           showLikes={false}
                           showAuthor={true}
                           borderColor={getColorSet("high").primary}
+                          panelDock={panelDock}
                         />
                       ))}
                       {((analysis.sentiment.distribution as any).exampleComments.negative || []).slice(0, 1).map((comment: any, idx: number) => (
@@ -354,6 +357,7 @@ export const PreWatchPopover = ({
                           showLikes={false}
                           showAuthor={true}
                           borderColor={getColorSet("low").primary}
+                          panelDock={panelDock}
                         />
                       ))}
                     </div>

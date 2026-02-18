@@ -59,6 +59,7 @@ interface KeyInsightsTabProps {
   analysis: VideoAnalysis
   analysisState?: string
   analysisStatus?: any
+  panelDock?: "left" | "right"
 }
 
 // Helper function to render segment highlights - simplified with quotes
@@ -77,7 +78,7 @@ const renderSegmentHighlight = (highlight: SegmentHighlight) => {
   )
 }
 
-export const KeyInsightsTab = ({ analysis, analysisState, analysisStatus }: KeyInsightsTabProps) => {
+export const KeyInsightsTab = ({ analysis, analysisState, analysisStatus, panelDock = "right" }: KeyInsightsTabProps) => {
   const topicClustersData = (analysis as any)?.topicClustersData as TopicClustersData | null
   const isRefreshing = analysisState === 'analyzing' || analysisState === 'polling'
   
@@ -567,6 +568,7 @@ export const KeyInsightsTab = ({ analysis, analysisState, analysisStatus }: KeyI
                       getInsightScoreColor={getInsightScoreColor}
                       getCategoryColor={getCategoryColor}
                       videoId={analysis.videoId}
+                      panelDock={panelDock}
                     />
                   ))}
                 </div>
@@ -671,6 +673,7 @@ export const KeyInsightsTab = ({ analysis, analysisState, analysisStatus }: KeyI
                           getInsightScoreColor={getInsightScoreColor}
                           getCategoryColor={getCategoryColor}
                           videoId={analysis.videoId}
+                          panelDock={panelDock}
                         />
                       </div>
                     ))}
@@ -720,6 +723,7 @@ interface ClusterCardProps {
   getInsightScoreColor: (score: number) => string
   getCategoryColor: (category: string) => string
   videoId: string
+  panelDock?: "left" | "right"
 }
 
 const ClusterCard = ({ 
@@ -732,7 +736,8 @@ const ClusterCard = ({
   onToggleReasoning, 
   getInsightScoreColor, 
   getCategoryColor,
-  videoId
+  videoId,
+  panelDock = "right"
 }: ClusterCardProps) => {
   return (
     <div style={{
@@ -886,6 +891,7 @@ const ClusterCard = ({
                       showLikes={true}
                       showAuthor={true}
                       borderColor={getCategoryColor(cluster.category)}
+                      panelDock={panelDock}
                     />
                   </div>
                 ))}

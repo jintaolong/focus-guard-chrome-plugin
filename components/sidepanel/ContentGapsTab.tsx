@@ -10,9 +10,10 @@ import { BlurredContent } from "~components/UpgradePrompt"
 interface ContentGapsTabProps {
   analysis: VideoAnalysis
   onBotFilterChange?: (enabled: boolean) => void
+  panelDock?: "left" | "right"
 }
 
-export const ContentGapsTab = ({ analysis, onBotFilterChange }: ContentGapsTabProps) => {
+export const ContentGapsTab = ({ analysis, onBotFilterChange, panelDock = "right" }: ContentGapsTabProps) => {
   const contentGaps = analysis?.contentGaps
   
   if (!contentGaps) return null
@@ -279,6 +280,7 @@ export const ContentGapsTab = ({ analysis, onBotFilterChange }: ContentGapsTabPr
                 insight={gap}
                 showBotScores={botFilterEnabled}
                 videoId={analysis.videoId}
+                panelDock={panelDock}
               />
             ))}
           </>

@@ -9,9 +9,10 @@ import { CommentDisplay } from "~components/CommentDisplay"
 
 interface CommentSentimentTabProps {
   analysis: VideoAnalysis
+  panelDock?: "left" | "right"
 }
 
-export const CommentSentimentTab = ({ analysis }: CommentSentimentTabProps) => {
+export const CommentSentimentTab = ({ analysis, panelDock = "right" }: CommentSentimentTabProps) => {
   const sentiment = (analysis as any)?.sentiment
   const viewerInsights = (analysis as any)?.viewerInsights
   const contentRef = useRef<HTMLDivElement>(null)
@@ -252,7 +253,7 @@ export const CommentSentimentTab = ({ analysis }: CommentSentimentTabProps) => {
           }}>
           Example Comments
         </h3>
-        {renderExampleComments(analysis)}
+        {renderExampleComments(analysis, panelDock)}
       </div>
     </div>
   )
@@ -270,7 +271,11 @@ export const CommentSentimentTab = ({ analysis }: CommentSentimentTabProps) => {
 }
 
 // Helper to render example comments for each sentiment type
-function renderExampleComments(analysis: VideoAnalysis) {
+function renderExampleComments(analysis: VideoAnalysis, panelDock: "left" | "right" = "right") {
+  return <ExampleCommentsSection analysis={analysis} panelDock={panelDock} />
+}
+
+function ExampleCommentsSection({ analysis, panelDock }: { analysis: VideoAnalysis, panelDock: "left" | "right" }) {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({})
   
   const sentiment = (analysis as any)?.sentiment
@@ -343,6 +348,7 @@ function renderExampleComments(analysis: VideoAnalysis) {
                     borderColor={COLORS[getSentimentColor(type as any)].primary}
                     showLikes={true}
                     showAuthor={true}
+                    panelDock={panelDock}
                   />
                 ))}
               </div>

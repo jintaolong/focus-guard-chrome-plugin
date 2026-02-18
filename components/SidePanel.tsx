@@ -17,6 +17,7 @@ interface SidePanelProps {
   isLoading: boolean
   isOpen: boolean
   position?: "left" | "right"
+  panelDock?: "left" | "right"
   history?: AnalysisHistoryItem[]
   onClose: () => void
   onDownloadReport?: (format: "PDF" | "TXT") => void
@@ -33,6 +34,7 @@ export const SidePanel = ({
   isLoading,
   isOpen,
   position = "right",
+  panelDock,
   history,
   onClose,
   onDownloadReport,
@@ -43,6 +45,7 @@ export const SidePanel = ({
   progressPercent,
   progressMessage
 }: SidePanelProps) => {
+  const dock = panelDock ?? position
   const [activeTab, setActiveTab] = useState<TabId>("summary")
   const [isCollapsed, setIsCollapsed] = useState(false)
   // SidePanel is controlled by `isOpen` prop from parent
@@ -309,10 +312,10 @@ export const SidePanel = ({
               </div>
             ) : (
               <>
-                {activeTab === "summary" && <SummaryTab analysis={analysis} />}
+                {activeTab === "summary" && <SummaryTab analysis={analysis} panelDock={dock} />}
                 {activeTab === "sentiment" && (
                   analysis.sentiment?.distribution ? (
-                    <CommentSentimentTab analysis={analysis} />
+                    <CommentSentimentTab analysis={analysis} panelDock={dock} />
                   ) : (
                     <div style={{
                       display: "flex",
@@ -334,7 +337,7 @@ export const SidePanel = ({
                 )}
                 {activeTab === "insights" && (
                   analysis.viewerInsights && !Array.isArray(analysis.viewerInsights) && analysis.viewerInsights.sentimentBreakdown ? (
-                    <KeyInsightsTab analysis={analysis} analysisState={isLoading ? 'analyzing' : 'complete'} analysisStatus={analysis?.summary} />
+                    <KeyInsightsTab analysis={analysis} analysisState={isLoading ? 'analyzing' : 'complete'} analysisStatus={analysis?.summary} panelDock={dock} />
                   ) : (
                     <div style={{
                       display: "flex",
@@ -358,6 +361,7 @@ export const SidePanel = ({
                     <ContentGapsTab
                       analysis={analysis}
                       onBotFilterChange={onBotFilterChange}
+                      panelDock={dock}
                     />
                   ) : (
                     <div style={{
