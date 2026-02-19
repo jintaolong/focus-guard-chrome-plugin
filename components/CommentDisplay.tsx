@@ -211,11 +211,10 @@ export const CommentDisplay = ({
           }, 150)
         }, 800)
       } else {
-        // Comment not loaded yet — update URL to let the content-script's scrollToLinkedComment
-        // helper work as a patient fallback loader, and offer a manual scroll option.
-        const newUrl = `${window.location.pathname}?v=${videoId}&lc=${youtubeCommentId}`
-        window.history.pushState({}, '', newUrl)
-
+        // Comment not yet in DOM — offer manual scroll option.
+        // Do NOT call pushState here: doing so would trigger the content-script's
+        // scrollToLinkedComment loop in parallel with scrollToLoadMore, creating two
+        // independent scroll loops that race each other and never cleanly stop.
         console.log('Comment not found, offering jump to comments...', youtubeCommentId)
         const commentsSection = document.querySelector('ytd-comments#comments') || document.querySelector('#comments')
 

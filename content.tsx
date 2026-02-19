@@ -75,13 +75,26 @@ function isWatchPage(): boolean {
 // Scroll to a linked comment when the page URL contains ?lc=COMMENT_ID.
 // YouTube's native lc= handler fires once on load and gives up quickly if
 // comments haven't rendered yet. This runs from our content script and keeps
-// retrying for up to 60 seconds, scrolling down to trigger YouTube's lazy
+// retrying for up to 15 seconds, scrolling down to trigger YouTube's lazy
 // comment loading, so it works reliably even on slow connections.
 let _scrollToLinkedCommentActive = false
+let _scrollToLinkedCommentTimer: ReturnType<typeof setTimeout> | null = null
+
+// Cancel any in-progress scrollToLinkedComment run (call before starting a new one).
+function cancelScrollToLinkedComment() {
+  _scrollToLinkedCommentActive = false
+  if (_scrollToLinkedCommentTimer !== null) {
+    clearTimeout(_scrollToLinkedCommentTimer)
+    _scrollToLinkedCommentTimer = null
+  }
+}
+
 function scrollToLinkedComment() {
   const params = new URLSearchParams(window.location.search)
   const commentId = params.get("lc")
-  if (!commentId || _scrollToLinkedCommentActive) return
+  if (!commentId) return
+  // Cancel any previous run before starting a new one
+  cancelScrollToLinkedComment()
   _scrollToLinkedCommentActive = true
 
   const findComment = (): Element | null => {
@@ -127,23 +140,26 @@ function scrollToLinkedComment() {
       setTimeout(() => { h.style.transition = origTrans }, 200)
     }, 1200)
     _scrollToLinkedCommentActive = false
+    _scrollToLinkedCommentTimer = null
   }
 
   // Wait for comments section to exist, then scroll down to load comments
-  const maxWaitMs = 60_000
+  // Cap at 15s — enough for slow connections; avoids endless scroll.
+  const maxWaitMs = 15_000
   const tickMs = 600
   let elapsed = 0
 
   const tick = () => {
-    // Abort if the user navigated away from the linked comment URL
+    // Abort if cancelled externally or the user navigated away
+    if (!_scrollToLinkedCommentActive) return
     if (new URLSearchParams(window.location.search).get("lc") !== commentId) {
-      _scrollToLinkedCommentActive = false
+      cancelScrollToLinkedComment()
       return
     }
 
     elapsed += tickMs
     if (elapsed > maxWaitMs) {
-      _scrollToLinkedCommentActive = false
+      cancelScrollToLinkedComment()
       return
     }
 
@@ -160,11 +176,11 @@ function scrollToLinkedComment() {
       window.scrollBy({ top: 600, behavior: 'smooth' })
     }
 
-    setTimeout(tick, tickMs)
+    _scrollToLinkedCommentTimer = setTimeout(tick, tickMs)
   }
 
   // Give the page a moment to paint before starting
-  setTimeout(tick, 1500)
+  _scrollToLinkedCommentTimer = setTimeout(tick, 1500)
 }
 
 // Calculate evidence score from claims (0-100 scale)
