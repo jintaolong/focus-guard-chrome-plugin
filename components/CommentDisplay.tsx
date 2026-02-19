@@ -120,12 +120,11 @@ export const CommentDisplay = ({
     const targetVideoId = targetUrl.searchParams.get('v')
     
     if (currentVideoId === targetVideoId) {
-      // Same video - update URL without page reload and let YouTube scroll to comment
-      const newUrl = `${window.location.pathname}?v=${videoId}&lc=${youtubeCommentId}`
-      
-      // Update URL without reload
-      window.history.pushState({}, '', newUrl)
-      
+      // Same video - find comment first, only update URL / trigger the content-script
+      // scrollToLinkedComment when the comment is NOT already visible.
+      // Calling pushState when the comment IS visible would trigger the content-script's
+      // scroll loop unnecessarily, causing out-of-control scrolling.
+
       // Helper function to find comment element using multiple strategies
       const findCommentElement = () => {
         // Strategy 1: Find by youtube_comment_id in various attributes on comment thread
@@ -196,7 +195,9 @@ export const CommentDisplay = ({
       const commentElement = findCommentElement()
       
       if (commentElement) {
-        // Comment is loaded, scroll to it
+        // Comment is already loaded — scroll to it directly without touching the URL.
+        // NOT updating the URL means the content-script's scrollToLinkedComment is
+        // never triggered for this case, preventing the out-of-control scroll loop.
         commentElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
         // Highlight briefly
         const originalBg = (commentElement as HTMLElement).style.backgroundColor
@@ -210,7 +211,11 @@ export const CommentDisplay = ({
           }, 150)
         }, 800)
       } else {
-        // Comment not loaded yet - offer a subtle jump option instead of forcing a scroll
+        // Comment not loaded yet — update URL to let the content-script's scrollToLinkedComment
+        // helper work as a patient fallback loader, and offer a manual scroll option.
+        const newUrl = `${window.location.pathname}?v=${videoId}&lc=${youtubeCommentId}`
+        window.history.pushState({}, '', newUrl)
+
         console.log('Comment not found, offering jump to comments...', youtubeCommentId)
         const commentsSection = document.querySelector('ytd-comments#comments') || document.querySelector('#comments')
 
@@ -286,11 +291,12 @@ export const CommentDisplay = ({
           } catch (er) { /* ignore */ }
         }
 
-        // Progressively scroll down the comments section to trigger YouTube lazy-loading
-        const scrollToLoadMore = (onFound: (el: Element) => void, onNotFound: () => void) => {
+        // Progressively scroll down the comments section to trigger YouTube lazy-loading.
+        // Returns a stop function the caller can invoke to cancel mid-scroll.
+        const scrollToLoadMore = (onFound: (el: Element) => void, onNotFound: () => void): (() => void) => {
           if (!commentsSection) {
             onNotFound()
-            return
+            return () => {}
           }
           // Scroll to comments section first
           commentsSection.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -298,8 +304,10 @@ export const CommentDisplay = ({
           let scrollAttempts = 0
           const maxScrollAttempts = 20 // scroll up to 20 times (~10 seconds)
           const scrollIntervalMs = 500
+          let stopped = false
 
           const scrollInterval = setInterval(() => {
+            if (stopped) { clearInterval(scrollInterval); return }
             scrollAttempts++
             // Try finding the comment after each scroll
             const found = findCommentElement()
@@ -316,6 +324,12 @@ export const CommentDisplay = ({
             // Scroll down incrementally to load more comments
             window.scrollBy({ top: 800, behavior: 'smooth' })
           }, scrollIntervalMs)
+
+          // Return a stop function so the caller can cancel anytime
+          return () => {
+            stopped = true
+            clearInterval(scrollInterval)
+          }
         }
 
         const highlightElement = (el: Element) => {
@@ -330,15 +344,74 @@ export const CommentDisplay = ({
           }, 800)
         }
 
+        // Helper: show a persistent "searching…" toast with a ⏹ Stop button while scroll is running.
+        // Returns a dismiss function.
+        const showSearchingToast = (stopFn: () => void): (() => void) => {
+          try {
+            const el = document.createElement('div')
+            el.style.position = 'fixed'
+            if (panelDock === 'left') { el.style.left = '18px'; el.style.right = '' }
+            else { el.style.right = '18px'; el.style.left = '' }
+            el.style.bottom = '18px'
+            el.style.padding = '12px 16px'
+            el.style.background = 'rgba(0,0,0,0.9)'
+            el.style.color = 'white'
+            el.style.fontSize = '12px'
+            el.style.borderRadius = '8px'
+            el.style.zIndex = '2147483647'
+            el.style.boxShadow = '0 6px 18px rgba(0,0,0,0.3)'
+            el.style.maxWidth = '320px'
+            el.style.fontWeight = '500'
+
+            const msgDiv = document.createElement('div')
+            msgDiv.textContent = 'Searching for comment…'
+            el.appendChild(msgDiv)
+
+            const subDiv = document.createElement('div')
+            subDiv.style.cssText = 'font-size:10px;margin-top:4px;opacity:0.7;font-weight:400'
+            subDiv.textContent = 'Scrolling down to load more comments.'
+            el.appendChild(subDiv)
+
+            const stopBtn = document.createElement('button')
+            stopBtn.textContent = '⏹ Stop Scrolling'
+            stopBtn.style.cssText = 'margin-top:8px;padding:4px 10px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);border-radius:4px;color:white;font-size:11px;font-weight:600;cursor:pointer'
+            stopBtn.onmouseenter = () => { stopBtn.style.background = 'rgba(255,255,255,0.28)' }
+            stopBtn.onmouseleave = () => { stopBtn.style.background = 'rgba(255,255,255,0.15)' }
+            stopBtn.onclick = (ev) => {
+              ev.stopPropagation()
+              stopFn()
+              if (document.body.contains(el)) document.body.removeChild(el)
+            }
+            el.appendChild(stopBtn)
+            document.body.appendChild(el)
+
+            const dismiss = () => { try { if (document.body.contains(el)) document.body.removeChild(el) } catch(e){} }
+            // Safety auto-dismiss after 15 s (longer than max scroll time)
+            setTimeout(dismiss, 15000)
+            return dismiss
+          } catch (er) {
+            return () => {}
+          }
+        }
+
         // Toast: only the two useful options
         showToast('Comment not loaded yet. Comments load as you scroll down:', [
           { label: 'Scroll to Load More', callback: () => {
-            scrollToLoadMore(
-              (el) => highlightElement(el),
-              () => showToast('Comment not found. It may have been removed by the author or creator.', [
-                { label: 'Go to Comment on YouTube', callback: () => { if (commentLink) window.open(commentLink) } }
-              ])
+            // Use a mutable ref so the stop/dismiss handle is accessible inside
+            // the scrollToLoadMore callbacks even though it's set right after.
+            let dismissSearching: () => void = () => {}
+
+            const stop = scrollToLoadMore(
+              (el) => { dismissSearching(); highlightElement(el) },
+              () => {
+                dismissSearching()
+                showToast('Comment not found. It may have been removed by the author or creator.', [
+                  { label: 'Go to Comment on YouTube', callback: () => { if (commentLink) window.open(commentLink) } }
+                ])
+              }
             )
+            // Show the "searching" toast with a stop button immediately after starting scroll
+            dismissSearching = showSearchingToast(stop)
           }},
           { label: 'Go to Comment on YouTube', callback: () => { if (commentLink) window.open(commentLink) } }
         ])

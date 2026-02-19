@@ -316,6 +316,8 @@ const ContentScript = () => {
   const [analysisStatus, setAnalysisStatus] = useState<VideoAnalysisStatus | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [analysisState, setAnalysisState] = useState<"idle" | "analyzing" | "complete">("idle")
+  // Keep the ref in sync on every render so stale closures always see the current value
+  analysisStateRef.current = analysisState
   const [isSidePanelOpen, setIsSidePanelOpen] = useState(false)
   const [panelDock, setPanelDock] = useState<"left" | "right">(() => {
     try {
@@ -336,6 +338,9 @@ const ContentScript = () => {
   const [progressPercent, setProgressPercent] = useState<number | null>(null)
   const [progressMessage, setProgressMessage] = useState<string | null>(null)
   const abortPollingRef = useRef<(() => void) | null>(null)
+  // Mirror of analysisState as a ref so stale closures (e.g. onStorageChange registered
+  // in the mount-only useEffect) can always read the latest value.
+  const analysisStateRef = useRef<"idle" | "analyzing" | "complete">("idle")
   const [userTierInfo, setUserTierInfo] = useState<{ tier: string; dashboardUrl: string } | null>(null)
   const [showCommunityTeaser, setShowCommunityTeaser] = useState(false)
   const [showSettingsModal, setShowSettingsModal] = useState(false)
@@ -557,7 +562,8 @@ const ContentScript = () => {
             if (activeVideoId) {
               console.log("Comment Verdict: Auth changed on watch page, rechecking cache", activeVideoId)
               // Only recheck cache if not currently analyzing (don't interrupt ongoing job)
-              if (analysisState !== "analyzing") {
+              // Use ref to read current value since this callback captures a stale closure
+              if (analysisStateRef.current !== "analyzing") {
                 setIsCached(null)
                 checkCacheAndPrefetch(activeVideoId)
               } else {
@@ -680,7 +686,9 @@ const ContentScript = () => {
   // Helper: check cache on landing and prefetch full analysis components
   const checkCacheAndPrefetch = async (videoId: string) => {
     // GUARD: Don't interrupt if analysis is already in progress
-    if (analysisState === "analyzing") {
+    // Use the ref so we always get the correct current value (function may be called
+    // from a stale closure such as the storage change handler or URL poll interval)
+    if (analysisStateRef.current === "analyzing") {
       console.log("Comment Verdict: ⏭️ Skipping cache check - analysis already in progress")
       return
     }
