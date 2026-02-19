@@ -315,6 +315,9 @@ const ContentScript = () => {
   const [videoAnalysis, setVideoAnalysis] = useState<VideoAnalysis | null>(null)
   const [analysisStatus, setAnalysisStatus] = useState<VideoAnalysisStatus | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  // Mirror of analysisState as a ref so stale closures (e.g. onStorageChange registered
+  // in the mount-only useEffect) can always read the latest value.
+  const analysisStateRef = useRef<"idle" | "analyzing" | "complete">("idle")
   const [analysisState, setAnalysisState] = useState<"idle" | "analyzing" | "complete">("idle")
   // Keep the ref in sync on every render so stale closures always see the current value
   analysisStateRef.current = analysisState
@@ -338,9 +341,6 @@ const ContentScript = () => {
   const [progressPercent, setProgressPercent] = useState<number | null>(null)
   const [progressMessage, setProgressMessage] = useState<string | null>(null)
   const abortPollingRef = useRef<(() => void) | null>(null)
-  // Mirror of analysisState as a ref so stale closures (e.g. onStorageChange registered
-  // in the mount-only useEffect) can always read the latest value.
-  const analysisStateRef = useRef<"idle" | "analyzing" | "complete">("idle")
   const [userTierInfo, setUserTierInfo] = useState<{ tier: string; dashboardUrl: string } | null>(null)
   const [showCommunityTeaser, setShowCommunityTeaser] = useState(false)
   const [showSettingsModal, setShowSettingsModal] = useState(false)
