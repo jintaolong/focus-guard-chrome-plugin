@@ -51,14 +51,23 @@ function IndexPopup() {
     settingsRef.current = settings
   }, [])
 
-  const loadUserData = useCallback(async (reason: string = "manual") => {
+  const loadUserData = useCallback(async (reason: string = "manual", force: boolean = false) => {
     const now = Date.now()
     const minIntervalMs = 1000
     if (loadUserDataInFlight.current) {
-      console.log("Popup: loadUserData already in progress, skipping", reason)
-      return loadUserDataInFlight.current
+      if (!force) {
+        console.log("Popup: loadUserData already in progress, skipping", reason)
+        return loadUserDataInFlight.current
+      }
+      // force=true: wait for current in-flight to settle, then run a fresh load so
+      // event-driven reloads (OAuth, auth-state-change, logout) always reflect latest state.
+      console.log("Popup: loadUserData force-waiting for in-flight to settle", reason)
+      await loadUserDataInFlight.current.catch(() => {})
     }
-    if (now - lastLoadTime.current < minIntervalMs) {
+    // Throttle only applies to non-forced calls (e.g. visibility/focus triggers).
+    // Event-driven reloads (OAuth, auth state change, storage token change) must
+    // always run so the UI reflects the new state immediately.
+    if (!force && now - lastLoadTime.current < minIntervalMs) {
       console.log("Popup: loadUserData throttled", reason)
       return
     }
@@ -212,7 +221,8 @@ function IndexPopup() {
     } finally {
       loadUserDataInFlight.current = null
     }
-  }, [settings])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     console.log("Comment Verdict popup loaded")
@@ -248,7 +258,8 @@ function IndexPopup() {
         // Check for token, user, or account changes
         if (changes.focus_guard_access_token || changes.focus_guard_user || changes.account || changes.isAuthenticated) {
           console.log("Popup: Detected auth change in storage, reloading data")
-          loadUserData("storage-change")
+          // force=true: bypass throttle so logout/login storage events always reflect immediately
+          loadUserData("storage-change", true)
         }
       }
     }
@@ -264,17 +275,17 @@ function IndexPopup() {
 
       if (message.type === 'OAUTH_COMPLETE') {
         console.log('Popup: OAUTH_COMPLETE received, reloading user data')
-        // small delay to allow storage propagation
+        // small delay to allow storage propagation; force=true bypasses throttle
         setTimeout(() => {
-          loadUserData("oauth-complete")
+          loadUserData("oauth-complete", true)
         }, 100)
         return
       }
 
       if (message.type === 'AUTH_STATE_CHANGED') {
         console.log('Popup: AUTH_STATE_CHANGED received, reloading user data', message.isAuthenticated)
-        // Reload user data to reflect new auth state
-        loadUserData("auth-state")
+        // force=true: bypass throttle so the new auth state is always reflected
+        loadUserData("auth-state", true)
         return
       }
     }
