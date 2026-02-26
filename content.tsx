@@ -814,8 +814,10 @@ const ContentScript = () => {
         // Display core results immediately - NO MORE WAITING FOR SECONDARY DATA
         setVideoAnalysis({
           videoId: videoId,
-          videoTitle: relevancyData?.data?.video_title || null,
+          videoTitle: relevancyData?.data?.video_title || summaryData?.video_title || null,
           videoUrl: `https://www.youtube.com/watch?v=${videoId}`,
+          snapshotShareCode: summaryData?.share_code ?? null,
+          snapshotId: summaryData?.snapshot_id ?? null,
           summary: minimalSummary,
           trustScore: { score: verdictCertainty },
           clickbaitVerdict: { verdict: verdictRaw },
@@ -1434,6 +1436,7 @@ const ContentScript = () => {
             summary_paragraph: resultData.summary.summary_paragraph,
             video_id: resultData.video_id,
             snapshot_id: resultData.snapshot_id,
+            share_code: resultData.comprehensive_data?.share_code ?? null,
             cache_hit: resultData.cache_hit,
             data_hash: '',
             video_title: resultData.video_title,
@@ -1889,8 +1892,13 @@ const ContentScript = () => {
       const videoAnalysisData = {
         // Video identification
         videoId: videoId,
-        videoTitle: relevancyData?.data?.video_title || null,
+        videoTitle: relevancyData?.data?.video_title || summaryData?.video_title || null,
         videoUrl: `https://www.youtube.com/watch?v=${videoId}`,
+        // Share code for public report link
+        // async-job path: result_data.comprehensive_data.share_code
+        // direct summary / fallback path: summaryData.share_code
+        snapshotShareCode: (resultData as any)?.comprehensive_data?.share_code ?? summaryData?.share_code ?? null,
+        snapshotId: summaryData?.snapshot_id ?? (resultData as any)?.comprehensive_data?.snapshot_id ?? null,
         // Legacy shape support
         summary: minimalSummary,
         trustScore: { score: verdictCertainty },

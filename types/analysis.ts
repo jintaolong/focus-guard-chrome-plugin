@@ -303,6 +303,13 @@ export interface VideoAnalysis {
     tierRestriction?: TierRestriction
   }
 
+  /** UUID share code returned by the backend for constructing a public report URL.
+   *  Example: `${PORTAL_URL}/report/${snapshotShareCode}` */
+  snapshotShareCode?: string | null
+  /** Integer snapshot ID from the backend; used as a fallback report URL path segment
+   *  until the backend supplies a UUID `share_code`. */
+  snapshotId?: number | null
+
   analyzedAt?: string
   isStale?: boolean
 }
