@@ -569,21 +569,34 @@ const ContentScript = () => {
         }
         // Reload user data when auth tokens change (user logs in/out)
         if (changes.focus_guard_access_token || changes.focus_guard_user) {
-          console.log("Comment Verdict: Auth state changed, reloading user data")
+          // Distinguish a genuine login event (no previous token → new token) from
+          // a routine background token rotation (old token → new token). Rotations
+          // must never re-run analysis that is already displayed.
+          const tokenChange = changes.focus_guard_access_token
+          const isFreshLogin = tokenChange
+            ? (!tokenChange.oldValue && !!tokenChange.newValue)
+            : false  // focus_guard_user change — treat conservatively as non-login
+
+          console.log("Comment Verdict: Auth storage changed, isFreshLogin=", isFreshLogin)
           loadUserStats()
           loadAnalysisHistory()
 
           if (isWatchPage()) {
             const activeVideoId = getVideoIdFromUrl(window.location.href)
             if (activeVideoId) {
-              console.log("Comment Verdict: Auth changed on watch page, rechecking cache", activeVideoId)
-              // Only recheck cache if not currently analyzing (don't interrupt ongoing job)
-              // Use ref to read current value since this callback captures a stale closure
-              if (analysisStateRef.current !== "analyzing") {
+              if (analysisStateRef.current === "analyzing") {
+                console.log("Comment Verdict: ⏭️ Skipping cache recheck - analysis in progress")
+              } else if (analysisStateRef.current === "complete") {
+                // Results are already displayed – a token rotation must not wipe
+                // them and re-fetch the same data all over again.
+                console.log("Comment Verdict: ⏭️ Skipping cache recheck - analysis already complete")
+              } else if (isFreshLogin) {
+                // User just logged in from an unauthenticated state – load analysis.
+                console.log("Comment Verdict: Fresh login detected, rechecking cache", activeVideoId)
                 setIsCached(null)
                 checkCacheAndPrefetch(activeVideoId)
               } else {
-                console.log("Comment Verdict: ⏭️ Skipping cache recheck - analysis in progress")
+                console.log("Comment Verdict: ⏭️ Skipping cache recheck - token rotation, not a login")
               }
             }
           }
@@ -706,6 +719,15 @@ const ContentScript = () => {
     // from a stale closure such as the storage change handler or URL poll interval)
     if (analysisStateRef.current === "analyzing") {
       console.log("Comment Verdict: ⏭️ Skipping cache check - analysis already in progress")
+      return
+    }
+    // GUARD: Results are already displayed for this video – do not re-fetch.
+    // This prevents background token rotations or any other indirect caller from
+    // wiping and re-loading the sentiment / clustering / topic-gap tabs while
+    // the user is reading them. Only a manual force-refresh or a video navigation
+    // should re-run analysis.
+    if (analysisStateRef.current === "complete") {
+      console.log("Comment Verdict: ⏭️ Skipping cache check - analysis already complete, no re-fetch until force refresh")
       return
     }
     
@@ -1326,6 +1348,11 @@ const ContentScript = () => {
       let topicClustersTierRestriction: TierRestriction | null = null
       let topicGapsTierRestriction: TierRestriction | null = null
       let resultData = null // Store job result data for comment count tracking
+      // Track whether channel-trust was already attempted and failed in the fallback
+      // path so the "remaining data" block never issues a redundant retry that can
+      // hang indefinitely on a slow/overloaded server (causing the spinner to freeze
+      // at 100% and ultimately a spurious "failed to fetch relevancy" error).
+      let credibilityAttempted = false
 
       if (!shouldUseCache) {
         // Step 2a: Not cached - check for existing job or submit new one
@@ -1513,6 +1540,9 @@ const ContentScript = () => {
           topicClustersData = results[3].status === 'fulfilled' ? results[3].value : null
           topicGapsData = results[4].status === 'fulfilled' ? results[4].value : null
           humanLikenessData = null // Not fetched in general flow - load on-demand for advanced features
+          // Mark credibility as already attempted so the "remaining data" block
+          // below does not issue a second channel-trust call that could hang.
+          credibilityAttempted = true
           
           // Log any failures and extract tier restrictions
           results.forEach((result, idx) => {
@@ -1582,9 +1612,12 @@ const ContentScript = () => {
         }
         
         // Step 2: Fetch remaining data in parallel (after summary is guaranteed to exist)
+        // NOTE: channel-trust (credibility) is skipped when it was already attempted
+        // in the fallback path and failed – retrying a 502/504 endpoint can stall
+        // Promise.allSettled indefinitely on a slow server and block all results.
         const remainingResults = await Promise.allSettled([
           sentimentData ? Promise.resolve(sentimentData) : FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: forceRefresh }),
-          credibilityData ? Promise.resolve(credibilityData) : FocusGuardAPI.analyzeChannelTrust(videoId, forceRefresh),
+          (credibilityData || credibilityAttempted) ? Promise.resolve(credibilityData) : FocusGuardAPI.analyzeChannelTrust(videoId, forceRefresh),
           topicClustersData ? Promise.resolve(topicClustersData) : FocusGuardAPI.analyzeTopicClusteringV2(videoId, forceRefresh),
           topicGapsData ? Promise.resolve(topicGapsData) : FocusGuardAPI.analyzeTopicGapV2(videoId, forceRefresh)
         ])

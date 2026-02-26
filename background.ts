@@ -64,14 +64,22 @@ async function makeAPIRequest(endpoint: string, options: any = {}) {
   const url = endpoint.startsWith('http') ? endpoint : `${API_BASE_URL}${endpoint}`
   console.log("Background: Making API request to", url)
   
+  // Hard timeout: if the server does not respond within 30 s we abort the
+  // fetch and return a synthetic failure so chrome.runtime.sendMessage never
+  // hangs indefinitely and blocks the content-script Promise chain.
+  const timeoutController = new AbortController()
+  const timeoutId = setTimeout(() => timeoutController.abort(), 30000)
+  
   try {
     const response = await fetch(url, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
         ...options.headers
-      }
+      },
+      signal: timeoutController.signal
     })
+    clearTimeout(timeoutId)
 
     console.log("Background: Response status", response.status)
 
@@ -155,8 +163,13 @@ async function makeAPIRequest(endpoint: string, options: any = {}) {
     const data = await response.json().catch(() => null)
     return { success: true, data }
   } catch (error) {
+    clearTimeout(timeoutId)
     console.error("Background: Fetch error", error)
     const errorMessage = error instanceof Error ? error.message : String(error)
+    if (error instanceof Error && error.name === 'AbortError') {
+      console.warn("Background: Request timed out (30 s):", url)
+      return { success: false, error: 'Request timed out after 30 seconds', status: 408 }
+    }
     return { success: false, error: errorMessage }
   }
 }
@@ -497,15 +510,32 @@ async function refreshTokenIfNeeded() {
     
     console.log("Background: Proactively refreshing access token...")
     
-    // Call the refresh endpoint
+    // Call the refresh endpoint (15 s timeout: a hung refresh must not block
+    // the isRefreshing flag and cause all subsequent refreshes to be skipped).
     const refreshToken = result.focus_guard_refresh_token
-    const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ refresh_token: refreshToken })
-    })
+    const refreshController = new AbortController()
+    const refreshTimeoutId = setTimeout(() => refreshController.abort(), 15000)
+    let response: Response
+    try {
+      response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+        signal: refreshController.signal
+      })
+    } catch (fetchErr) {
+      clearTimeout(refreshTimeoutId)
+      const msg = fetchErr instanceof Error ? fetchErr.message : String(fetchErr)
+      if (fetchErr instanceof Error && fetchErr.name === 'AbortError') {
+        console.warn("Background: Token refresh timed out (15 s)")
+      } else {
+        console.error("Background: Token refresh fetch error:", msg)
+      }
+      return
+    }
+    clearTimeout(refreshTimeoutId)
     
     if (!response.ok) {
       const error = await response.json().catch(() => ({ detail: response.statusText }))
