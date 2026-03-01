@@ -811,6 +811,37 @@ const ContentScript = () => {
           key_takeaways: (summaryData as any)?.key_takeaways || (summaryData as any)?.keyTakeaways || []
         }
 
+        const initialTier = userTierInfo?.tier || 'free'
+        const initialDashboardUrl = userTierInfo?.dashboardUrl || `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
+        const initialSentimentTierRestriction = initialTier === 'free' ? {
+          code: 'TIER_RESTRICTION' as const,
+          required_tier: 'starter' as const,
+          current_tier: initialTier as 'pro' | 'free' | 'starter',
+          message: 'Comment Sentiment analysis requires a Starter subscription.',
+          upgrade_url: initialDashboardUrl
+        } : null
+        const initialViewerInsightsTierRestriction = initialTier !== 'pro' ? {
+          code: 'TIER_RESTRICTION' as const,
+          required_tier: 'pro' as const,
+          current_tier: initialTier as 'pro' | 'free' | 'starter',
+          message: 'Viewer Insights are available for Pro users only.',
+          upgrade_url: initialDashboardUrl
+        } : null
+        const initialContentGapsTierRestriction = initialTier !== 'pro' ? {
+          code: 'TIER_RESTRICTION' as const,
+          required_tier: 'pro' as const,
+          current_tier: initialTier as 'pro' | 'free' | 'starter',
+          message: 'Content Gaps analysis is available for Pro users only.',
+          upgrade_url: initialDashboardUrl
+        } : null
+        const initialReportTierRestriction = initialTier !== 'pro' ? {
+          code: 'TIER_RESTRICTION' as const,
+          required_tier: 'pro' as const,
+          current_tier: initialTier as 'pro' | 'free' | 'starter',
+          message: 'Report downloads are available for Pro users only. Upgrade to download detailed analysis reports.',
+          upgrade_url: initialDashboardUrl
+        } : null
+
         // Display core results immediately - NO MORE WAITING FOR SECONDARY DATA
         setVideoAnalysis({
           videoId: videoId,
@@ -825,16 +856,26 @@ const ContentScript = () => {
           maxCommentsRequested: summaryData?.max_comments_requested ?? null,
           actualCommentsFetched: summaryData?.actual_comments_fetched ?? null,
           channelCredibility: undefined,
-          sentiment: undefined,
+          sentiment: initialSentimentTierRestriction ? {
+            tierRestriction: initialSentimentTierRestriction
+          } : undefined,
           credibility: null,
           topicClusters: null,
           topicClustersData: undefined,
-          contentGaps: undefined,
-          viewerInsights: undefined,
+          contentGaps: initialContentGapsTierRestriction ? {
+            botPercentage: 0,
+            gapCoverageScore: undefined,
+            botDetectionEnabled: true,
+            unansweredQuestions: [],
+            tierRestriction: initialContentGapsTierRestriction
+          } : undefined,
+          viewerInsights: initialViewerInsightsTierRestriction ? {
+            tierRestriction: initialViewerInsightsTierRestriction
+          } : undefined,
           reportInfo: {
             availableFormats: ["PDF", "TXT"],
             analysisDate: new Date().toISOString(),
-            tierRestriction: null
+            tierRestriction: initialReportTierRestriction
           }
         } as any)
 
@@ -1075,12 +1116,6 @@ const ContentScript = () => {
             const hasNewTopicClusters = !hasExistingTopicClusters && topicClustersData
             const hasNewContentGaps = !hasExistingContentGaps && topicGapsData
             
-            // Skip update entirely if NO new data - return exact same object to prevent re-render
-            if (!hasNewSentiment && !hasNewCredibility && !hasNewTopicClusters && !hasNewContentGaps) {
-              console.log("Comment Verdict: ⏭️ Skipping secondary data update - no new data to add")
-              return prev
-            }
-            
             console.log("Comment Verdict: 🔄 Updating UI with secondary data...", {
               needsSentiment: hasNewSentiment,
               needsCredibility: hasNewCredibility,
@@ -1107,7 +1142,25 @@ const ContentScript = () => {
             } : null
             
             // Only update fields that have new data
-            const updatedAnalysis = {
+            const reportTierRestriction = userTier !== 'pro' ? {
+              code: 'TIER_RESTRICTION' as const,
+              required_tier: 'pro' as const,
+              current_tier: userTier as 'pro' | 'free' | 'starter',
+              message: 'Report downloads are available for Pro users only. Upgrade to download detailed analysis reports.',
+              upgrade_url: dashboardUrl
+            } : null
+
+            const hasSentimentRestrictionUpdate = !!sentimentTierRestriction && !(prev.sentiment as any)?.tierRestriction
+            const hasViewerRestrictionUpdate = !!topicClustersTierRestriction && !(prev.viewerInsights as any)?.tierRestriction
+            const hasContentGapsRestrictionUpdate = !!topicGapsTierRestriction && !(prev.contentGaps as any)?.tierRestriction
+            const hasReportRestrictionUpdate = !!reportTierRestriction && !(prev as any)?.reportInfo?.tierRestriction
+
+            if (!hasNewSentiment && !hasNewCredibility && !hasNewTopicClusters && !hasNewContentGaps && !hasSentimentRestrictionUpdate && !hasViewerRestrictionUpdate && !hasContentGapsRestrictionUpdate && !hasReportRestrictionUpdate) {
+              console.log("Comment Verdict: ⏭️ Skipping secondary data update - no new data or restriction updates")
+              return prev
+            }
+
+            const updatedAnalysis: any = {
               ...prev,
               // Only update channelCredibility if we have new data
               channelCredibility: hasNewCredibility 
@@ -1123,13 +1176,19 @@ const ContentScript = () => {
                 distribution: derivedSentimentDistribution,
                 filteringMetadata: filteringMetadata,
                 tierRestriction: sentimentTierRestriction || undefined
-              } : prev.sentiment,
+              } : (hasSentimentRestrictionUpdate ? {
+                ...(prev.sentiment || {}),
+                tierRestriction: sentimentTierRestriction || undefined
+              } : prev.sentiment),
               // Only update viewerInsights if we have new data
               viewerInsights: hasNewSentiment && sentimentBreakdown ? {
                 sentimentBreakdown: sentimentBreakdown,
                 actionableInsights: (prev.viewerInsights && !Array.isArray(prev.viewerInsights)) ? prev.viewerInsights.actionableInsights : { highValue: [], improvements: [] },
                 tierRestriction: topicClustersTierRestriction || undefined
-              } : prev.viewerInsights,
+              } : (hasViewerRestrictionUpdate ? {
+                ...((prev.viewerInsights && !Array.isArray(prev.viewerInsights)) ? prev.viewerInsights : {}),
+                tierRestriction: topicClustersTierRestriction || undefined
+              } : prev.viewerInsights),
               // Only update topicClustersData if we have new data
               topicClustersData: hasNewTopicClusters ? {
                 clusters: topicClustersData.topic_clusters || [],
@@ -1157,7 +1216,23 @@ const ContentScript = () => {
                 }) || [],
                 filteringMetadata: topicGapsData?.filtering_metadata,
                 tierRestriction: topicGapsTierRestriction || undefined
-              } : prev.contentGaps
+              } : (hasContentGapsRestrictionUpdate ? {
+                ...(prev.contentGaps || {
+                  botPercentage: 0,
+                  gapCoverageScore: undefined,
+                  botDetectionEnabled: true,
+                  unansweredQuestions: []
+                }),
+                tierRestriction: topicGapsTierRestriction || undefined
+              } : prev.contentGaps),
+              reportInfo: {
+                ...(prev.reportInfo || {
+                  availableFormats: ["PDF", "TXT"],
+                  analysisDate: new Date().toISOString(),
+                  tierRestriction: null
+                }),
+                tierRestriction: reportTierRestriction
+              }
             }
             console.log("Comment Verdict: ✅ Secondary data update complete", {
               updatedSentiment: hasNewSentiment,

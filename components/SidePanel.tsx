@@ -50,6 +50,19 @@ export const SidePanel = ({
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [isShareOpen, setIsShareOpen] = useState(false)
   const [shareCopied, setShareCopied] = useState(false)
+  const sentimentData = (analysis as any)?.sentiment
+  const viewerInsightsData = (analysis as any)?.viewerInsights
+  const hasSentimentDataOrRestriction = Boolean(
+    sentimentData?.distribution || sentimentData?.tierRestriction
+  )
+  const hasViewerInsightsDataOrRestriction = Boolean(
+    (viewerInsightsData && !Array.isArray(viewerInsightsData) && viewerInsightsData.sentimentBreakdown) ||
+      viewerInsightsData?.tierRestriction
+  )
+  const contentGapsData = (analysis as any)?.contentGaps
+  const hasContentGapsDataOrRestriction = Boolean(
+    contentGapsData?.unansweredQuestions || contentGapsData?.tierRestriction
+  )
   // SidePanel is controlled by `isOpen` prop from parent
 
   // ── Shared icon-button style ────────────────────────────────────────────────
@@ -485,7 +498,7 @@ export const SidePanel = ({
               <>
                 {activeTab === "summary" && <SummaryTab analysis={analysis} panelDock={dock} />}
                 {activeTab === "sentiment" && (
-                  analysis.sentiment?.distribution ? (
+                  hasSentimentDataOrRestriction ? (
                     <CommentSentimentTab analysis={analysis} panelDock={dock} />
                   ) : (
                     <div style={{
@@ -507,7 +520,7 @@ export const SidePanel = ({
                   )
                 )}
                 {activeTab === "insights" && (
-                  analysis.viewerInsights && !Array.isArray(analysis.viewerInsights) && analysis.viewerInsights.sentimentBreakdown ? (
+                  hasViewerInsightsDataOrRestriction ? (
                     <KeyInsightsTab analysis={analysis} analysisState={isLoading ? 'analyzing' : 'complete'} analysisStatus={analysis?.summary} panelDock={dock} />
                   ) : (
                     <div style={{
@@ -528,7 +541,7 @@ export const SidePanel = ({
                   )
                 )}
                 {activeTab === "gaps" && (
-                  analysis.contentGaps?.unansweredQuestions ? (
+                  hasContentGapsDataOrRestriction ? (
                     <ContentGapsTab
                       analysis={analysis}
                       onBotFilterChange={onBotFilterChange}
