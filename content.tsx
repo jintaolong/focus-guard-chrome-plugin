@@ -2252,6 +2252,17 @@ const ContentScript = () => {
           errorMessage = "Please log in"
         } else if (msg.includes("network") || msg.includes("connection")) {
           errorMessage = "Network error"
+        } else if (msg.includes("insufficient credits") || msg.includes("free queue")) {
+          // Keep toggle-button message short and readable (space is very limited)
+          if (msg.includes("already used") && msg.includes("free queue")) {
+            errorMessage = "No credits · Free slot used"
+          } else if (msg.includes("exhausted") || msg.includes("pool") || msg.includes("full")) {
+            errorMessage = "No credits · Queue full"
+          } else if (msg.includes("still has credits")) {
+            errorMessage = "Use your credits"
+          } else {
+            errorMessage = "No credits · Free queue unavailable"
+          }
         } else {
           errorMessage = error.message
         }
