@@ -785,6 +785,28 @@ export class FocusGuardAPI {
       return n > 10 ? Math.round((n / 10) * 10) / 10 : Math.round(n * 10) / 10
     }
 
+    const summaryChannelCredibility = (() => {
+      if ('trust_score' in credibility && 'metrics' in credibility) {
+        return {
+          score: credibility.trust_score,
+          factors: Object.entries(credibility.metrics).map(([name, metricData]) => ({
+            name,
+            value: metricData.score.toString(),
+            weight: metricData.normalized_value
+          }))
+        }
+      }
+
+      return {
+        score: credibility.score,
+        factors: Object.entries(credibility.normalized_factors || {}).map(([name, value]) => ({
+          name,
+          value: value.toString(),
+          weight: typeof value === 'number' ? value : Number(value) || 0
+        }))
+      }
+    })()
+
     return {
       videoId,
       videoTitle: summary.video_title,
@@ -805,14 +827,7 @@ export class FocusGuardAPI {
             supporting_evidence: c.supporting_evidence || c.evidence || (Array.isArray(c.evidence) ? c.evidence : undefined)
           }))
         },
-        channelCredibility: {
-          score: credibility.score,
-          factors: Object.entries(credibility.normalized_factors).map(([name, value]) => ({
-            name,
-            value: value.toString(),
-            weight: value
-          }))
-        },
+        channelCredibility: summaryChannelCredibility,
         persona: summary.persona,
         key_takeaways: summary.key_takeaways
       },
