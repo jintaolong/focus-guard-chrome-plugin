@@ -109,7 +109,7 @@ function IndexPopup() {
         // Get user and subscription info
         console.log("Popup: Fetching user, subscription, usage, and credits...")
         const [user, subscription, usage, credits] = await Promise.all([
-          AuthService.getCurrentUser(),
+          AuthService.getCurrentUser(true),
           SubscriptionService.getSubscription(),
           SubscriptionService.getUsage(),
           FocusGuardAPI.getCreditBalance().catch(err => {

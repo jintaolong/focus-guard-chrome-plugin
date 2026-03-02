@@ -213,8 +213,18 @@ export class AuthService {
     }
   }
 
-  static async getCurrentUser(): Promise<UserResponse | null> {
+  static async getCurrentUser(forceRefresh: boolean = false): Promise<UserResponse | null> {
     try {
+      if (forceRefresh) {
+        try {
+          const freshUser = await this.getMe()
+          await this.setCurrentUser(freshUser)
+          return freshUser
+        } catch (fetchErr) {
+          console.warn('AuthService: Failed to force-refresh user from API, falling back to storage:', fetchErr)
+        }
+      }
+
       const result = await this.storageGet([this.USER_KEY])
       let stored: any = result[this.USER_KEY] || null
 
@@ -263,6 +273,8 @@ export class AuthService {
       const account = {
         isLoggedIn: true,
         email: user.email,
+        is_verified: user.is_verified,
+        welcome_bonus_used: user.welcome_bonus_used ?? false,
         tier: "starter",
         searchesUsedToday: 0,
         searchesRemaining: -1,
