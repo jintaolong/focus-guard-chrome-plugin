@@ -2,24 +2,32 @@
 // Features: category filters, insight score sorting/filtering, parent theme grouping
 
 import { useState, useMemo } from "react"
-import type { VideoAnalysis } from "~types/analysis"
+import type { VideoAnalysis, CommentObject } from "~types/analysis"
 import { COLORS } from "~lib/colors"
 import { BlurredContent } from "~components/UpgradePrompt"
+import { CommentDisplay } from "~components/CommentDisplay"
 
 interface SegmentHighlight {
   parent_comment_text: string
   highlighted_segment: string
   char_range: [number, number]
   is_full_comment: boolean
-  user: string
+  user: string | null
   likes: number
+  // V2 API additions
+  author_display_name?: string | null
+  author_channel_id?: string | null
+  youtube_comment_id?: string | null
+  comment_id?: number
+  created_at?: string | null
+  is_cleaned?: boolean
 }
 
 interface TopicCluster {
   cluster_id: number
   statement: string
   count: number
-  supporting_quotes: string[]
+  supporting_quotes: Array<string | CommentObject>
   insight_score: number
   category: string
   reasoning: string
@@ -51,6 +59,7 @@ interface KeyInsightsTabProps {
   analysis: VideoAnalysis
   analysisState?: string
   analysisStatus?: any
+  panelDock?: "left" | "right"
 }
 
 // Helper function to render segment highlights - simplified with quotes
@@ -69,7 +78,7 @@ const renderSegmentHighlight = (highlight: SegmentHighlight) => {
   )
 }
 
-export const KeyInsightsTab = ({ analysis, analysisState, analysisStatus }: KeyInsightsTabProps) => {
+export const KeyInsightsTab = ({ analysis, analysisState, analysisStatus, panelDock = "right" }: KeyInsightsTabProps) => {
   const topicClustersData = (analysis as any)?.topicClustersData as TopicClustersData | null
   const isRefreshing = analysisState === 'analyzing' || analysisState === 'polling'
   
@@ -144,11 +153,13 @@ export const KeyInsightsTab = ({ analysis, analysisState, analysisStatus }: KeyI
     
     // Group by parent themes
     const groups: { parent: ParentTheme | null, clusters: TopicCluster[] }[] = []
+    const clusterById = new Map(topicClustersData.clusters.map(cluster => [cluster.cluster_id, cluster]))
+    const filteredIds = new Set(filteredClusters.map(cluster => cluster.cluster_id))
     
     topicClustersData.parent_themes.forEach(parent => {
-      const parentClusters = parent.child_clusters.filter(cluster => 
-        filteredClusters.some(fc => fc.cluster_id === cluster.cluster_id)
-      )
+      const parentClusters = parent.child_clusters
+        .map(cluster => clusterById.get(cluster.cluster_id) || cluster)
+        .filter(cluster => filteredIds.has(cluster.cluster_id))
       
       if (parentClusters.length > 0) {
         // Sort clusters within parent
@@ -556,6 +567,8 @@ export const KeyInsightsTab = ({ analysis, analysisState, analysisStatus }: KeyI
                       onToggleReasoning={() => toggleReasoning(cluster.cluster_id)}
                       getInsightScoreColor={getInsightScoreColor}
                       getCategoryColor={getCategoryColor}
+                      videoId={analysis.videoId}
+                      panelDock={panelDock}
                     />
                   ))}
                 </div>
@@ -659,6 +672,8 @@ export const KeyInsightsTab = ({ analysis, analysisState, analysisStatus }: KeyI
                           onToggleReasoning={() => toggleReasoning(cluster.cluster_id)}
                           getInsightScoreColor={getInsightScoreColor}
                           getCategoryColor={getCategoryColor}
+                          videoId={analysis.videoId}
+                          panelDock={panelDock}
                         />
                       </div>
                     ))}
@@ -707,6 +722,8 @@ interface ClusterCardProps {
   onToggleReasoning: () => void
   getInsightScoreColor: (score: number) => string
   getCategoryColor: (category: string) => string
+  videoId: string
+  panelDock?: "left" | "right"
 }
 
 const ClusterCard = ({ 
@@ -718,7 +735,9 @@ const ClusterCard = ({
   isReasoningExpanded, 
   onToggleReasoning, 
   getInsightScoreColor, 
-  getCategoryColor 
+  getCategoryColor,
+  videoId,
+  panelDock = "right"
 }: ClusterCardProps) => {
   return (
     <div style={{
@@ -850,8 +869,36 @@ const ClusterCard = ({
             )}
           </div>
           
-          {/* Segment Highlights */}
-          {cluster.segment_highlights && cluster.segment_highlights.length > 0 && (
+          {/* V2 Backend: Prefer supporting_quotes (full CommentObjects with youtube_comment_id) */}
+          {cluster.supporting_quotes && cluster.supporting_quotes.length > 0 ? (
+            <div>
+              <h5 style={{
+                margin: "0 0 12px 0",
+                fontSize: "13px",
+                fontWeight: "600",
+                color: COLORS.ui.text.secondary,
+                textTransform: "uppercase",
+                letterSpacing: "0.5px"
+              }}>
+                Supporting Quotes ({cluster.supporting_quotes.length})
+              </h5>
+              <div style={{ maxHeight: "300px", overflowY: "auto" }}>
+                {cluster.supporting_quotes.map((quote, idx) => (
+                  <div key={`${cluster.cluster_id}-quote-${idx}`} style={{ marginBottom: idx < cluster.supporting_quotes.length - 1 ? "8px" : 0 }}>
+                    <CommentDisplay
+                      comment={quote}
+                      videoId={videoId}
+                      showLikes={true}
+                      showAuthor={true}
+                      borderColor={getCategoryColor(cluster.category)}
+                      panelDock={panelDock}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : cluster.segment_highlights && cluster.segment_highlights.length > 0 ? (
+            /* Fallback: Old backend or edge cases with segment_highlights only */
             <div>
               <h5 style={{
                 margin: "0 0 12px 0",
@@ -867,6 +914,266 @@ const ClusterCard = ({
                 {cluster.segment_highlights.map((highlight, idx) => {
                   const commentKey = `${cluster.cluster_id}-${idx}`
                   const isCommentExpanded = expandedComments.has(commentKey)
+                  const youtubeCommentId = highlight.youtube_comment_id || null
+                  const commentLink = youtubeCommentId && videoId && videoId !== ""
+                    ? `https://www.youtube.com/watch?v=${videoId}&lc=${youtubeCommentId}`
+                    : null
+                  
+                  // Handler to scroll to comment on YouTube page
+                  const handleCommentLinkClick = (e: React.MouseEvent) => {
+                    if (!commentLink) return
+                    
+                    e.preventDefault()
+                    e.stopPropagation()
+                    
+                    const currentUrl = new URL(window.location.href)
+                    const targetUrl = new URL(commentLink)
+                    
+                    // Check if we're on the same video page
+                    const currentVideoId = currentUrl.searchParams.get('v')
+                    const targetVideoId = targetUrl.searchParams.get('v')
+                    
+                    if (currentVideoId === targetVideoId && videoId) {
+                      // Same video - update URL without page reload
+                      const newUrl = `${window.location.pathname}?v=${videoId}&lc=${youtubeCommentId}`
+                      
+                      // Update URL without reload
+                      window.history.pushState({}, '', newUrl)
+                      
+                      // Helper function to find comment element using multiple strategies
+                      const findCommentElement = () => {
+                        // Strategy 1: Find by youtube_comment_id in various attributes on comment thread
+                        let element = document.querySelector(`ytd-comment-thread-renderer[has-comment-id="${youtubeCommentId}"]`) ||
+                                     document.querySelector(`ytd-comment-thread-renderer[comment-id="${youtubeCommentId}"]`)
+
+                        if (element) return element
+
+                        // Strategy 2: Find all comment threads and check their internal data
+                        const allComments = document.querySelectorAll('ytd-comment-thread-renderer')
+                        for (const comment of allComments) {
+                          const commentData = (comment as any).__data
+                          const commentId = commentData?.commentId || commentData?.comment?.commentId || commentData?.commentIdStr
+                          if (commentId === youtubeCommentId) {
+                            return comment
+                          }
+                        }
+
+                        // Strategy 3: Look for elements whose id or data-comment-id contains the comment id
+                        const allElements = document.querySelectorAll('[id], [data-comment-id]')
+                        for (const el of allElements) {
+                          const id = el.getAttribute('id') || el.getAttribute('data-comment-id') || ''
+                          if (id && youtubeCommentId && id.indexOf(youtubeCommentId) !== -1) {
+                            return el
+                          }
+                        }
+
+                        // Strategy 4: Search for any anchor whose href contains the lc= comment id (permalink anchors)
+                        const anchors = document.querySelectorAll('a[href*="&lc="]')
+                        for (const a of anchors) {
+                          const href = (a as HTMLAnchorElement).href || ''
+                          if (href.indexOf(`&lc=${youtubeCommentId}`) !== -1) {
+                            const thread = (a as HTMLElement).closest('ytd-comment-thread-renderer') || a.closest('ytd-comment-renderer')
+                            if (thread) return thread
+                            return a as Element
+                          }
+                        }
+
+                        // Strategy 5: Anchors may use different LC ids. Fuzzy-match anchors by the comment text/author.
+                        try {
+                          const snippet = highlight?.parent_comment_text ? highlight.parent_comment_text.substring(0, 80).trim().toLowerCase() : ''
+                          const author = highlight?.author_display_name ? highlight.author_display_name.trim().toLowerCase() : ''
+                          if (snippet || author) {
+                            for (const a of document.querySelectorAll('a[href*="&lc="]')) {
+                              const thread = (a as HTMLElement).closest('ytd-comment-thread-renderer') || a.closest('ytd-comment-renderer')
+                              if (!thread) continue
+                              try {
+                                const contentEl = thread.querySelector && thread.querySelector('#content-text')
+                                const content = contentEl ? (contentEl.textContent || '') : ((thread as HTMLElement).textContent || '')
+                                const authorEl = thread.querySelector && (thread.querySelector('#author-text')?.textContent || '')
+                                const contentLower = (content || '').toLowerCase()
+                                const authorLower = (authorEl || '').toLowerCase()
+                                if (snippet && contentLower.indexOf(snippet) !== -1) return thread
+                                if (author && authorLower.indexOf(author) !== -1) return thread
+                              } catch (er) {
+                                // ignore
+                              }
+                            }
+                          }
+                        } catch (er) {
+                          // ignore
+                        }
+
+                        return null
+                      }
+                      
+                      const commentElement = findCommentElement()
+                      
+                      if (commentElement) {
+                        // Comment is loaded, scroll to it
+                        commentElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                        // Highlight briefly
+                        const originalBg = (commentElement as HTMLElement).style.backgroundColor
+                        const originalTransition = (commentElement as HTMLElement).style.transition
+                        ;(commentElement as HTMLElement).style.transition = 'background-color 0.2s ease'
+                        ;(commentElement as HTMLElement).style.backgroundColor = '#fff3cd'
+                        setTimeout(() => {
+                          (commentElement as HTMLElement).style.backgroundColor = originalBg
+                          setTimeout(() => {
+                            (commentElement as HTMLElement).style.transition = originalTransition
+                          }, 150)
+                        }, 800)
+                      } else {
+                        // Comment not loaded - offer a subtle jump rather than forcing scroll
+                        console.log('Comment not found, offering jump to comments...', youtubeCommentId)
+                        const commentsSection = document.querySelector('ytd-comments#comments') || document.querySelector('#comments')
+
+                        const showToast = (msg: string, actionLabel?: string, onAction?: () => void) => {
+                          try {
+                            const id = `cv-toast-${Math.random().toString(36).slice(2,8)}`
+                            const el = document.createElement('div')
+                            el.id = id
+                            el.style.position = 'fixed'
+                            el.style.right = '18px'
+                            el.style.bottom = '18px'
+                            el.style.padding = '8px 12px'
+                            el.style.background = 'rgba(0,0,0,0.8)'
+                            el.style.color = 'white'
+                            el.style.fontSize = '12px'
+                            el.style.borderRadius = '8px'
+                            el.style.zIndex = '2147483647'
+                            el.style.boxShadow = '0 6px 18px rgba(0,0,0,0.2)'
+                            el.style.cursor = actionLabel ? 'pointer' : 'default'
+                            el.textContent = msg
+                            if (actionLabel && onAction) {
+                              const btn = document.createElement('span')
+                              btn.style.marginLeft = '8px'
+                              btn.style.padding = '4px 8px'
+                              btn.style.background = 'rgba(255,255,255,0.06)'
+                              btn.style.borderRadius = '6px'
+                              btn.style.fontWeight = '700'
+                              btn.style.marginRight = '0'
+                              btn.textContent = actionLabel
+                              el.appendChild(btn)
+                              el.onclick = (ev) => { ev.stopPropagation(); onAction(); document.body.removeChild(el) }
+                            }
+                            document.body.appendChild(el)
+                            setTimeout(() => { try { if (document.body.contains(el)) document.body.removeChild(el) } catch(e){} }, 3500)
+                          } catch (er) { /* ignore */ }
+                        }
+
+                        const startPollingAndObserve = () => {
+                          if (!commentsSection) {
+                            showToast('Comments section not available on this page.')
+                            return
+                          }
+                          commentsSection.scrollIntoView({ behavior: 'smooth', block: 'start' })
+
+                          // Wait for YouTube to load the comment (with timeout). Use both polling and a MutationObserver.
+                          let attempts = 0
+                          const maxAttempts = 30 // ~15 seconds
+                          const intervalMs = 500
+
+                          const observer = new MutationObserver((mutations, obs) => {
+                            const found = findCommentElement()
+                            if (found) {
+                              obs.disconnect()
+                              clearInterval(checkInterval)
+                              found.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                              const originalBg = (found as HTMLElement).style.backgroundColor
+                              const originalTransition = (found as HTMLElement).style.transition
+                              ;(found as HTMLElement).style.transition = 'background-color 0.2s ease'
+                              ;(found as HTMLElement).style.backgroundColor = '#fff3cd'
+                              setTimeout(() => {
+                                (found as HTMLElement).style.backgroundColor = originalBg
+                                setTimeout(() => {
+                                  (found as HTMLElement).style.transition = originalTransition
+                                }, 150)
+                              }, 800)
+                            }
+                          })
+
+                          observer.observe(document.body, { childList: true, subtree: true })
+
+                          const checkInterval = setInterval(() => {
+                            attempts++
+                            const loadedComment = findCommentElement()
+
+                            if (loadedComment || attempts >= maxAttempts) {
+                              clearInterval(checkInterval)
+                              observer.disconnect()
+                              if (loadedComment) {
+                                loadedComment.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                                const originalBg = (loadedComment as HTMLElement).style.backgroundColor
+                                const originalTransition = (loadedComment as HTMLElement).style.transition
+                                ;(loadedComment as HTMLElement).style.transition = 'background-color 0.2s ease'
+                                ;(loadedComment as HTMLElement).style.backgroundColor = '#fff3cd'
+                                setTimeout(() => {
+                                  (loadedComment as HTMLElement).style.backgroundColor = originalBg
+                                  setTimeout(() => {
+                                    (loadedComment as HTMLElement).style.transition = originalTransition
+                                  }, 150)
+                                }, 800)
+                              } else {
+                                console.warn('Comment not found after waiting:', youtubeCommentId)
+                                try {
+                                  const anchors = Array.from(document.querySelectorAll('a[href*="&lc="]'))
+                                    .map(a => (a as HTMLAnchorElement).href)
+                                    .filter(h => h.includes(`&lc=${youtubeCommentId}`))
+                                  console.log('Permalink anchors matching comment id:', anchors)
+                                } catch (err) {
+                                  // ignore
+                                }
+
+                                // Fallback: try to find by matching text snippet and/or author
+                                const findByTextAuthor = () => {
+                                  const snippet = highlight?.parent_comment_text ? highlight.parent_comment_text.substring(0, 40).trim() : ''
+                                  const author = highlight?.author_display_name ? highlight.author_display_name.trim() : ''
+                                  const candidates = Array.from(document.querySelectorAll('ytd-comment-renderer, ytd-comment-thread-renderer'))
+                                  for (const c of candidates) {
+                                    try {
+                                      const contentEl = (c as Element).querySelector && (c as Element).querySelector('#content-text')
+                                      const content = contentEl ? (contentEl.textContent || '') : ((c as HTMLElement).textContent || '')
+                                      const authorEl = (c as Element).querySelector && ((c as Element).querySelector('#author-text')?.textContent || '')
+                                      if (snippet && content && content.indexOf(snippet) !== -1) return c
+                                      if (author && authorEl && authorEl.indexOf(author) !== -1) return c
+                                    } catch (er) {
+                                      // ignore
+                                    }
+                                  }
+                                  return null
+                                }
+
+                                const fuzzy = findByTextAuthor()
+                                if (fuzzy) {
+                                  console.log('Found comment by text/author fallback for', youtubeCommentId)
+                                  fuzzy.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                                  const originalBg = (fuzzy as HTMLElement).style.backgroundColor
+                                  const originalTransition = (fuzzy as HTMLElement).style.transition
+                                  ;(fuzzy as HTMLElement).style.transition = 'background-color 0.2s ease'
+                                  ;(fuzzy as HTMLElement).style.backgroundColor = '#fff3cd'
+                                  setTimeout(() => {
+                                    (fuzzy as HTMLElement).style.backgroundColor = originalBg
+                                    setTimeout(() => {
+                                      (fuzzy as HTMLElement).style.transition = originalTransition
+                                    }, 150)
+                                  }, 800)
+                                } else {
+                                  // Final fallback: show a subtle toast offering to open the permalink
+                                  showToast('Comment not found on this page.', 'Open', () => { if (commentLink) window.location.href = commentLink })
+                                }
+                              }
+                            }
+                          }, intervalMs)
+                        }
+
+                        // Offer jump action to the user instead of auto-scrolling
+                        showToast('Comment not found on page.', 'Jump', startPollingAndObserve)
+                      }
+                    } else {
+                      // Different video - navigate normally
+                      window.location.href = commentLink
+                    }
+                  }
                   
                   return (
                     <div
@@ -882,19 +1189,48 @@ const ClusterCard = ({
                         display: "flex",
                         justifyContent: "space-between",
                         alignItems: "flex-start",
-                        marginBottom: "8px"
+                        marginBottom: "8px",
+                        gap: "8px"
                       }}>
-                        <span style={{
-                          fontSize: "12px",
-                          fontWeight: "600",
-                          color: COLORS.neutral.dark
-                        }}>
-                          {highlight.user}
-                        </span>
+                        <div style={{ flex: 1, display: "flex", alignItems: "center", gap: "6px" }}>
+                          <span style={{
+                            fontSize: "12px",
+                            fontWeight: "600",
+                            color: COLORS.neutral.dark
+                          }}>
+                            {highlight.author_display_name || highlight.user || "Anonymous"}
+                          </span>
+                          {commentLink && (
+                            <a
+                              href={commentLink}
+                              onClick={handleCommentLinkClick}
+                              style={{
+                                color: COLORS.ui.textSecondary,
+                                textDecoration: "none",
+                                fontSize: "14px",
+                                display: "flex",
+                                alignItems: "center",
+                                padding: "2px",
+                                cursor: "pointer",
+                                opacity: 0.6,
+                                transition: "opacity 0.2s"
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.opacity = "1"
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.opacity = "0.6"
+                              }}
+                              title="Jump to this comment on YouTube">
+                              🔗
+                            </a>
+                          )}
+                        </div>
                         {highlight.likes > 0 && (
                           <span style={{
                             fontSize: "11px",
-                            color: COLORS.ui.text.tertiary
+                            color: COLORS.ui.text.tertiary,
+                            flexShrink: 0
                           }}>
                             👍 {highlight.likes}
                           </span>
@@ -947,7 +1283,7 @@ const ClusterCard = ({
                 })}
               </div>
             </div>
-          )}
+          ) : null}
         </div>
       )}
     </div>

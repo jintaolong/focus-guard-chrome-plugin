@@ -10,9 +10,10 @@ import { ChannelCredibilitySubTab } from "./ChannelCredibilitySubTab"
 
 interface SummaryTabProps {
   analysis?: VideoAnalysis | null
+  panelDock?: "left" | "right"
 }
 
-export const SummaryTab = ({ analysis }: SummaryTabProps) => {
+export const SummaryTab = ({ analysis, panelDock = "right" }: SummaryTabProps) => {
   const [activeSubTab, setActiveSubTab] = useState<"overview" | "video" | "channel">("video")
   const [isExecutiveSummaryExpanded, setIsExecutiveSummaryExpanded] = useState(false)
   
@@ -105,15 +106,36 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
             trustScore={trustScore}
             verdictColor={verdictColor}
             claimsList={claimsList}
+            videoId={analysis.videoId}
+            panelDock={panelDock}
           />
         )}
 
         {activeSubTab === "channel" && (
-          <ChannelCredibilitySubTab
-            channelCredibility={displayData}
-            credibilityScore={trustScore}
-            credibilityFactors={trustFactors}
-          />
+          analysis.channelCredibility || summary.channelCredibility || summary.channelTrust ? (
+            <ChannelCredibilitySubTab
+              channelCredibility={displayData}
+              credibilityScore={trustScore}
+              credibilityFactors={trustFactors}
+            />
+          ) : (
+            <div style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "48px 24px",
+              color: COLORS.ui.text.secondary
+            }}>
+              <div style={{
+                fontSize: "32px",
+                marginBottom: "16px",
+                animation: "spin 1s linear infinite"
+              }}>⏳</div>
+              <p style={{ margin: 0, fontSize: "14px", fontWeight: "500" }}>Loading channel credibility...</p>
+              <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+            </div>
+          )
         )}
       </div>
     </div>

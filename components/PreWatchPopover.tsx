@@ -11,6 +11,7 @@
 import { useState, useEffect } from "react"
 import type { VideoAnalysis } from "~types/analysis"
 import { COLORS, getTrustScoreColor, getClickbaitVerdictColor, getColorSet } from "~lib/colors"
+import { CommentDisplay } from "~components/CommentDisplay"
 
 interface PreWatchPopoverProps {
   analysis: VideoAnalysis | null
@@ -18,6 +19,7 @@ interface PreWatchPopoverProps {
   onDismiss: () => void
   onViewFullAnalysis: () => void
   onWatchAnyway: () => void
+  panelDock?: "left" | "right"
 }
 
 export const PreWatchPopover = ({
@@ -25,7 +27,8 @@ export const PreWatchPopover = ({
   isLoading,
   onDismiss,
   onViewFullAnalysis,
-  onWatchAnyway
+  onWatchAnyway,
+  panelDock = "right"
 }: PreWatchPopoverProps) => {
   const [isVisible, setIsVisible] = useState(true)
   const [shouldRender, setShouldRender] = useState(true)
@@ -336,34 +339,26 @@ export const PreWatchPopover = ({
                   {(analysis.sentiment.distribution as any).exampleComments && (
                     <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "8px" }}>
                       {((analysis.sentiment.distribution as any).exampleComments.positive || []).slice(0, 2).map((comment: any, idx: number) => (
-                        <div
+                        <CommentDisplay
                           key={`pos-${idx}`}
-                          style={{
-                            padding: "8px 12px",
-                            backgroundColor: COLORS.ui.surface,
-                            borderRadius: "6px",
-                            borderLeft: `3px solid ${getColorSet("high").primary}`,
-                            fontSize: "12px",
-                            color: COLORS.ui.textSecondary,
-                            lineHeight: "1.4"
-                          }}>
-                          "{comment.text}"
-                        </div>
+                          comment={comment}
+                          videoId={analysis.videoId}
+                          showLikes={false}
+                          showAuthor={true}
+                          borderColor={getColorSet("high").primary}
+                          panelDock={panelDock}
+                        />
                       ))}
                       {((analysis.sentiment.distribution as any).exampleComments.negative || []).slice(0, 1).map((comment: any, idx: number) => (
-                        <div
+                        <CommentDisplay
                           key={`neg-${idx}`}
-                          style={{
-                            padding: "8px 12px",
-                            backgroundColor: COLORS.ui.surface,
-                            borderRadius: "6px",
-                            borderLeft: `3px solid ${getColorSet("low").primary}`,
-                            fontSize: "12px",
-                            color: COLORS.ui.textSecondary,
-                            lineHeight: "1.4"
-                          }}>
-                          "{comment.text}"
-                        </div>
+                          comment={comment}
+                          videoId={analysis.videoId}
+                          showLikes={false}
+                          showAuthor={true}
+                          borderColor={getColorSet("low").primary}
+                          panelDock={panelDock}
+                        />
                       ))}
                     </div>
                   )}

@@ -90,8 +90,7 @@ export class FocusGuardAPI {
     endpoint: string,
     options?: RequestInit
   ): Promise<T> {
-    await AuthService.ensureValidToken()
-    const accessToken = await AuthService.getAccessToken()
+    const accessToken = await AuthService.ensureValidToken()
 
     const headers = {
       Authorization: `Bearer ${accessToken}`,
@@ -727,13 +726,20 @@ export class FocusGuardAPI {
         statement: cluster.statement,
         type: "benefit" as const,
         commentCount: cluster.count,
-        supportingComments: (cluster.all_supporting_comments || cluster.supporting_quotes).map((quote, qIdx) => ({
-          id: `comment-${idx}-${qIdx}`,
-          text: quote,
-          humanLikenessScore: 8, // Default, would need actual HLS data per comment
-          timestamp: undefined,
-          author: undefined
-        })),
+        supportingComments: (cluster.all_supporting_comments || cluster.supporting_quotes).map((quote: any, qIdx) => {
+          if (quote && typeof quote === "object") {
+            // Full CommentObject — pass it through directly
+            return { ...quote, id: quote.id ?? `comment-${idx}-${qIdx}` }
+          }
+          // Plain string quote
+          return {
+            id: `comment-${idx}-${qIdx}`,
+            text: typeof quote === "string" ? quote : "",
+            humanLikenessScore: 8,
+            timestamp: undefined,
+            author: undefined
+          }
+        }),
         isExpanded: false
       }))
 
@@ -745,13 +751,18 @@ export class FocusGuardAPI {
         statement: gap.question_statement,
         type: "gap" as const,
         commentCount: (gap.all_supporting_comments || gap.supporting_comments).length,
-        supportingComments: (gap.all_supporting_comments || gap.supporting_comments).map((comment, cIdx) => ({
-          id: `gap-comment-${idx}-${cIdx}`,
-          text: comment,
-          humanLikenessScore: 8,
-          timestamp: undefined,
-          author: undefined
-        })),
+        supportingComments: (gap.all_supporting_comments || gap.supporting_comments).map((comment: any, cIdx) => {
+          if (comment && typeof comment === "object") {
+            return { ...comment, id: comment.id ?? `gap-comment-${idx}-${cIdx}` }
+          }
+          return {
+            id: `gap-comment-${idx}-${cIdx}`,
+            text: typeof comment === "string" ? comment : "",
+            humanLikenessScore: 8,
+            timestamp: undefined,
+            author: undefined
+          }
+        }),
         isExpanded: false
       }))
 
@@ -774,6 +785,28 @@ export class FocusGuardAPI {
       return n > 10 ? Math.round((n / 10) * 10) / 10 : Math.round(n * 10) / 10
     }
 
+    const summaryChannelCredibility = (() => {
+      if ('trust_score' in credibility && 'metrics' in credibility) {
+        return {
+          score: credibility.trust_score,
+          factors: Object.entries(credibility.metrics).map(([name, metricData]) => ({
+            name,
+            value: metricData.score.toString(),
+            weight: metricData.normalized_value
+          }))
+        }
+      }
+
+      return {
+        score: credibility.score,
+        factors: Object.entries(credibility.normalized_factors || {}).map(([name, value]) => ({
+          name,
+          value: value.toString(),
+          weight: typeof value === 'number' ? value : Number(value) || 0
+        }))
+      }
+    })()
+
     return {
       videoId,
       videoTitle: summary.video_title,
@@ -794,14 +827,7 @@ export class FocusGuardAPI {
             supporting_evidence: c.supporting_evidence || c.evidence || (Array.isArray(c.evidence) ? c.evidence : undefined)
           }))
         },
-        channelCredibility: {
-          score: credibility.score,
-          factors: Object.entries(credibility.normalized_factors).map(([name, value]) => ({
-            name,
-            value: value.toString(),
-            weight: value
-          }))
-        },
+        channelCredibility: summaryChannelCredibility,
         persona: summary.persona,
         key_takeaways: summary.key_takeaways
       },

@@ -21,6 +21,7 @@ import type {
   VideoAnalysisStatus,
   AnalysisHistoryItem
 } from "~types/analysis"
+import type { TierRestriction } from "~types/tierRestriction"
 import type { FocusGuardSettings } from "~types/popup"
 
 initConsole()
@@ -71,6 +72,117 @@ function isWatchPage(): boolean {
   return false
 }
 
+// Scroll to a linked comment when the page URL contains ?lc=COMMENT_ID.
+// YouTube's native lc= handler fires once on load and gives up quickly if
+// comments haven't rendered yet. This runs from our content script and keeps
+// retrying for up to 15 seconds, scrolling down to trigger YouTube's lazy
+// comment loading, so it works reliably even on slow connections.
+let _scrollToLinkedCommentActive = false
+let _scrollToLinkedCommentTimer: ReturnType<typeof setTimeout> | null = null
+
+// Cancel any in-progress scrollToLinkedComment run (call before starting a new one).
+function cancelScrollToLinkedComment() {
+  _scrollToLinkedCommentActive = false
+  if (_scrollToLinkedCommentTimer !== null) {
+    clearTimeout(_scrollToLinkedCommentTimer)
+    _scrollToLinkedCommentTimer = null
+  }
+}
+
+function scrollToLinkedComment() {
+  const params = new URLSearchParams(window.location.search)
+  const commentId = params.get("lc")
+  if (!commentId) return
+  // Cancel any previous run before starting a new one
+  cancelScrollToLinkedComment()
+  _scrollToLinkedCommentActive = true
+
+  const findComment = (): Element | null => {
+    // Strategy 1: attribute selectors on comment thread elements
+    let el: Element | null =
+      document.querySelector(`ytd-comment-thread-renderer[has-comment-id="${commentId}"]`) ||
+      document.querySelector(`ytd-comment-thread-renderer[comment-id="${commentId}"]`)
+    if (el) return el
+
+    // Strategy 2: check __data on all thread renderers
+    for (const c of document.querySelectorAll('ytd-comment-thread-renderer')) {
+      const d = (c as any).__data
+      const id = d?.commentId || d?.comment?.commentId || d?.commentIdStr
+      if (id === commentId) return c
+    }
+
+    // Strategy 3: id / data-comment-id attributes
+    for (const c of document.querySelectorAll('[id], [data-comment-id]')) {
+      const id = c.getAttribute('id') || c.getAttribute('data-comment-id') || ''
+      if (id.indexOf(commentId) !== -1) return c
+    }
+
+    // Strategy 4: permalink anchors
+    for (const a of document.querySelectorAll('a[href*="&lc="]')) {
+      if ((a as HTMLAnchorElement).href.indexOf(`&lc=${commentId}`) !== -1) {
+        const thread = (a as HTMLElement).closest('ytd-comment-thread-renderer') || a.closest('ytd-comment-renderer')
+        return thread || a
+      }
+    }
+
+    return null
+  }
+
+  const highlight = (el: Element) => {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    const h = el as HTMLElement
+    const origBg = h.style.backgroundColor
+    const origTrans = h.style.transition
+    h.style.transition = 'background-color 0.2s ease'
+    h.style.backgroundColor = '#fff3cd'
+    setTimeout(() => {
+      h.style.backgroundColor = origBg
+      setTimeout(() => { h.style.transition = origTrans }, 200)
+    }, 1200)
+    _scrollToLinkedCommentActive = false
+    _scrollToLinkedCommentTimer = null
+  }
+
+  // Wait for comments section to exist, then scroll down to load comments
+  // Cap at 15s — enough for slow connections; avoids endless scroll.
+  const maxWaitMs = 15_000
+  const tickMs = 600
+  let elapsed = 0
+
+  const tick = () => {
+    // Abort if cancelled externally or the user navigated away
+    if (!_scrollToLinkedCommentActive) return
+    if (new URLSearchParams(window.location.search).get("lc") !== commentId) {
+      cancelScrollToLinkedComment()
+      return
+    }
+
+    elapsed += tickMs
+    if (elapsed > maxWaitMs) {
+      cancelScrollToLinkedComment()
+      return
+    }
+
+    const found = findComment()
+    if (found) {
+      highlight(found)
+      return
+    }
+
+    // Scroll down to trigger YouTube lazy loading
+    const commentsSection = document.querySelector('ytd-comments#comments') || document.querySelector('#comments')
+    if (commentsSection) {
+      commentsSection.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      window.scrollBy({ top: 600, behavior: 'smooth' })
+    }
+
+    _scrollToLinkedCommentTimer = setTimeout(tick, tickMs)
+  }
+
+  // Give the page a moment to paint before starting
+  _scrollToLinkedCommentTimer = setTimeout(tick, 1500)
+}
+
 // Calculate evidence score from claims (0-100 scale)
 // Measures strength of user evidence for/against claims
 // Formula: weighted_for = sum(for.count * (1 + likes*0.1))
@@ -110,6 +222,55 @@ function calculateEvidenceScore(claims: any[]): number {
   console.log(`Evidence Score Calculation: for=${weightedFor.toFixed(2)}, against=${weightedAgainst.toFixed(2)}, score=${score.toFixed(1)}`)
   
   return Math.round(score * 10) / 10 // Round to 1 decimal
+}
+
+function normalizeGapComments(gap: any): any[] {
+  const rawComments = gap?.sample_comments || gap?.supporting_comments || gap?.all_supporting_comments || []
+  return Array.isArray(rawComments) ? rawComments : []
+}
+
+function normalizeCommentForDisplay(comment: any, fallbackId: string, youtubeCommentId?: string) {
+  if (comment && typeof comment === "object") {
+    // Try every plausible text field name the API might use
+    const text =
+      (typeof comment.text === "string" ? comment.text : null) ??
+      (typeof comment.comment_text === "string" ? comment.comment_text : null) ??
+      (typeof comment.content === "string" ? comment.content : null) ??
+      (typeof comment.body === "string" ? comment.body : null) ??
+      (typeof comment.message === "string" ? comment.message : null) ??
+      // Nested: comment.text might itself be a CommentObject
+      (comment.text && typeof comment.text === "object" && typeof comment.text.text === "string" ? comment.text.text : null) ??
+      ""
+
+    const derivedYoutubeCommentId = typeof comment.youtube_comment_id === "string"
+      ? comment.youtube_comment_id
+      : (typeof comment.comment_id === "string"
+        ? comment.comment_id
+        : (typeof comment.id === "string" ? comment.id : undefined))
+
+    return {
+      ...comment,
+      id: comment.id ?? fallbackId,
+      text,
+      youtube_comment_id: derivedYoutubeCommentId ?? youtubeCommentId ?? comment.youtube_comment_id
+    }
+  }
+
+  return {
+    id: fallbackId,
+    text: typeof comment === "string" ? comment : "",
+    youtube_comment_id: youtubeCommentId
+  }
+}
+
+function mapGapSupportingComments(gap: any, gapIdx: number) {
+  const gapComments = normalizeGapComments(gap)
+
+  return gapComments.map((comment: any, cIdx: number) => {
+    // Comment objects from V2 backend already have youtube_comment_id, author_display_name, etc.
+    // No need to map from highlight_indexes - just normalize the comment object directly
+    return normalizeCommentForDisplay(comment, `gap-comment-${gapIdx}-${cIdx}`)
+  })
 }
 
 // Debug mode: enable extended injection on any YouTube page when set.
@@ -170,7 +331,12 @@ const ContentScript = () => {
   const [videoAnalysis, setVideoAnalysis] = useState<VideoAnalysis | null>(null)
   const [analysisStatus, setAnalysisStatus] = useState<VideoAnalysisStatus | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  // Mirror of analysisState as a ref so stale closures (e.g. onStorageChange registered
+  // in the mount-only useEffect) can always read the latest value.
+  const analysisStateRef = useRef<"idle" | "analyzing" | "complete">("idle")
   const [analysisState, setAnalysisState] = useState<"idle" | "analyzing" | "complete">("idle")
+  // Keep the ref in sync on every render so stale closures always see the current value
+  analysisStateRef.current = analysisState
   const [isSidePanelOpen, setIsSidePanelOpen] = useState(false)
   const [panelDock, setPanelDock] = useState<"left" | "right">(() => {
     try {
@@ -242,6 +408,10 @@ const ContentScript = () => {
 
       // FR-202: Auto-activate analysis on watch page
       if (isWatch) {
+        // If URL contains lc= (opened via our "Go to Comment on YouTube" deeplink),
+        // run our patient scroll-to-comment logic instead of relying on YouTube's
+        // native handler which gives up ~7s after load on slow connections.
+        scrollToLinkedComment()
         const videoId = getVideoIdFromUrl(window.location.href)
         console.log("Comment Verdict: detected videoId=", videoId, "currentVideoIdRef=", currentVideoIdRef.current)
         if (videoId && videoId !== currentVideoIdRef.current) {
@@ -256,23 +426,24 @@ const ContentScript = () => {
           setCurrentVideoId(videoId)
           // Reset tier info cache for new video (will be fetched fresh on analysis)
           setUserTierInfo(null)
-          // Check if auto-analyze is enabled
+          
+          // ALWAYS check cache first to update toggle button state
+          // This is independent of auto-analyze setting
+          console.log("Comment Verdict: Checking cache for new video...")
+          try {
+            checkCacheAndPrefetch(videoId)
+          } catch (e) {
+            console.error("Comment Verdict: Cache check failed", e)
+          }
+          
+          // Check if auto-analyze is enabled (for starting actual analysis)
           const shouldAutoAnalyze = settings?.videoAnalysis?.autoAnalyze ?? false
-          if (shouldAutoAnalyze) {
-            console.log("Comment Verdict: Auto-analyze enabled, starting analysis")
-            // Start analysis automatically
-            try {
-              checkCacheAndPrefetch(videoId)
-            } catch (e) {
-              console.error("Comment Verdict: Auto-analysis failed", e)
-            }
-          } else {
-            // Don't auto-analyze; wait for user to click the button
+          if (!shouldAutoAnalyze) {
+            // Don't auto-analyze; just reset state and wait for user to click the button
+            // (cache check above will update toggle if cached report exists)
+            console.log("Comment Verdict: Auto-analyze disabled, waiting for user action")
             setAnalysisState("idle")
-            setVideoAnalysis(null)
-            setAnalysisStatus(null)
             setAnalysisError(null)
-            setIsCached(null)
             setCurrentJobId(null)
             setProgressPercent(null)
             setProgressMessage(null)
@@ -282,12 +453,6 @@ const ContentScript = () => {
           // analysis completes on this new page.
           setPreWatchDismissed(false)
           setShowPreWatchPopover(false)
-          // Check cache & prefetch full analysis asynchronously
-          try {
-            checkCacheAndPrefetch(videoId)
-          } catch (e) {
-            // ignore
-          }
         }
       } else {
         // User left watch page - abort any ongoing polling
@@ -404,9 +569,37 @@ const ContentScript = () => {
         }
         // Reload user data when auth tokens change (user logs in/out)
         if (changes.focus_guard_access_token || changes.focus_guard_user) {
-          console.log("Comment Verdict: Auth state changed, reloading user data")
+          // Distinguish a genuine login event (no previous token → new token) from
+          // a routine background token rotation (old token → new token). Rotations
+          // must never re-run analysis that is already displayed.
+          const tokenChange = changes.focus_guard_access_token
+          const isFreshLogin = tokenChange
+            ? (!tokenChange.oldValue && !!tokenChange.newValue)
+            : false  // focus_guard_user change — treat conservatively as non-login
+
+          console.log("Comment Verdict: Auth storage changed, isFreshLogin=", isFreshLogin)
           loadUserStats()
           loadAnalysisHistory()
+
+          if (isWatchPage()) {
+            const activeVideoId = getVideoIdFromUrl(window.location.href)
+            if (activeVideoId) {
+              if (analysisStateRef.current === "analyzing") {
+                console.log("Comment Verdict: ⏭️ Skipping cache recheck - analysis in progress")
+              } else if (analysisStateRef.current === "complete") {
+                // Results are already displayed – a token rotation must not wipe
+                // them and re-fetch the same data all over again.
+                console.log("Comment Verdict: ⏭️ Skipping cache recheck - analysis already complete")
+              } else if (isFreshLogin) {
+                // User just logged in from an unauthenticated state – load analysis.
+                console.log("Comment Verdict: Fresh login detected, rechecking cache", activeVideoId)
+                setIsCached(null)
+                checkCacheAndPrefetch(activeVideoId)
+              } else {
+                console.log("Comment Verdict: ⏭️ Skipping cache recheck - token rotation, not a login")
+              }
+            }
+          }
         }
       }
     }
@@ -521,6 +714,23 @@ const ContentScript = () => {
 
   // Helper: check cache on landing and prefetch full analysis components
   const checkCacheAndPrefetch = async (videoId: string) => {
+    // GUARD: Don't interrupt if analysis is already in progress
+    // Use the ref so we always get the correct current value (function may be called
+    // from a stale closure such as the storage change handler or URL poll interval)
+    if (analysisStateRef.current === "analyzing") {
+      console.log("Comment Verdict: ⏭️ Skipping cache check - analysis already in progress")
+      return
+    }
+    // GUARD: Results are already displayed for this video – do not re-fetch.
+    // This prevents background token rotations or any other indirect caller from
+    // wiping and re-loading the sentiment / clustering / topic-gap tabs while
+    // the user is reading them. Only a manual force-refresh or a video navigation
+    // should re-run analysis.
+    if (analysisStateRef.current === "complete") {
+      console.log("Comment Verdict: ⏭️ Skipping cache check - analysis already complete, no re-fetch until force refresh")
+      return
+    }
+    
     setIsCheckingCache(true)
     try {
       console.log("Comment Verdict: checking cache on landing for video", videoId)
@@ -564,7 +774,7 @@ const ContentScript = () => {
           FocusGuardAPI.analyzeSummaryV2({ video_id: videoId, force_refresh: false })
         ])
         const coreDuration = ((Date.now() - coreStartTime) / 1000).toFixed(2)
-        console.log(`Comment Verdict: ✅ Core data fetched in ${coreDuration}s`)
+        console.log(`Comment Verdict: ✅ Core data fetched in ${coreDuration}s - IMMEDIATELY SHOWING RESULTS`)
         
         const relevancyData = coreResults[0].status === 'fulfilled' ? coreResults[0].value : null
         const summaryData = coreResults[1].status === 'fulfilled' ? coreResults[1].value : null
@@ -573,8 +783,114 @@ const ContentScript = () => {
           throw new Error("Failed to fetch core relevancy data")
         }
         
-        // Start fetching secondary data in background (don't await)
-        console.log("Comment Verdict: ⚡ Fetching secondary data in background...")
+        // Process core data immediately for fast UI response
+        const verdictRaw = (relevancyData?.data.verdict || "UNKNOWN").toUpperCase()
+        const confidenceRaw = typeof relevancyData?.data.confidence_score === "number" ? relevancyData.data.confidence_score : 0
+        const confidenceNorm = normalizeConfidence(confidenceRaw)
+        const confidencePercent = Math.round(confidenceNorm * 100)
+        const verdictCertainty = Math.round(confidenceNorm * 10 * 10) / 10
+        
+        // Calculate evidence score from claims
+        const claims = relevancyData?.data?.claims || []
+        const evidenceScore = calculateEvidenceScore(claims)
+        
+        console.log("Comment Verdict: Verdicts from core data - certainty:", verdictCertainty, "evidence:", evidenceScore, "verdict:", verdictRaw)
+        
+        // BUILD AND DISPLAY CORE-DATA ANALYSIS IMMEDIATELY (spinner turns off here)
+        const minimalSummary = {
+          trustScore: verdictCertainty,
+          evidenceScore: evidenceScore,
+          aiConfidence: confidencePercent,
+          clickbaitVerdict: {
+            label: verdictRaw,
+            confidence: confidencePercent,
+            claims: relevancyData?.data?.claims || (summaryData as any)?.clickbaitVerdict?.claims || (summaryData as any)?.claims || [],
+            onLineSummary: (summaryData as any)?.one_line_summary || (summaryData as any)?.onLineSummary
+          },
+          channelCredibility: undefined, // Will be populated from credibility data
+          key_takeaways: (summaryData as any)?.key_takeaways || (summaryData as any)?.keyTakeaways || []
+        }
+
+        const initialTier = userTierInfo?.tier || 'free'
+        const initialDashboardUrl = userTierInfo?.dashboardUrl || `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
+        const initialSentimentTierRestriction = initialTier === 'free' ? {
+          code: 'TIER_RESTRICTION' as const,
+          required_tier: 'starter' as const,
+          current_tier: initialTier as 'pro' | 'free' | 'starter',
+          message: 'Comment Sentiment analysis requires a Starter subscription.',
+          upgrade_url: initialDashboardUrl
+        } : null
+        const initialViewerInsightsTierRestriction = initialTier !== 'pro' ? {
+          code: 'TIER_RESTRICTION' as const,
+          required_tier: 'pro' as const,
+          current_tier: initialTier as 'pro' | 'free' | 'starter',
+          message: 'Viewer Insights are available for Pro users only.',
+          upgrade_url: initialDashboardUrl
+        } : null
+        const initialContentGapsTierRestriction = initialTier !== 'pro' ? {
+          code: 'TIER_RESTRICTION' as const,
+          required_tier: 'pro' as const,
+          current_tier: initialTier as 'pro' | 'free' | 'starter',
+          message: 'Content Gaps analysis is available for Pro users only.',
+          upgrade_url: initialDashboardUrl
+        } : null
+        const initialReportTierRestriction = initialTier !== 'pro' ? {
+          code: 'TIER_RESTRICTION' as const,
+          required_tier: 'pro' as const,
+          current_tier: initialTier as 'pro' | 'free' | 'starter',
+          message: 'Report downloads are available for Pro users only. Upgrade to download detailed analysis reports.',
+          upgrade_url: initialDashboardUrl
+        } : null
+
+        // Display core results immediately - NO MORE WAITING FOR SECONDARY DATA
+        setVideoAnalysis({
+          videoId: videoId,
+          videoTitle: relevancyData?.data?.video_title || summaryData?.video_title || null,
+          videoUrl: `https://www.youtube.com/watch?v=${videoId}`,
+          snapshotShareCode: summaryData?.share_code ?? null,
+          snapshotId: summaryData?.snapshot_id ?? null,
+          summary: minimalSummary,
+          trustScore: { score: verdictCertainty },
+          clickbaitVerdict: { verdict: verdictRaw },
+          executiveSummary: summaryData?.summary_paragraph ?? null,
+          maxCommentsRequested: summaryData?.max_comments_requested ?? null,
+          actualCommentsFetched: summaryData?.actual_comments_fetched ?? null,
+          channelCredibility: undefined,
+          sentiment: initialSentimentTierRestriction ? {
+            tierRestriction: initialSentimentTierRestriction
+          } : undefined,
+          credibility: null,
+          topicClusters: null,
+          topicClustersData: undefined,
+          contentGaps: initialContentGapsTierRestriction ? {
+            botPercentage: 0,
+            gapCoverageScore: undefined,
+            botDetectionEnabled: true,
+            unansweredQuestions: [],
+            tierRestriction: initialContentGapsTierRestriction
+          } : undefined,
+          viewerInsights: initialViewerInsightsTierRestriction ? {
+            tierRestriction: initialViewerInsightsTierRestriction
+          } : undefined,
+          reportInfo: {
+            availableFormats: ["PDF", "TXT"],
+            analysisDate: new Date().toISOString(),
+            tierRestriction: initialReportTierRestriction
+          }
+        } as any)
+
+        setAnalysisStatus({
+          trustScore: verdictCertainty,
+          clickbaitVerdict: verdictRaw as "LEGIT" | "MISLEADING" | "CLICKBAIT",
+          isAnalyzing: false
+        })
+
+        setAnalysisState("complete")
+        setIsCheckingCache(false)
+        console.log("Comment Verdict: ✅ SPINNER OFF - Core analysis displayed in ~${coreDuration}s")
+
+        // NOW fetch secondary data WITHOUT blocking the spinner
+        console.log("Comment Verdict: ⚡ Fetching secondary data in background (non-blocking)...")
         const secondaryPromise = Promise.allSettled([
           FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: false }),
           FocusGuardAPI.analyzeChannelTrust(videoId, false),
@@ -587,401 +903,368 @@ const ContentScript = () => {
             return null
           })
         ])
-        
-        // Add timeout to prevent slow secondary data from blocking too long
-        const SECONDARY_TIMEOUT = 5000 // 5 seconds max wait for secondary data
-        const timeoutPromise = new Promise(resolve => setTimeout(() => {
-          console.log("Comment Verdict: ⏱️ Secondary data timeout - proceeding with core data only")
-          resolve([
-            { status: 'rejected', reason: new Error('Timeout') },
-            { status: 'rejected', reason: new Error('Timeout') },
-            { status: 'rejected', reason: new Error('Timeout') },
-            { status: 'rejected', reason: new Error('Timeout') }
-          ])
-        }, SECONDARY_TIMEOUT))
-        
-        const secondaryResults = await Promise.race([secondaryPromise, timeoutPromise]) as PromiseSettledResult<any>[]
-        
-        // Extract secondary results
-        const sentimentData = secondaryResults[0]?.status === 'fulfilled' ? secondaryResults[0].value : null
-        const credibilityData = secondaryResults[1]?.status === 'fulfilled' ? secondaryResults[1].value : null
-        const topicClustersData = secondaryResults[2]?.status === 'fulfilled' ? secondaryResults[2].value : null
-        const topicGapsData = secondaryResults[3]?.status === 'fulfilled' ? secondaryResults[3].value : null
-        const humanLikenessData = null
 
-        let sentimentTierRestriction = null
-        let topicClustersTierRestriction = null
-        let topicGapsTierRestriction = null
+        // Process secondary data in background WITHOUT blocking the spinner
+        // Build helper functions for secondary data processing
+        const parseSecondaryResults = (results: PromiseSettledResult<any>[]) => {
+          const sentimentData = results[0]?.status === 'fulfilled' ? results[0].value : null
+          const credibilityData = results[1]?.status === 'fulfilled' ? results[1].value : null
+          const topicClustersData = results[2]?.status === 'fulfilled' ? results[2].value : null
+          const topicGapsData = results[3]?.status === 'fulfilled' ? results[3].value : null
 
-        // Extract tier restrictions from failures
-        secondaryResults.forEach((result, idx) => {
-          if (result?.status === 'rejected') {
-            const endpoints = ['sentiment', 'credibility', 'topicClusters', 'topicGaps']
-            const error = result.reason
-            // Only log non-timeout errors
-            if (error?.message !== 'Timeout') {
-              console.warn(`Comment Verdict: failed to fetch ${endpoints[idx]}:`, error)
-            }
-            
-            // Check if error contains tier restriction
-            if (error && typeof error === 'object') {
-              const detail = error.detail || (error.response && error.response.detail)
-              if (detail && detail.code === 'TIER_RESTRICTION') {
-                console.log(`Comment Verdict: Tier restriction detected for ${endpoints[idx]}:`, detail)
-                if (idx === 0) sentimentTierRestriction = detail
-                if (idx === 2) topicClustersTierRestriction = detail
-                if (idx === 3) topicGapsTierRestriction = detail
+          let sentimentTierRestriction = null
+          let topicClustersTierRestriction = null
+          let topicGapsTierRestriction = null
+
+          results.forEach((result, idx) => {
+            if (result?.status === 'rejected') {
+              const endpoints = ['sentiment', 'credibility', 'topicClusters', 'topicGaps']
+              const error = result.reason
+              if (error?.message !== 'Timeout') {
+                console.warn(`Comment Verdict: failed to fetch ${endpoints[idx]}:`, error)
+              }
+
+              if (error && typeof error === 'object') {
+                const detail = error.detail || (error.response && error.response.detail)
+                if (detail && detail.code === 'TIER_RESTRICTION') {
+                  console.log(`Comment Verdict: Tier restriction detected for ${endpoints[idx]}:`, detail)
+                  if (idx === 0) sentimentTierRestriction = detail
+                  if (idx === 2) topicClustersTierRestriction = detail
+                  if (idx === 3) topicGapsTierRestriction = detail
+                }
               }
             }
-          }
-        })
-        
-        console.log("Comment Verdict: Relevancy data on landing:", relevancyData)
-        console.log("Comment Verdict: Sentiment data on landing:", sentimentData)
-        console.log("🔍 DEBUG sentimentData.data:", sentimentData?.data)
-        console.log("🔍 DEBUG sentimentData.data.excluded_count:", sentimentData?.data?.excluded_count)
-        console.log("🔍 DEBUG sentimentData.data.total_comments:", sentimentData?.data?.total_comments)
-        console.log("🔍 DEBUG sentimentData.filtering_metadata:", sentimentData?.filtering_metadata)
-        console.log("Comment Verdict: Summary data on landing:", summaryData)
-        console.log("Comment Verdict: Credibility data on landing:", credibilityData)
-        console.log("🔍 DEBUG credibilityData keys:", credibilityData ? Object.keys(credibilityData) : 'null')
-        console.log("🔍 DEBUG credibilityData.metrics:", credibilityData?.metrics)
-        console.log("🔍 DEBUG credibilityData.raw_metrics:", credibilityData?.raw_metrics)
-        console.log("🔍 DEBUG credibilityData.metric_details:", credibilityData?.metric_details)
-        console.log("Comment Verdict: Human Likeness data on landing:", humanLikenessData)
-        console.log("Comment Verdict: Topic Clusters data on landing:", topicClustersData)
-        console.log("Comment Verdict: Topic Gaps data on landing:", topicGapsData)
-        
-        const verdictRaw = (relevancyData?.data.verdict || "UNKNOWN").toUpperCase()
-        const confidenceRaw = typeof relevancyData?.data.confidence_score === "number" ? relevancyData.data.confidence_score : 0
-        console.log("Comment Verdict: Raw confidence:", confidenceRaw)
-        
-        const confidenceNorm = normalizeConfidence(confidenceRaw)
-        console.log("Comment Verdict: Normalized confidence:", confidenceNorm)
-        
-        const confidencePercent = Math.round(confidenceNorm * 100)
-        const verdictCertainty = Math.round(confidenceNorm * 10 * 10) / 10 // Renamed from trustScoreNormalized
-        
-        // Calculate evidence score from claims
-        const claims = relevancyData?.data?.claims || []
-        const evidenceScore = calculateEvidenceScore(claims)
-        
-        console.log("Comment Verdict: Final verdictCertainty:", verdictCertainty, "evidenceScore:", evidenceScore, "verdict:", verdictRaw)
+          })
 
-        setAnalysisStatus({
-          trustScore: verdictCertainty, // Still using trustScore key for backwards compatibility
-          clickbaitVerdict: verdictRaw as "LEGIT" | "MISLEADING" | "CLICKBAIT",
-          isAnalyzing: false
-        })
-
-        const minimalSummary = {
-          trustScore: verdictCertainty, // Verdict certainty (AI confidence in verdict)
-          evidenceScore: evidenceScore, // Evidence score (weighted user evidence)
-          aiConfidence: confidencePercent,
-          clickbaitVerdict: {
-            label: verdictRaw,
-            confidence: confidencePercent,
-            // Prefer claims from relevancy v2, fall back to summary payloads
-            claims: relevancyData?.data?.claims || (summaryData as any)?.clickbaitVerdict?.claims || (summaryData as any)?.claims || [],
-            onLineSummary: (summaryData as any)?.one_line_summary || (summaryData as any)?.onLineSummary
-          },
-          channelCredibility: credibilityData ? (() => {
-            // Handle both new (trust_score + metrics) and old (score + normalized_factors) formats
-            if ('trust_score' in credibilityData && 'metrics' in credibilityData) {
-              // NEW format: ChannelTrustResponse
-              return {
-                score: credibilityData.trust_score,
-                factors: Object.entries(credibilityData.metrics).map(([name, metricData]: [string, any]) => ({
-                  name,
-                  weight: metricData.normalized_value,
-                  value: metricData.score.toString()
-                })),
-                // Include full new format data
-                metrics: credibilityData.metrics,
-                trust_score: credibilityData.trust_score,
-                raw_metrics: credibilityData.raw_metrics,
-                metric_details: credibilityData.metric_details
-              }
-            } else {
-              // OLD format: ChannelCredibilityResponseV2
-              return {
-                score: credibilityData.score,
-                factors: credibilityData.normalized_factors ? Object.entries(credibilityData.normalized_factors).map(([name, weight]) => ({
-                  name,
-                  weight,
-                  value: credibilityData.factual_factors?.[name] ?? 'N/A'
-                })) : []
-              }
-            }
-          })() : undefined,
-          key_takeaways: (summaryData as any)?.key_takeaways || (summaryData as any)?.keyTakeaways || []
-        }
-
-        // Build sentiment distribution if available
-        const sentimentDistribution = sentimentData ? (() => {
-          const positiveCount = typeof sentimentData.data.positive === 'number' ? sentimentData.data.positive : (sentimentData.data.positive?.count ?? 0)
-          const neutralCount = typeof sentimentData.data.neutral === 'number' ? sentimentData.data.neutral : (sentimentData.data.neutral?.count ?? 0)
-          const negativeCount = typeof sentimentData.data.negative === 'number' ? sentimentData.data.negative : (sentimentData.data.negative?.count ?? 0)
-          const totalComments = sentimentData.data.total_comments ?? (positiveCount + neutralCount + negativeCount)
-          
-          // Extract top comments
-          const positiveComments = typeof sentimentData.data.positive === 'object' ? sentimentData.data.positive?.top_comments ?? [] : []
-          const neutralComments = typeof sentimentData.data.neutral === 'object' ? sentimentData.data.neutral?.top_comments ?? [] : []
-          const negativeComments = typeof sentimentData.data.negative === 'object' ? sentimentData.data.negative?.top_comments ?? [] : []
-          
           return {
-            positive: totalComments > 0 ? (positiveCount / totalComments) * 100 : 0,
-            neutral: totalComments > 0 ? (neutralCount / totalComments) * 100 : 0,
-            negative: totalComments > 0 ? (negativeCount / totalComments) * 100 : 0,
-            totalCommentsAnalyzed: totalComments,
-            exampleComments: {
-              positive: positiveComments,
-              neutral: neutralComments,
-              negative: negativeComments
+            sentimentData,
+            credibilityData,
+            topicClustersData,
+            topicGapsData,
+            sentimentTierRestriction,
+            topicClustersTierRestriction,
+            topicGapsTierRestriction
+          }
+        }
+
+        // Handle secondary data update in background (fires async, doesn't block)
+        secondaryPromise.then(async (secondaryResults) => {
+          // Check if user is still on the same video
+          if (currentVideoIdRef.current !== videoId) {
+            console.log("Comment Verdict: ⚠️ Video changed, skipping secondary data update")
+            return
+          }
+
+          console.log("Comment Verdict: ✅ Secondary data arrived! Processing...")
+          const parsedSecondary = parseSecondaryResults(secondaryResults as PromiseSettledResult<any>[])
+          const sentimentData = parsedSecondary.sentimentData
+          const credibilityData = parsedSecondary.credibilityData
+          const topicClustersData = parsedSecondary.topicClustersData
+          const topicGapsData = parsedSecondary.topicGapsData
+          const humanLikenessData = null
+
+          let sentimentTierRestriction: TierRestriction | null = parsedSecondary.sentimentTierRestriction
+          let topicClustersTierRestriction: TierRestriction | null = parsedSecondary.topicClustersTierRestriction
+          let topicGapsTierRestriction: TierRestriction | null = parsedSecondary.topicGapsTierRestriction
+
+          // Get user tier for tier restrictions - FETCH if not cached to avoid defaulting to 'free'
+          let userTier: string
+          let dashboardUrl: string
+          
+          if (userTierInfo) {
+            userTier = userTierInfo.tier
+            dashboardUrl = userTierInfo.dashboardUrl
+            console.log("Comment Verdict: Using cached tier info:", userTier)
+          } else {
+            console.log("Comment Verdict: ⚠️ Tier info not cached, fetching subscription...")
+            try {
+              const subscription = await SubscriptionService.getSubscription()
+              userTier = subscription.tier?.toLowerCase() || 'free'
+              dashboardUrl = `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
+              // Cache for future use
+              setUserTierInfo({ tier: userTier, dashboardUrl })
+              console.log("Comment Verdict: ✅ Fetched tier:", userTier)
+            } catch (err) {
+              console.warn("Comment Verdict: Failed to fetch subscription, defaulting to 'free':", err)
+              userTier = 'free'
+              dashboardUrl = `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
             }
           }
-        })() : undefined
 
-        // Transform topic clusters to high-value insights
-        const benefitInsights = topicClustersData?.topic_clusters
-          ?.filter((cluster: any) => cluster.count > 0)
-          .slice(0, 5)
-          .map((cluster: any, idx: number) => ({
-            id: `benefit-${idx}`,
-            statement: cluster.statement,
-            type: "benefit" as const,
-            commentCount: cluster.count,
-            supportingComments: cluster.supporting_quotes.map((quote: any, qIdx: number) => ({
-              id: `comment-${idx}-${qIdx}`,
-              text: quote,
-              timestamp: undefined,
-              author: undefined
-            })),
-            isExpanded: false
-          })) || []
-
-        // Transform topic gaps to unanswered questions for ContentGapsTab
-        const unansweredQuestions = topicGapsData?.topic_gaps
-          ?.map((gap: any, idx: number) => ({
-            id: `gap-${idx}`,
-            statement: gap.question_statement,
-            type: "issue" as const,
-            commentCount: gap.supporting_comments.length,
-            supportingComments: gap.supporting_comments.map((comment: any, cIdx: number) => ({
-              id: `gap-comment-${idx}-${cIdx}`,
-              text: comment,
-              timestamp: undefined,
-              author: undefined
-            })),
-            isExpanded: false
-          })) || []
-
-        console.log("Comment Verdict: Setting video analysis with tier restrictions:", {
-          sentiment: sentimentTierRestriction,
-          viewerInsights: topicClustersTierRestriction,
-          contentGaps: topicGapsTierRestriction
-        })
-
-        // Get user tier and enforce tier restrictions on frontend (use cached or fetch)
-        let userTier: string
-        let dashboardUrl: string
-        
-        if (userTierInfo) {
-          // Use cached tier info
-          userTier = userTierInfo.tier
-          dashboardUrl = userTierInfo.dashboardUrl
-        } else {
-          // Fetch if not cached
-          const subscription = await SubscriptionService.getSubscription()
-          userTier = subscription.tier?.toLowerCase() || 'free'
-          dashboardUrl = `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
-          // Cache for future use
-          setUserTierInfo({ tier: userTier, dashboardUrl })
-        }
-        
-        // Build report tier restriction inline instead of calling getReportTierRestriction() which would fetch subscription again
-        const reportTierRestriction = userTier !== 'pro' ? {
-          code: 'TIER_RESTRICTION' as const,
-          required_tier: 'pro' as const,
-          current_tier: userTier,
-          message: 'Report downloads are available for Pro users only. Upgrade to download detailed analysis reports.',
-          upgrade_url: dashboardUrl
-        } : null
-        
-        // Enforce tier restrictions based on feature access rules:
-        // - Comment Sentiment: Starter+ (block for Free)
-        // - Viewer Insights: Pro only (block for Free and Starter)
-        // - Content Gaps: Pro only (block for Free and Starter)
-        
-        // Block sentiment for free users only (Starter+ can access)
-        if (userTier === 'free' && !sentimentTierRestriction) {
-          sentimentTierRestriction = {
-            code: 'TIER_RESTRICTION' as const,
-            required_tier: 'starter' as const,
-            current_tier: userTier,
-            message: 'Comment Sentiment analysis requires a Starter subscription.',
-            upgrade_url: dashboardUrl
+          // Apply tier restrictions ONLY if backend didn't already send restriction AND user doesn't have access
+          console.log("Comment Verdict: 🔐 Applying tier restrictions - userTier:", userTier, "restrictions from backend:", {
+            sentiment: !!sentimentTierRestriction,
+            topicClusters: !!topicClustersTierRestriction,
+            topicGaps: !!topicGapsTierRestriction
+          })
+          
+          if (userTier === 'free' && !sentimentTierRestriction) {
+            console.log("Comment Verdict: 🚫 Blocking sentiment for free user")
+            sentimentTierRestriction = {
+              code: 'TIER_RESTRICTION' as const,
+              required_tier: 'starter' as const,
+              current_tier: userTier as 'pro' | 'free' | 'starter',
+              message: 'Comment Sentiment analysis requires a Starter subscription.',
+              upgrade_url: dashboardUrl
+            }
           }
-        }
-        
-        // Block viewer insights for non-Pro users (Pro only)
-        if (userTier !== 'pro' && !topicClustersTierRestriction) {
-          topicClustersTierRestriction = {
-            code: 'TIER_RESTRICTION' as const,
-            required_tier: 'pro' as const,
-            current_tier: userTier,
-            message: 'Viewer Insights are available for Pro users only.',
-            upgrade_url: dashboardUrl
-          }
-        }
-        
-        // Block content gaps for non-Pro users (Pro only)
-        if (userTier !== 'pro' && !topicGapsTierRestriction) {
-          topicGapsTierRestriction = {
-            code: 'TIER_RESTRICTION' as const,
-            required_tier: 'pro' as const,
-            current_tier: userTier,
-            message: 'Content Gaps analysis is available for Pro users only.',
-            upgrade_url: dashboardUrl
-          }
-        }
 
-        setVideoAnalysis({
-          summary: minimalSummary,
-          trustScore: { score: verdictCertainty },
-          clickbaitVerdict: { verdict: verdictRaw },
-          executiveSummary: summaryData?.summary_paragraph ?? null,
-          maxCommentsRequested: summaryData?.max_comments_requested ?? null,
-          actualCommentsFetched: summaryData?.actual_comments_fetched ?? null,
-          channelCredibility: credibilityData ? (() => {
-            // Handle both new (trust_score + metrics) and old (score + normalized_factors) formats
-            if ('trust_score' in credibilityData && 'metrics' in credibilityData) {
-              // NEW format: ChannelTrustResponse
+          if (userTier !== 'pro' && !topicClustersTierRestriction) {
+            console.log("Comment Verdict: 🚫 Blocking viewer insights for non-pro user (current:", userTier, ")")
+            topicClustersTierRestriction = {
+              code: 'TIER_RESTRICTION' as const,
+              required_tier: 'pro' as const,
+              current_tier: userTier as 'pro' | 'free' | 'starter',
+              message: 'Viewer Insights are available for Pro users only.',
+              upgrade_url: dashboardUrl
+            }
+          }
+
+          if (userTier !== 'pro' && !topicGapsTierRestriction) {
+            console.log("Comment Verdict: 🚫 Blocking content gaps for non-pro user (current:", userTier, ")")
+            topicGapsTierRestriction = {
+              code: 'TIER_RESTRICTION' as const,
+              required_tier: 'pro' as const,
+              current_tier: userTier as 'pro' | 'free' | 'starter',
+              message: 'Content Gaps analysis is available for Pro users only.',
+              upgrade_url: dashboardUrl
+            }
+          }
+          
+          console.log("Comment Verdict: 🔐 Final tier restrictions:", {
+            sentiment: !!sentimentTierRestriction,
+            topicClusters: !!topicClustersTierRestriction,
+            topicGaps: !!topicGapsTierRestriction
+          })
+
+          // Build derived fields using helper functions
+          const buildSentimentDistribution = (data: any) => {
+            if (!data) return undefined
+            const positiveCount = typeof data.data.positive === 'number' ? data.data.positive : (data.data.positive?.count ?? 0)
+            const neutralCount = typeof data.data.neutral === 'number' ? data.data.neutral : (data.data.neutral?.count ?? 0)
+            const negativeCount = typeof data.data.negative === 'number' ? data.data.negative : (data.data.negative?.count ?? 0)
+            const totalComments = data.data.total_comments ?? (positiveCount + neutralCount + negativeCount)
+            const positiveComments = typeof data.data.positive === 'object' ? data.data.positive?.top_comments ?? [] : []
+            const neutralComments = typeof data.data.neutral === 'object' ? data.data.neutral?.top_comments ?? [] : []
+            const negativeComments = typeof data.data.negative === 'object' ? data.data.negative?.top_comments ?? [] : []
+
+            return {
+              positive: totalComments > 0 ? (positiveCount / totalComments) * 100 : 0,
+              neutral: totalComments > 0 ? (neutralCount / totalComments) * 100 : 0,
+              negative: totalComments > 0 ? (negativeCount / totalComments) * 100 : 0,
+              totalCommentsAnalyzed: totalComments,
+              exampleComments: { positive: positiveComments, neutral: neutralComments, negative: negativeComments }
+            }
+          }
+
+          const buildSentimentFilteringMetadata = (data: any) => {
+            if (!data) return undefined
+            if (data.filtering_metadata) return data.filtering_metadata
+            if (data.data?.excluded_count !== undefined) {
+              const pos = typeof data.data.positive === 'number' ? data.data.positive : (data.data.positive?.count ?? 0)
+              const neg = typeof data.data.negative === 'number' ? data.data.negative : (data.data.negative?.count ?? 0)
+              const neu = typeof data.data.neutral === 'number' ? data.data.neutral : (data.data.neutral?.count ?? 0)
+              const analyzedCount = pos + neg + neu
+              const totalComments = data.data.total_comments ?? (analyzedCount + data.data.excluded_count)
               return {
-                score: credibilityData.trust_score,
-                factors: Object.entries(credibilityData.metrics).map(([name, metricData]: [string, any]) => ({
+                total_input: totalComments,
+                filtered_count: analyzedCount
+              }
+            }
+            return undefined
+          }
+
+          const buildChannelCredibility = (data: any) => {
+            if (!data) return undefined
+            if ('trust_score' in data && 'metrics' in data) {
+              return {
+                score: data.trust_score,
+                factors: Object.entries(data.metrics).map(([name, metricData]: [string, any]) => ({
                   name,
                   weight: metricData.normalized_value,
                   value: metricData.score.toString()
                 })),
-                // Include full new format data
-                metrics: credibilityData.metrics,
-                trust_score: credibilityData.trust_score,
-                raw_metrics: credibilityData.raw_metrics,
-                metric_details: credibilityData.metric_details
-              }
-            } else {
-              // OLD format: ChannelCredibilityResponseV2
-              return {
-                score: credibilityData.score,
-                factors: credibilityData.normalized_factors ? Object.entries(credibilityData.normalized_factors).map(([name, weight]) => ({
-                  name,
-                  weight,
-                  value: credibilityData.factual_factors?.[name] ?? 'N/A'
-                })) : []
+                metrics: data.metrics,
+                trust_score: data.trust_score,
+                raw_metrics: data.raw_metrics,
+                metric_details: data.metric_details
               }
             }
-          })() : null,
-          sentiment: sentimentDistribution ? {
-            overall: (() => {
-              const positiveCount = typeof sentimentData!.data.positive === 'number' ? sentimentData!.data.positive : (sentimentData!.data.positive?.count ?? 0)
-              const negativeCount = typeof sentimentData!.data.negative === 'number' ? sentimentData!.data.negative : (sentimentData!.data.negative?.count ?? 0)
-              return positiveCount > negativeCount ? "positive" : negativeCount > positiveCount ? "negative" : "neutral"
-            })(),
-            distribution: sentimentDistribution,
-            filteringMetadata: (() => {
-              if (sentimentData?.filtering_metadata) return sentimentData.filtering_metadata
-              if (sentimentData?.data?.excluded_count !== undefined) {
-                const pos = typeof sentimentData.data.positive === 'number' ? sentimentData.data.positive : (sentimentData.data.positive?.count ?? 0)
-                const neg = typeof sentimentData.data.negative === 'number' ? sentimentData.data.negative : (sentimentData.data.negative?.count ?? 0)
-                const neu = typeof sentimentData.data.neutral === 'number' ? sentimentData.data.neutral : (sentimentData.data.neutral?.count ?? 0)
-                const analyzedCount = pos + neg + neu
-                const totalComments = sentimentData.data.total_comments ?? (analyzedCount + sentimentData.data.excluded_count)
-                return {
-                  total_input: totalComments,
-                  filtered_count: analyzedCount
-                }
-              }
-              return undefined
-            })(),
-            tierRestriction: sentimentTierRestriction
-          } : (sentimentTierRestriction ? { 
-            tierRestriction: sentimentTierRestriction,
-            filteringMetadata: (() => {
-              if (sentimentData?.filtering_metadata) return sentimentData.filtering_metadata
-              if (sentimentData?.data?.excluded_count !== undefined) {
-                const pos = typeof sentimentData.data.positive === 'number' ? sentimentData.data.positive : (sentimentData.data.positive?.count ?? 0)
-                const neg = typeof sentimentData.data.negative === 'number' ? sentimentData.data.negative : (sentimentData.data.negative?.count ?? 0)
-                const neu = typeof sentimentData.data.neutral === 'number' ? sentimentData.data.neutral : (sentimentData.data.neutral?.count ?? 0)
-                const analyzedCount = pos + neg + neu
-                const totalComments = sentimentData.data.total_comments ?? (analyzedCount + sentimentData.data.excluded_count)
-                return {
-                  total_input: totalComments,
-                  filtered_count: analyzedCount
-                }
-              }
-              return undefined
-            })()
-          } : null),
-          credibility: null,
-          topicClusters: null,
-          topicClustersData: topicClustersData ? {
-            clusters: topicClustersData.topic_clusters || [],
-            parent_themes: topicClustersData.parent_themes || [],
-            hierarchy_map: topicClustersData.hierarchy_map || {},
-            total_parent_themes: topicClustersData.total_parent_themes || 0,
-            method: topicClustersData.method || 'unknown',
-            processing_time: topicClustersData.processing_time
-          } : undefined,
-          contentGaps: {
-            botPercentage: (humanLikenessData && (humanLikenessData as any).total_comments && (humanLikenessData as any).total_comments > 0)
-              ? Math.round(((humanLikenessData as any).bot_count / (humanLikenessData as any).total_comments) * 100)
-              : 0,
-            gapCoverageScore: topicGapsData?.topic_gaps ? Math.max(0, 100 - (topicGapsData.topic_gaps.length * 10)) : 100,
-            botDetectionEnabled: true,
-            unansweredQuestions: unansweredQuestions,
-            filteringMetadata: topicGapsData?.filtering_metadata,
-            tierRestriction: topicGapsTierRestriction
-          },
-          viewerInsights: sentimentData ? {
-            sentimentBreakdown: {
+            return {
+              score: data.score,
+              factors: data.normalized_factors ? Object.entries(data.normalized_factors).map(([name, weight]) => ({
+                name,
+                weight: weight as number,
+                value: (data.factual_factors?.[name] ?? 'N/A') as string
+              })) : []
+            }
+          }
+
+          // Update video analysis with secondary data (only if not already populated)
+          setVideoAnalysis(prev => {
+            if (!prev || prev.videoId !== videoId) return prev
+            
+            // Check if data already exists to prevent unnecessary re-renders
+            const hasExistingSentiment = prev.sentiment && prev.sentiment.distribution
+            const hasExistingCredibility = prev.channelCredibility && prev.channelCredibility.score !== undefined
+            const hasExistingTopicClusters = prev.topicClustersData && prev.topicClustersData.clusters && prev.topicClustersData.clusters.length > 0
+            const hasExistingContentGaps = prev.contentGaps && prev.contentGaps.unansweredQuestions && prev.contentGaps.unansweredQuestions.length > 0
+            
+            // Check if we have ANY new data to add
+            const hasNewSentiment = !hasExistingSentiment && sentimentData
+            const hasNewCredibility = !hasExistingCredibility && credibilityData
+            const hasNewTopicClusters = !hasExistingTopicClusters && topicClustersData
+            const hasNewContentGaps = !hasExistingContentGaps && topicGapsData
+            
+            console.log("Comment Verdict: 🔄 Updating UI with secondary data...", {
+              needsSentiment: hasNewSentiment,
+              needsCredibility: hasNewCredibility,
+              needsTopicClusters: hasNewTopicClusters,
+              needsContentGaps: hasNewContentGaps
+            })
+
+            // Only build derived data if we actually need it
+            const derivedSentimentDistribution = hasNewSentiment ? buildSentimentDistribution(sentimentData) : null
+            const filteringMetadata = hasNewSentiment ? buildSentimentFilteringMetadata(sentimentData) : null
+            
+            // Build sentiment breakdown for donut chart (raw counts, not percentages) - only if needed
+            const sentimentBreakdown = hasNewSentiment && sentimentData ? {
               positive: typeof sentimentData.data.positive === 'number' ? sentimentData.data.positive : (sentimentData.data.positive?.count ?? 0),
               negative: typeof sentimentData.data.negative === 'number' ? sentimentData.data.negative : (sentimentData.data.negative?.count ?? 0),
               neutral: typeof sentimentData.data.neutral === 'number' ? sentimentData.data.neutral : (sentimentData.data.neutral?.count ?? 0),
+              mixed: 0,
               totalCommentsAnalyzed: (() => {
                 const pos = typeof sentimentData.data.positive === 'number' ? sentimentData.data.positive : (sentimentData.data.positive?.count ?? 0)
                 const neg = typeof sentimentData.data.negative === 'number' ? sentimentData.data.negative : (sentimentData.data.negative?.count ?? 0)
                 const neu = typeof sentimentData.data.neutral === 'number' ? sentimentData.data.neutral : (sentimentData.data.neutral?.count ?? 0)
                 return sentimentData.data.total_comments ?? (pos + neg + neu)
               })()
-            },
-            actionableInsights: {
-              highValue: benefitInsights
-            },
-            tierRestriction: topicClustersTierRestriction
-          } : (topicClustersTierRestriction ? { tierRestriction: topicClustersTierRestriction } : null),
-          reportInfo: {
-            availableFormats: ["PDF", "TXT"],
-            analysisDate: new Date().toISOString(),
-            tierRestriction: reportTierRestriction
-          }
-        } as any)
+            } : null
+            
+            // Only update fields that have new data
+            const reportTierRestriction = userTier !== 'pro' ? {
+              code: 'TIER_RESTRICTION' as const,
+              required_tier: 'pro' as const,
+              current_tier: userTier as 'pro' | 'free' | 'starter',
+              message: 'Report downloads are available for Pro users only. Upgrade to download detailed analysis reports.',
+              upgrade_url: dashboardUrl
+            } : null
 
-        setAnalysisState("complete")
-        setIsCheckingCache(false)
+            const hasSentimentRestrictionUpdate = !!sentimentTierRestriction && !(prev.sentiment as any)?.tierRestriction
+            const hasViewerRestrictionUpdate = !!topicClustersTierRestriction && !(prev.viewerInsights as any)?.tierRestriction
+            const hasContentGapsRestrictionUpdate = !!topicGapsTierRestriction && !(prev.contentGaps as any)?.tierRestriction
+            const hasReportRestrictionUpdate = !!reportTierRestriction && !(prev as any)?.reportInfo?.tierRestriction
+
+            if (!hasNewSentiment && !hasNewCredibility && !hasNewTopicClusters && !hasNewContentGaps && !hasSentimentRestrictionUpdate && !hasViewerRestrictionUpdate && !hasContentGapsRestrictionUpdate && !hasReportRestrictionUpdate) {
+              console.log("Comment Verdict: ⏭️ Skipping secondary data update - no new data or restriction updates")
+              return prev
+            }
+
+            const updatedAnalysis: any = {
+              ...prev,
+              // Only update channelCredibility if we have new data
+              channelCredibility: hasNewCredibility 
+                ? buildChannelCredibility(credibilityData) 
+                : prev.channelCredibility,
+              // Only update sentiment if we have new data
+              sentiment: hasNewSentiment && derivedSentimentDistribution ? {
+                overall: (() => {
+                  const posCount = typeof sentimentData!.data.positive === 'number' ? sentimentData!.data.positive : (sentimentData!.data.positive?.count ?? 0)
+                  const negCount = typeof sentimentData!.data.negative === 'number' ? sentimentData!.data.negative : (sentimentData!.data.negative?.count ?? 0)
+                  return posCount > negCount ? "positive" : negCount > posCount ? "negative" : "neutral"
+                })(),
+                distribution: derivedSentimentDistribution,
+                filteringMetadata: filteringMetadata,
+                tierRestriction: sentimentTierRestriction || undefined
+              } : (hasSentimentRestrictionUpdate ? {
+                ...(prev.sentiment || {}),
+                tierRestriction: sentimentTierRestriction || undefined
+              } : prev.sentiment),
+              // Only update viewerInsights if we have new data
+              viewerInsights: hasNewSentiment && sentimentBreakdown ? {
+                sentimentBreakdown: sentimentBreakdown,
+                actionableInsights: (prev.viewerInsights && !Array.isArray(prev.viewerInsights)) ? prev.viewerInsights.actionableInsights : { highValue: [], improvements: [] },
+                tierRestriction: topicClustersTierRestriction || undefined
+              } : (hasViewerRestrictionUpdate ? {
+                ...((prev.viewerInsights && !Array.isArray(prev.viewerInsights)) ? prev.viewerInsights : {}),
+                tierRestriction: topicClustersTierRestriction || undefined
+              } : prev.viewerInsights),
+              // Only update topicClustersData if we have new data
+              topicClustersData: hasNewTopicClusters ? {
+                clusters: topicClustersData.topic_clusters || [],
+                parent_themes: topicClustersData.parent_themes || [],
+                hierarchy_map: topicClustersData.hierarchy_map || {},
+                total_parent_themes: topicClustersData.total_parent_themes || 0,
+                method: topicClustersData.method || 'unknown',
+                processing_time: topicClustersData.processing_time
+              } : prev.topicClustersData,
+              // Only update contentGaps if we have new data
+              contentGaps: hasNewContentGaps ? {
+                botPercentage: 0,
+                gapCoverageScore: topicGapsData?.topic_gaps ? Math.max(0, 100 - (topicGapsData.topic_gaps.length * 10)) : 100,
+                botDetectionEnabled: true,
+                unansweredQuestions: topicGapsData.topic_gaps?.map((gap: any, idx: number) => {
+                  const supportingComments = mapGapSupportingComments(gap, idx)
+                  return {
+                    id: `gap-${idx}`,
+                    statement: gap.question_statement,
+                    type: "issue" as const,
+                    commentCount: supportingComments.length,
+                    supportingComments,
+                    isExpanded: false
+                  }
+                }) || [],
+                filteringMetadata: topicGapsData?.filtering_metadata,
+                tierRestriction: topicGapsTierRestriction || undefined
+              } : (hasContentGapsRestrictionUpdate ? {
+                ...(prev.contentGaps || {
+                  botPercentage: 0,
+                  gapCoverageScore: undefined,
+                  botDetectionEnabled: true,
+                  unansweredQuestions: []
+                }),
+                tierRestriction: topicGapsTierRestriction || undefined
+              } : prev.contentGaps),
+              reportInfo: {
+                ...(prev.reportInfo || {
+                  availableFormats: ["PDF", "TXT"],
+                  analysisDate: new Date().toISOString(),
+                  tierRestriction: null
+                }),
+                tierRestriction: reportTierRestriction
+              }
+            }
+            console.log("Comment Verdict: ✅ Secondary data update complete", {
+              updatedSentiment: hasNewSentiment,
+              updatedViewerInsights: hasNewSentiment,
+              updatedTopicClusters: hasNewTopicClusters,
+              updatedContentGaps: hasNewContentGaps
+            })
+            return updatedAnalysis
+          })
+        }).catch(err => {
+          console.warn("Comment Verdict: Secondary data processing error:", err)
+        })
+
       } catch (err) {
         console.warn("Comment Verdict: failed to fetch relevancy on landing:", (err as any)?.message || String(err))
-        setAnalysisState("idle")
-        setAnalysisStatus(null)
-        setVideoAnalysis(null)
+        // Don't reset state if we're currently polling a job - only reset if no active job
+        if (!currentJobId) {
+          setAnalysisState("idle")
+          setAnalysisStatus(null)
+          setVideoAnalysis(null)
+        }
         setIsCheckingCache(false)
       }
     } catch (error) {
       console.log("Comment Verdict: cache check failed on landing (likely unauthenticated):", (error as any)?.message || String(error))
       setIsCached(false)
-      setAnalysisState("idle")
-      setAnalysisStatus(null)
-      setVideoAnalysis(null)
+      // Don't reset state if we're currently polling a job - only reset if no active job
+      if (!currentJobId) {
+        setAnalysisState("idle")
+        setAnalysisStatus(null)
+        setVideoAnalysis(null)
+      }
       setIsCheckingCache(false)
     }
   }
@@ -1138,10 +1421,15 @@ const ContentScript = () => {
       let humanLikenessData = null
       let topicClustersData = null
       let topicGapsData = null
-      let sentimentTierRestriction = null
-      let topicClustersTierRestriction = null
-      let topicGapsTierRestriction = null
+      let sentimentTierRestriction: TierRestriction | null = null
+      let topicClustersTierRestriction: TierRestriction | null = null
+      let topicGapsTierRestriction: TierRestriction | null = null
       let resultData = null // Store job result data for comment count tracking
+      // Track whether channel-trust was already attempted and failed in the fallback
+      // path so the "remaining data" block never issues a redundant retry that can
+      // hang indefinitely on a slow/overloaded server (causing the spinner to freeze
+      // at 100% and ultimately a spurious "failed to fetch relevancy" error).
+      let credibilityAttempted = false
 
       if (!shouldUseCache) {
         // Step 2a: Not cached - check for existing job or submit new one
@@ -1223,6 +1511,7 @@ const ContentScript = () => {
             summary_paragraph: resultData.summary.summary_paragraph,
             video_id: resultData.video_id,
             snapshot_id: resultData.snapshot_id,
+            share_code: resultData.comprehensive_data?.share_code ?? null,
             cache_hit: resultData.cache_hit,
             data_hash: '',
             video_title: resultData.video_title,
@@ -1301,7 +1590,7 @@ const ContentScript = () => {
           console.log("⏱️ Fetching summary first (required by backend)...")
           const summaryFetchStart = Date.now()
           try {
-            summaryData = await FocusGuardAPI.analyzeSummaryV2({ video_id: videoId, force_refresh: false })
+            summaryData = await FocusGuardAPI.analyzeSummaryV2({ video_id: videoId, force_refresh: forceRefresh })
             const summaryDuration = ((Date.now() - summaryFetchStart) / 1000).toFixed(1)
             console.log(`✅ Summary data fetched in ${summaryDuration}s`)
           } catch (error) {
@@ -1312,11 +1601,11 @@ const ContentScript = () => {
           console.log("⏱️ Fetching remaining analysis data in parallel...")
           const parallelFetchStart = Date.now()
           const results = await Promise.allSettled([
-            FocusGuardAPI.analyzeRelevancyV2(videoId, false),
-            FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: false }),
-            FocusGuardAPI.analyzeChannelTrust(videoId, false),
-            FocusGuardAPI.analyzeTopicClusteringV2(videoId, false),
-            FocusGuardAPI.analyzeTopicGapV2(videoId, false)
+            FocusGuardAPI.analyzeRelevancyV2(videoId, forceRefresh),
+            FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: forceRefresh }),
+            FocusGuardAPI.analyzeChannelTrust(videoId, forceRefresh),
+            FocusGuardAPI.analyzeTopicClusteringV2(videoId, forceRefresh),
+            FocusGuardAPI.analyzeTopicGapV2(videoId, forceRefresh)
           ])
           const parallelDuration = ((Date.now() - parallelFetchStart) / 1000).toFixed(1)
           const totalFetchDuration = ((Date.now() - fetchStartTime) / 1000).toFixed(1)
@@ -1329,6 +1618,9 @@ const ContentScript = () => {
           topicClustersData = results[3].status === 'fulfilled' ? results[3].value : null
           topicGapsData = results[4].status === 'fulfilled' ? results[4].value : null
           humanLikenessData = null // Not fetched in general flow - load on-demand for advanced features
+          // Mark credibility as already attempted so the "remaining data" block
+          // below does not issue a second channel-trust call that could hang.
+          credibilityAttempted = true
           
           // Log any failures and extract tier restrictions
           results.forEach((result, idx) => {
@@ -1390,7 +1682,7 @@ const ContentScript = () => {
         if (!summaryData) {
           console.log("Comment Verdict: Fetching summary first (required by backend)...")
           try {
-            summaryData = await FocusGuardAPI.analyzeSummaryV2({ video_id: videoId, force_refresh: false })
+            summaryData = await FocusGuardAPI.analyzeSummaryV2({ video_id: videoId, force_refresh: forceRefresh })
             console.log("Comment Verdict: Summary data received")
           } catch (error) {
             console.error("Failed to fetch summary:", error)
@@ -1398,11 +1690,14 @@ const ContentScript = () => {
         }
         
         // Step 2: Fetch remaining data in parallel (after summary is guaranteed to exist)
+        // NOTE: channel-trust (credibility) is skipped when it was already attempted
+        // in the fallback path and failed – retrying a 502/504 endpoint can stall
+        // Promise.allSettled indefinitely on a slow server and block all results.
         const remainingResults = await Promise.allSettled([
-          sentimentData ? Promise.resolve(sentimentData) : FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: false }),
-          credibilityData ? Promise.resolve(credibilityData) : FocusGuardAPI.analyzeChannelTrust(videoId, false),
-          topicClustersData ? Promise.resolve(topicClustersData) : FocusGuardAPI.analyzeTopicClusteringV2(videoId, false),
-          topicGapsData ? Promise.resolve(topicGapsData) : FocusGuardAPI.analyzeTopicGapV2(videoId, false)
+          sentimentData ? Promise.resolve(sentimentData) : FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: forceRefresh }),
+          (credibilityData || credibilityAttempted) ? Promise.resolve(credibilityData) : FocusGuardAPI.analyzeChannelTrust(videoId, forceRefresh),
+          topicClustersData ? Promise.resolve(topicClustersData) : FocusGuardAPI.analyzeTopicClusteringV2(videoId, forceRefresh),
+          topicGapsData ? Promise.resolve(topicGapsData) : FocusGuardAPI.analyzeTopicGapV2(videoId, forceRefresh)
         ])
         
         sentimentData = sentimentData || (remainingResults[0].status === 'fulfilled' ? remainingResults[0].value : null)
@@ -1451,9 +1746,9 @@ const ContentScript = () => {
       }
       if (credibilityData) {
         console.log("Comment Verdict: Credibility data received:", credibilityData)
-        console.log("🔍 DEBUG credibilityData.score:", credibilityData.score)
-        console.log("🔍 DEBUG credibilityData.normalized_factors:", credibilityData.normalized_factors)
-        console.log("🔍 DEBUG credibilityData.factual_factors:", credibilityData.factual_factors)
+        console.log("🔍 DEBUG credibilityData.score:", (credibilityData as any).score)
+        console.log("🔍 DEBUG credibilityData.normalized_factors:", (credibilityData as any).normalized_factors)
+        console.log("🔍 DEBUG credibilityData.factual_factors:", (credibilityData as any).factual_factors)
       } else {
         console.log("⚠️ WARNING: credibilityData is null/undefined")
       }
@@ -1573,30 +1868,34 @@ const ContentScript = () => {
           statement: cluster.statement,
           type: "benefit" as const,
           commentCount: cluster.count,
-          supportingComments: cluster.supporting_quotes.map((quote: any, qIdx: number) => ({
-            id: `comment-${idx}-${qIdx}`,
-            text: quote,
-            timestamp: undefined,
-            author: undefined
-          })),
+          supportingComments: cluster.supporting_quotes.map((quote: any, qIdx: number) => {
+            if (quote && typeof quote === "object") {
+              // Full CommentObject — pass through directly
+              return { ...quote, id: quote.id ?? `comment-${idx}-${qIdx}` }
+            }
+            return {
+              id: `comment-${idx}-${qIdx}`,
+              text: typeof quote === "string" ? quote : "",
+              timestamp: undefined,
+              author: undefined
+            }
+          }),
           isExpanded: false
         })) || []
 
       // Transform topic gaps to unanswered questions for ContentGapsTab
       const unansweredQuestions = topicGapsData?.topic_gaps
-        ?.map((gap: any, idx: number) => ({
-          id: `gap-${idx}`,
-          statement: gap.question_statement,
-          type: "issue" as const,
-          commentCount: gap.supporting_comments.length,
-          supportingComments: gap.supporting_comments.map((comment: any, cIdx: number) => ({
-            id: `gap-comment-${idx}-${cIdx}`,
-            text: comment,
-            timestamp: undefined,
-            author: undefined
-          })),
-          isExpanded: false
-        })) || []
+        ?.map((gap: any, idx: number) => {
+          const supportingComments = mapGapSupportingComments(gap, idx)
+          return {
+            id: `gap-${idx}`,
+            statement: gap.question_statement,
+            type: "issue" as const,
+            commentCount: supportingComments.length,
+            supportingComments,
+            isExpanded: false
+          }
+        }) || []
 
       // Get user tier and enforce tier restrictions on frontend (fetch once and reuse)
       console.log("⏱️ Getting subscription tier info...")
@@ -1639,7 +1938,7 @@ const ContentScript = () => {
         topicClustersTierRestriction = {
           code: 'TIER_RESTRICTION' as const,
           required_tier: 'pro' as const,
-          current_tier: userTier,
+          current_tier: userTier as 'pro' | 'free' | 'starter',
           message: 'Viewer Insights are available for Pro users only.',
           upgrade_url: dashboardUrl
         }
@@ -1650,7 +1949,7 @@ const ContentScript = () => {
         topicGapsTierRestriction = {
           code: 'TIER_RESTRICTION' as const,
           required_tier: 'pro' as const,
-          current_tier: userTier,
+          current_tier: userTier as 'pro' | 'free' | 'starter',
           message: 'Content Gaps analysis is available for Pro users only.',
           upgrade_url: dashboardUrl
         }
@@ -1666,6 +1965,15 @@ const ContentScript = () => {
       }
       
       const videoAnalysisData = {
+        // Video identification
+        videoId: videoId,
+        videoTitle: relevancyData?.data?.video_title || summaryData?.video_title || null,
+        videoUrl: `https://www.youtube.com/watch?v=${videoId}`,
+        // Share code for public report link
+        // async-job path: result_data.comprehensive_data.share_code
+        // direct summary / fallback path: summaryData.share_code
+        snapshotShareCode: (resultData as any)?.comprehensive_data?.share_code ?? summaryData?.share_code ?? null,
+        snapshotId: summaryData?.snapshot_id ?? (resultData as any)?.comprehensive_data?.snapshot_id ?? null,
         // Legacy shape support
         summary: minimalSummary,
         trustScore: { score: verdictCertainty },
@@ -1749,10 +2057,10 @@ const ContentScript = () => {
         topicClusters: null,
         topicClustersData: topicClustersData ? {
           clusters: topicClustersData.topic_clusters || [],
-          parent_themes: topicClustersData.parent_themes || [],
-          hierarchy_map: topicClustersData.hierarchy_map || {},
-          total_parent_themes: topicClustersData.total_parent_themes || 0,
-          method: topicClustersData.method || 'unknown',
+          parent_themes: (topicClustersData as any).parent_themes || [],
+          hierarchy_map: (topicClustersData as any).hierarchy_map || {},
+          total_parent_themes: (topicClustersData as any).total_parent_themes || 0,
+          method: (topicClustersData as any).method || 'unknown',
           processing_time: topicClustersData.processing_time
         } : undefined,
         contentGaps: {
@@ -1877,7 +2185,7 @@ const ContentScript = () => {
 
   const handleReAnalyze = async (videoId: string) => {
     if (videoId === currentVideoId) {
-      startVideoAnalysis(videoId)
+      startVideoAnalysis(videoId, true)
     }
   }
 
@@ -1934,6 +2242,7 @@ const ContentScript = () => {
           <PreWatchPopover
             analysis={videoAnalysis}
             isLoading={isAnalyzing}
+            panelDock={panelDock}
             onDismiss={() => {
               setShowPreWatchPopover(false)
               setPreWatchDismissed(true)
@@ -2046,6 +2355,7 @@ const ContentScript = () => {
           }}
           progressPercent={progressPercent}
           progressMessage={progressMessage}
+          panelDock={panelDock}
         />
 
         {/* Community Verdict Teaser for Free Users */}
@@ -2085,7 +2395,7 @@ const ContentScript = () => {
               
               // Start analysis with custom settings
               if (currentVideoId) {
-                startVideoAnalysis(currentVideoId)
+                startVideoAnalysis(currentVideoId, forceRefresh)
               }
             }}
           />

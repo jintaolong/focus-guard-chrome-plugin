@@ -92,7 +92,12 @@ global.chrome = {
 // Ensure storage.onChanged exists for tests that add listeners
 global.chrome.storage.onChanged = {
   addListener: vi.fn(),
-  removeListener: vi.fn()
+  removeListener: vi.fn(),
+  hasListener: vi.fn(() => false),
+  hasListeners: vi.fn(() => false),
+  addRules: vi.fn(),
+  getRules: vi.fn(),
+  removeRules: vi.fn()
 }
 
 // Add runtime.getURL helper used by UI components

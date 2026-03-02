@@ -14,8 +14,7 @@ export class SubscriptionService {
     endpoint: string,
     options?: RequestInit
   ): Promise<T> {
-    await AuthService.ensureValidToken()
-    const accessToken = await AuthService.getAccessToken()
+    const accessToken = await AuthService.ensureValidToken()
 
     // Use background worker to make the request (bypasses CORS for content scripts)
     console.log("SubscriptionService: Sending API request via background worker:", endpoint)

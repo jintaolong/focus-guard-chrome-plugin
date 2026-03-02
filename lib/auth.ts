@@ -26,6 +26,7 @@ export class AuthService {
   private static USER_KEY = "focus_guard_user"
   private static lastTokenValidation: number = 0
   private static TOKEN_VALIDATION_CACHE_MS = 30000 // Cache token validation for 30 seconds
+  private static tokenValidationPromise: Promise<string> | null = null
 
   // Test function to verify storage is working
   static async testStorage(): Promise<void> {
@@ -636,8 +637,11 @@ export class AuthService {
    * Ensure valid access token, refreshing if needed
    */
   static async ensureValidToken(): Promise<string> {
-    let accessToken = await this.getAccessToken()
-    
+    if (this.tokenValidationPromise) {
+      return this.tokenValidationPromise
+    }
+
+    const accessToken = await this.getAccessToken()
     if (!accessToken) {
       console.log("AuthService: ensureValidToken - no token")
       throw new Error("Not authenticated")
@@ -652,27 +656,36 @@ export class AuthService {
       return accessToken
     }
 
-    console.log("AuthService: ⏳ Token validation cache expired, verifying token...")
+    const run = (async () => {
+      console.log("AuthService: ⏳ Token validation cache expired, verifying token...")
 
-    // Try to use the token
-    try {
-      await this.getMe()
-      console.log("AuthService: Token valid")
-      this.lastTokenValidation = now // Cache successful validation
-      return accessToken
-    } catch (error) {
-      console.log("AuthService: Token invalid/expired, attempting refresh...")
-      // Token might be expired, try to refresh
+      // Try to use the token
       try {
-        const token = await this.refreshAccessToken()
-        console.log("AuthService: Token refreshed successfully")
-        this.lastTokenValidation = Date.now() // Cache successful refresh
-        return token.access_token
-      } catch (refreshError) {
-        console.error("AuthService: Refresh failed, clearing tokens:", refreshError)
-        await this.clearTokens()
-        throw new Error("Session expired, please login again")
+        await this.getMe()
+        console.log("AuthService: Token valid")
+        this.lastTokenValidation = Date.now() // Cache successful validation
+        return accessToken
+      } catch (error) {
+        console.log("AuthService: Token invalid/expired, attempting refresh...")
+        // Token might be expired, try to refresh
+        try {
+          const token = await this.refreshAccessToken()
+          console.log("AuthService: Token refreshed successfully")
+          this.lastTokenValidation = Date.now() // Cache successful refresh
+          return token.access_token
+        } catch (refreshError) {
+          console.error("AuthService: Refresh failed, clearing tokens:", refreshError)
+          await this.clearTokens()
+          throw new Error("Session expired, please login again")
+        }
       }
+    })()
+
+    this.tokenValidationPromise = run
+    try {
+      return await run
+    } finally {
+      this.tokenValidationPromise = null
     }
   }
 }

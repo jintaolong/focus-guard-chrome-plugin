@@ -352,6 +352,8 @@ export interface SummaryResponseV2 {
   summary_paragraph: string
   video_id: string
   snapshot_id: number
+  /** Canonical share token for constructing a public report URL: `${PORTAL_URL}/report/${share_code}` */
+  share_code?: string | null
   cache_hit: boolean
   data_hash: string
   video_title: string

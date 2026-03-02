@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { COLORS, getClickbaitVerdictColor, getClickbaitColorPart } from "~lib/colors"
+import { CommentDisplay } from "~components/CommentDisplay"
 
 // Helper to determine claim field names (backend might use claim or claim_text)
 const getClaimText = (claim: any): string => claim?.claim_text || claim?.claim || ""
@@ -55,13 +56,17 @@ interface VideoCredibilitySubTabProps {
   trustScore: number
   verdictColor: "high" | "medium" | "low" | "neutral"
   claimsList: any[]
+  videoId?: string // For YouTube anchor links
+  panelDock?: "left" | "right"
 }
 
 export const VideoCredibilitySubTab = ({ 
   summary, 
   trustScore, 
   verdictColor, 
-  claimsList
+  claimsList,
+  videoId = "",
+  panelDock = "right"
 }: VideoCredibilitySubTabProps) => {
   const [showClaims, setShowClaims] = useState(false)
   const [expandedClaims, setExpandedClaims] = useState<Set<number>>(new Set())
@@ -430,26 +435,16 @@ export const VideoCredibilitySubTab = ({
                                   </strong>
                                   <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                                     {evidenceData.evidenceFor.map((comment, i) => (
-                                      <div
+                                      <CommentDisplay
                                         key={i}
-                                        style={{
-                                          padding: "8px",
-                                          backgroundColor: COLORS.high.light,
-                                          borderRadius: "4px",
-                                          borderLeft: `3px solid ${COLORS.high.primary}`
-                                        }}>
-                                        <div style={{ fontSize: "11px", fontWeight: "600", color: COLORS.ui.textPrimary, marginBottom: "4px" }}>
-                                          {comment.user}
-                                          {comment.likes > 0 && (
-                                            <span style={{ marginLeft: "8px", color: COLORS.ui.textSecondary, fontWeight: "400" }}>
-                                              👍 {comment.likes}
-                                            </span>
-                                          )}
-                                        </div>
-                                        <div style={{ fontSize: "12px", color: COLORS.ui.textSecondary }}>
-                                          {comment.text}
-                                        </div>
-                                      </div>
+                                        comment={comment}
+                                        videoId={videoId}
+                                        showLikes={true}
+                                        showAuthor={true}
+                                        borderColor={COLORS.high.primary}
+                                        backgroundColor={COLORS.high.light}
+                                        panelDock={panelDock}
+                                      />
                                     ))}
                                   </div>
                                 </div>
@@ -463,26 +458,16 @@ export const VideoCredibilitySubTab = ({
                                   </strong>
                                   <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                                     {evidenceData.evidenceAgainst.map((comment, i) => (
-                                      <div
+                                      <CommentDisplay
                                         key={i}
-                                        style={{
-                                          padding: "8px",
-                                          backgroundColor: COLORS.low.light,
-                                          borderRadius: "4px",
-                                          borderLeft: `3px solid ${COLORS.low.primary}`
-                                        }}>
-                                        <div style={{ fontSize: "11px", fontWeight: "600", color: COLORS.ui.textPrimary, marginBottom: "4px" }}>
-                                          {comment.user}
-                                          {comment.likes > 0 && (
-                                            <span style={{ marginLeft: "8px", color: COLORS.ui.textSecondary, fontWeight: "400" }}>
-                                              👍 {comment.likes}
-                                            </span>
-                                          )}
-                                        </div>
-                                        <div style={{ fontSize: "12px", color: COLORS.ui.textSecondary }}>
-                                          {comment.text}
-                                        </div>
-                                      </div>
+                                        comment={comment}
+                                        videoId={videoId}
+                                        showLikes={true}
+                                        showAuthor={true}
+                                        borderColor={COLORS.low.primary}
+                                        backgroundColor={COLORS.low.light}
+                                        panelDock={panelDock}
+                                      />
                                     ))}
                                   </div>
                                 </div>
@@ -496,26 +481,16 @@ export const VideoCredibilitySubTab = ({
                                   </strong>
                                   <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                                     {evidenceData.dangerWarnings.map((comment, i) => (
-                                      <div
+                                      <CommentDisplay
                                         key={i}
-                                        style={{
-                                          padding: "8px",
-                                          backgroundColor: COLORS.medium.light,
-                                          borderRadius: "4px",
-                                          borderLeft: `3px solid ${COLORS.medium.primary}`
-                                        }}>
-                                        <div style={{ fontSize: "11px", fontWeight: "600", color: COLORS.ui.textPrimary, marginBottom: "4px" }}>
-                                          {comment.user}
-                                          {comment.likes > 0 && (
-                                            <span style={{ marginLeft: "8px", color: COLORS.ui.textSecondary, fontWeight: "400" }}>
-                                              👍 {comment.likes}
-                                            </span>
-                                          )}
-                                        </div>
-                                        <div style={{ fontSize: "12px", color: COLORS.ui.textSecondary }}>
-                                          {comment.text}
-                                        </div>
-                                      </div>
+                                        comment={comment}
+                                        videoId={videoId}
+                                        showLikes={true}
+                                        showAuthor={true}
+                                        borderColor={COLORS.medium.primary}
+                                        backgroundColor={COLORS.medium.light}
+                                        panelDock={panelDock}
+                                      />
                                     ))}
                                   </div>
                                 </div>

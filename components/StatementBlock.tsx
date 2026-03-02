@@ -1,17 +1,25 @@
 // FR-401: Statement and Supporting Comments Pattern
 // Reusable component for Tabs 2 and 3
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import type { InsightWithComments } from "~types/analysis"
 import { COLORS, getInsightTypeColor, getColorSet } from "~lib/colors"
+import { CommentDisplay } from "~components/CommentDisplay"
 
 interface StatementBlockProps {
   insight: InsightWithComments
   showBotScores?: boolean
+  videoId?: string // Required for YouTube anchor links
+  panelDock?: "left" | "right"
 }
 
-export const StatementBlock = ({ insight, showBotScores = false }: StatementBlockProps) => {
+export const StatementBlock = ({ insight, showBotScores = false, videoId = "", panelDock = "right" }: StatementBlockProps) => {
   const [isExpanded, setIsExpanded] = useState(insight.isExpanded || false)
+  
+  // Sync internal state with prop changes (important for when data updates)
+  useEffect(() => {
+    setIsExpanded(insight.isExpanded || false)
+  }, [insight.isExpanded, insight.id]) // Re-sync when prop changes or insight ID changes
   
   const comments = Array.isArray(insight.supportingComments) ? insight.supportingComments : []
   const commentCount = insight.commentCount || comments.length || 0
@@ -177,39 +185,27 @@ export const StatementBlock = ({ insight, showBotScores = false }: StatementBloc
               No supporting comments available
             </p>
           ) : (
-            comments.map((comment: any, index: number) => (
-              <div
-                key={comment.id ?? `comment-${index}`}
-                style={{
-                  padding: "12px",
-                  marginBottom: index < comments.length - 1 ? "8px" : 0,
-                  backgroundColor: COLORS.ui.surface,
-                  borderRadius: "6px",
-                  border: `1px solid ${COLORS.ui.border}`
-                }}>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "flex-start",
-                    gap: "8px"
-                  }}>
-                  <p
-                    style={{
-                      margin: 0,
-                      fontSize: "14px",
-                      color: COLORS.ui.text.primary,
-                      lineHeight: "1.6",
-                      flex: 1
-                    }}>
-                    "{comment.text}"
-                  </p>
-
-                  {/* Bot Score Tag (Optional) */}
+            comments.map((comment: any, index: number) => {
+              const commentKey = comment.id ?? `comment-${index}`
+              
+              return (
+                <div key={commentKey} style={{ marginBottom: index < comments.length - 1 ? "8px" : 0 }}>
+                  <CommentDisplay
+                    comment={comment}
+                    videoId={videoId}
+                    showLikes={true}
+                    showAuthor={true}
+                    borderColor={colorSet.primary}
+                    panelDock={panelDock}
+                  />
+                  
+                  {/* Bot Score Tag (Optional) - shown below comment if available */}
                   {showBotScores && comment.humanLikenessScore != null && (
                     <div
                       style={{
-                        flexShrink: 0,
+                        marginTop: "4px",
+                        marginLeft: "12px",
+                        display: "inline-block",
                         padding: "2px 8px",
                         backgroundColor:
                           comment.humanLikenessScore >= 7
@@ -238,20 +234,8 @@ export const StatementBlock = ({ insight, showBotScores = false }: StatementBloc
                     </div>
                   )}
                 </div>
-
-                {/* Optional timestamp */}
-                {comment.timestamp && (
-                  <p
-                    style={{
-                      margin: "8px 0 0 0",
-                      fontSize: "12px",
-                      color: COLORS.ui.text.secondary
-                    }}>
-                    {comment.timestamp}
-                  </p>
-                )}
-              </div>
-            ))
+              )
+            })
           )}
         </div>
       )}
