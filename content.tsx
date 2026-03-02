@@ -23,6 +23,7 @@ import type {
 } from "~types/analysis"
 import type { TierRestriction } from "~types/tierRestriction"
 import type { FocusGuardSettings } from "~types/popup"
+import type { FreeQueueStatus, FreeQueueSubmitError } from "~types/backend"
 
 initConsole()
 
@@ -366,7 +367,11 @@ const ContentScript = () => {
     estimatedCredits: number
     currentBalance: number
     hasSufficientCredits: boolean
+    freeQueueStatus?: FreeQueueStatus | null
+    isFetchingFreeQueueStatus?: boolean
+    freeQueueError?: FreeQueueSubmitError | null
     onConfirm: () => void
+    onFreeQueueConfirm?: () => void
   } | null>(null)
 
   // Expose the current analysis on the window for quick debugging in DevTools.
@@ -1273,10 +1278,10 @@ const ContentScript = () => {
     // Check email verification status first
     try {
       const creditBalance = await FocusGuardAPI.getCreditBalance()
-      // Assuming backend will add is_verified field to credit balance response
-      // For now, we'll fetch from chrome.storage where popup stores it
-      const storage = await chrome.storage.sync.get(['account'])
-      const isVerified = storage.account?.is_verified !== false
+      // Always refresh user profile from backend so verification state is accurate
+      // (avoids stale local storage showing unverified after user verifies email).
+      const currentUser = await AuthService.getCurrentUser(true)
+      const isVerified = currentUser?.is_verified !== false
       setIsUserVerified(isVerified)
       
       if (!isVerified) {
@@ -1324,8 +1329,51 @@ const ContentScript = () => {
       try {
         const estimate = await FocusGuardAPI.estimateCreditCost(maxCommentDepth, false)
         console.log("💰 Credit Estimate Response:", estimate)
-        
-        // Show credit confirmation dialog
+
+        // When the user has run out of credits, fetch free queue status in the background
+        // so we can show it in the dialog while keeping it responsive.
+        let freeQueueStatus: FreeQueueStatus | null = null
+        let isFetchingFreeQueueStatus = false
+
+        if (!estimate.has_sufficient_credits) {
+          isFetchingFreeQueueStatus = true
+          // Show the dialog immediately with a loading indicator
+          setCreditConfirmData({
+            estimatedCredits: estimate.estimated_credits,
+            currentBalance: estimate.current_balance,
+            hasSufficientCredits: estimate.has_sufficient_credits,
+            freeQueueStatus: null,
+            isFetchingFreeQueueStatus: true,
+            onConfirm: () => {
+              setShowCreditConfirmDialog(false)
+              setCreditConfirmData(null)
+              proceedWithAnalysis(videoId, forceRefresh)
+            },
+            onFreeQueueConfirm: () => {
+              setShowCreditConfirmDialog(false)
+              setCreditConfirmData(null)
+              proceedWithAnalysis(videoId, forceRefresh, true, freeQueueStatus)
+            }
+          })
+          setShowCreditConfirmDialog(true)
+
+          // Fetch free queue status and update dialog once available
+          try {
+            freeQueueStatus = await FocusGuardAPI.getFreeQueueStatus()
+            console.log("🌐 Free Queue Status:", freeQueueStatus)
+          } catch (fqError) {
+            console.warn("Failed to fetch free queue status:", fqError)
+          }
+
+          setCreditConfirmData((prev) => prev ? {
+            ...prev,
+            freeQueueStatus,
+            isFetchingFreeQueueStatus: false
+          } : prev)
+          return // Dialog already shown
+        }
+
+        // Show credit confirmation dialog (sufficient credits case)
         setCreditConfirmData({
           estimatedCredits: estimate.estimated_credits,
           currentBalance: estimate.current_balance,
@@ -1351,7 +1399,12 @@ const ContentScript = () => {
     }
   }
 
-  const proceedWithAnalysis = async (videoId: string, forceRefresh: boolean = false) => {
+  const proceedWithAnalysis = async (
+    videoId: string,
+    forceRefresh: boolean = false,
+    usingFreeQueue: boolean = false,
+    freeQueueStatusAtSubmit: FreeQueueStatus | null = null
+  ) => {
     setIsAnalyzing(true)
     setAnalysisState("analyzing")
     setAnalysisStatus(null)
@@ -2112,7 +2165,67 @@ const ContentScript = () => {
       setShowPreWatchPopover(true)
     } catch (error) {
       console.error("Video analysis failed:", error)
-      
+
+      // ── Free queue race / ineligibility errors ────────────────────────────
+      // If the user chose to use the free queue and the job submission was
+      // rejected by the backend (race condition, already used, etc.) we want
+      // to re-surface the credit dialog with a clear explanation rather than
+      // showing a generic error banner.
+      if (usingFreeQueue && typeof (error as any)?.status === 'number') {
+        const status = (error as any).status as number
+        const rawMsg: string = (error instanceof Error ? error.message : String(error)) || ''
+        let submitError: FreeQueueSubmitError | null = null
+
+        if (status === 409) {
+          submitError = {
+            type: 'race_exhausted',
+            message: 'All remaining slots were just taken by other users. The pool has been reset — please try again after the daily reset.',
+            next_reset_time: freeQueueStatusAtSubmit?.next_reset_time
+          }
+        } else if (status === 403 && !rawMsg.toLowerCase().includes('tier')) {
+          // 403 for free-queue "already used" (tier restrictions carry their own flag)
+          submitError = {
+            type: 'already_used',
+            message: 'You have already used your free daily analysis slot. Your slot resets at midnight UTC.',
+            next_reset_time: freeQueueStatusAtSubmit?.next_reset_time
+          }
+        } else if (status === 400 && rawMsg.toLowerCase().includes('credits')) {
+          submitError = {
+            type: 'has_credits',
+            message: 'Your account still has credits — the free queue is reserved for users who have run out. Please use your credits to run this analysis.'
+          }
+        }
+
+        if (submitError) {
+          console.warn('Free queue submit error detected:', submitError)
+          // Re-open the credit dialog with the error embedded so the user
+          // understands what happened without losing the upgrade options.
+          setCreditConfirmData(prev => prev ? {
+            ...prev,
+            freeQueueStatus: freeQueueStatusAtSubmit,
+            freeQueueError: submitError,
+            isFetchingFreeQueueStatus: false
+          } : {
+            estimatedCredits: 0,
+            currentBalance: 0,
+            hasSufficientCredits: false,
+            freeQueueStatus: freeQueueStatusAtSubmit,
+            freeQueueError: submitError,
+            isFetchingFreeQueueStatus: false,
+            onConfirm: () => {
+              setShowCreditConfirmDialog(false)
+              setCreditConfirmData(null)
+            }
+          })
+          setShowCreditConfirmDialog(true)
+          setAnalysisState("idle")
+          setCurrentJobId(null)
+          setIsAnalyzing(false)
+          return
+        }
+      }
+      // ── End free queue error handling ─────────────────────────────────────
+
       // Check if polling was aborted (user switched videos)
       if (error instanceof Error && error.message === "Polling aborted") {
         console.log("Polling aborted due to video switch - this is expected")
@@ -2410,7 +2523,11 @@ const ContentScript = () => {
             hasSufficientCredits={creditConfirmData.hasSufficientCredits}
             userTier={(userTierInfo?.tier || 'free') as "free" | "starter" | "pro"}
             isVerified={isUserVerified ?? true}
+            freeQueueStatus={creditConfirmData.freeQueueStatus}
+            isFetchingFreeQueueStatus={creditConfirmData.isFetchingFreeQueueStatus}
+            freeQueueError={creditConfirmData.freeQueueError}
             onConfirm={creditConfirmData.onConfirm}
+            onFreeQueueConfirm={creditConfirmData.onFreeQueueConfirm}
             onCancel={() => {
               setShowCreditConfirmDialog(false)
               setCreditConfirmData(null)

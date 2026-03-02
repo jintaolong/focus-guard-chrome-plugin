@@ -425,6 +425,33 @@ export interface ReportMetadata {
 }
 
 // ============================================================================
+// Free Queue (Community Pool) Types
+// ============================================================================
+
+export interface FreeQueueStatus {
+  total_capacity: number
+  used_today: number
+  remaining: number
+  user_has_used_today: boolean
+  user_eligible: boolean
+  eligibility_reason: string
+  next_reset_time: string // ISO 8601 datetime string (midnight UTC)
+}
+
+/**
+ * Structured error returned when a free queue job submission is rejected.
+ * These cover race conditions and ineligibility caught at submit time.
+ */
+export interface FreeQueueSubmitError {
+  /** 'race_exhausted' — 409, pool ran out between status check and submit
+   *  'already_used'   — 403, user already consumed their daily slot
+   *  'has_credits'    — 400, user still has credits and should not use free queue */
+  type: 'race_exhausted' | 'already_used' | 'has_credits'
+  message: string
+  next_reset_time?: string
+}
+
+// ============================================================================
 // API Error Types
 // ============================================================================
 

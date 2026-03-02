@@ -32,7 +32,8 @@ import type {
   SummaryJobRequest,
   RunningJobInfo,
   JobType,
-  JobStatus
+  JobStatus,
+  FreeQueueStatus
 } from "~types/backend"
 
 let API_BASE_URL = process.env.PLASMO_PUBLIC_API_URL || "https://api.commentverdict.com/api/v1"
@@ -76,7 +77,10 @@ export class FocusGuardAPI {
           console.log("FocusGuardAPI: Throwing tier restriction error:", error)
           throw error
         }
-        throw new Error(response?.error || 'API request failed')
+        // Attach HTTP status to the thrown error so callers can branch on it
+        const err = new Error(response?.error || 'API request failed') as any
+        err.status = response?.status
+        throw err
       }
 
       return response.data as T
@@ -1054,5 +1058,13 @@ export class FocusGuardAPI {
         is_custom_context: isCustomContext
       })
     })
+  }
+
+  /**
+   * Get the current status and user eligibility of the Free Community Queue.
+   * Only users who have exhausted their credits are eligible to use the queue.
+   */
+  static async getFreeQueueStatus(): Promise<FreeQueueStatus> {
+    return this.fetchWithAuth<FreeQueueStatus>("/free-queue/status")
   }
 }
