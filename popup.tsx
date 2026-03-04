@@ -16,6 +16,37 @@ initConsole()
 
 console.log("🚀 Comment Verdict Popup: Module loaded")
 
+const DEFAULT_SETTINGS: FocusGuardSettings = {
+  isEnabled: true,
+  videoAnalysis: {
+    showPreWatchPopover: true,
+    autoAnalyze: false,
+    botDetectionEnabled: true,
+    showCachedVerdict: false,
+    confirmCreditUsage: true,
+    maxCommentDepth: 100
+  }
+}
+
+function normalizeSettings(input?: FocusGuardSettings | null): FocusGuardSettings {
+  const rawDepth = input?.videoAnalysis?.maxCommentDepth
+  const normalizedDepth = typeof rawDepth === "number" && Number.isFinite(rawDepth)
+    ? Math.max(100, Math.min(1000, Math.round(rawDepth)))
+    : 100
+
+  return {
+    isEnabled: input?.isEnabled ?? true,
+    videoAnalysis: {
+      showPreWatchPopover: input?.videoAnalysis?.showPreWatchPopover ?? true,
+      autoAnalyze: input?.videoAnalysis?.autoAnalyze ?? false,
+      botDetectionEnabled: input?.videoAnalysis?.botDetectionEnabled ?? true,
+      showCachedVerdict: input?.videoAnalysis?.showCachedVerdict ?? false,
+      confirmCreditUsage: input?.videoAnalysis?.confirmCreditUsage ?? true,
+      maxCommentDepth: normalizedDepth
+    }
+  }
+}
+
 // Portal URL - will be updated from config
 let PORTAL_URL = process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"
 
@@ -30,17 +61,7 @@ ConfigService.getConfig().then(config => {
 function IndexPopup() {
   console.log("🎯 Comment Verdict Popup: Component initializing")
   const [account, setAccount] = useState<UserAccount | null>(null)
-  const [settings, setSettings] = useState<FocusGuardSettings>({
-    isEnabled: true,
-    videoAnalysis: {
-      showPreWatchPopover: true,
-      autoAnalyze: false,
-      botDetectionEnabled: true,
-      showCachedVerdict: false, // Default: hide verdict for cached analyses
-      confirmCreditUsage: true, // Default: confirm credit usage
-      maxCommentDepth: 100 // Default: 100 comments
-    }
-  })
+  const [settings, setSettings] = useState<FocusGuardSettings>(DEFAULT_SETTINGS)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const loadUserDataInFlight = useRef<Promise<void> | null>(null)
@@ -49,7 +70,7 @@ function IndexPopup() {
 
   useEffect(() => {
     settingsRef.current = settings
-  }, [])
+  }, [settings])
 
   const loadUserData = useCallback(async (reason: string = "manual", force: boolean = false) => {
     const now = Date.now()
@@ -80,24 +101,13 @@ function IndexPopup() {
       
       // Load settings from chrome storage
       const result = await chrome.storage.sync.get(["settings"])
-      const storedSettings = result.settings || currentSettings
+      const storedSettings = normalizeSettings(result.settings || currentSettings)
       if (result.settings) {
-        setSettings(result.settings)
+        setSettings(storedSettings)
       } else {
         // If no settings exist, initialize defaults and save them
-        const defaultSettings: FocusGuardSettings = {
-          isEnabled: true,
-          videoAnalysis: {
-            showPreWatchPopover: true,
-            autoAnalyze: false,
-            botDetectionEnabled: true,
-            showCachedVerdict: false,
-            confirmCreditUsage: true,
-            maxCommentDepth: 100
-          }
-        }
-        setSettings(defaultSettings)
-        await chrome.storage.sync.set({ settings: defaultSettings })
+        setSettings(storedSettings)
+        await chrome.storage.sync.set({ settings: storedSettings })
         console.log("Popup: Initialized default settings")
       }
 
@@ -109,7 +119,7 @@ function IndexPopup() {
         // Get user and subscription info
         console.log("Popup: Fetching user, subscription, usage, and credits...")
         const [user, subscription, usage, credits] = await Promise.all([
-          AuthService.getCurrentUser(),
+          AuthService.getCurrentUser(true),
           SubscriptionService.getSubscription(),
           SubscriptionService.getUsage(),
           FocusGuardAPI.getCreditBalance().catch(err => {
@@ -226,8 +236,9 @@ function IndexPopup() {
 
   useEffect(() => {
     console.log("Comment Verdict popup loaded")
-    // Test storage in development only (avoid extra work in prod)
-    if (process.env.NODE_ENV === "development" && typeof AuthService.testStorage === "function") {
+    // Optional storage test in development; disabled by default to avoid
+    // generating extra sync writes on every popup open.
+    if (process.env.NODE_ENV === "development" && process.env.PLASMO_PUBLIC_ENABLE_STORAGE_TEST === "1" && typeof AuthService.testStorage === "function") {
       Promise.resolve()
         .then(() => AuthService.testStorage())
         .then(() => console.log("Storage test passed"))

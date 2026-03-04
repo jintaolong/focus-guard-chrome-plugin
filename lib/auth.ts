@@ -28,6 +28,14 @@ export class AuthService {
   private static TOKEN_VALIDATION_CACHE_MS = 30000 // Cache token validation for 30 seconds
   private static tokenValidationPromise: Promise<string> | null = null
 
+  private static isDeepEqual(a: any, b: any): boolean {
+    try {
+      return JSON.stringify(a) === JSON.stringify(b)
+    } catch {
+      return false
+    }
+  }
+
   // Test function to verify storage is working
   static async testStorage(): Promise<void> {
     console.log("=== STORAGE TEST START ===")
@@ -213,8 +221,18 @@ export class AuthService {
     }
   }
 
-  static async getCurrentUser(): Promise<UserResponse | null> {
+  static async getCurrentUser(forceRefresh: boolean = false): Promise<UserResponse | null> {
     try {
+      if (forceRefresh) {
+        try {
+          const freshUser = await this.getMe()
+          await this.setCurrentUser(freshUser)
+          return freshUser
+        } catch (fetchErr) {
+          console.warn('AuthService: Failed to force-refresh user from API, falling back to storage:', fetchErr)
+        }
+      }
+
       const result = await this.storageGet([this.USER_KEY])
       let stored: any = result[this.USER_KEY] || null
 
@@ -258,17 +276,38 @@ export class AuthService {
   static async setCurrentUser(user: UserResponse): Promise<void> {
     try {
       console.log("AuthService: Setting current user in storage")
-      await this.storageSet({ [this.USER_KEY]: user })
-      // Also write a lightweight `account` object for compatibility
+      const existing = await this.storageGet([this.USER_KEY, "account"])
+      const existingUser = existing[this.USER_KEY] || null
+      const existingAccount = existing.account || null
+
+      // Also maintain a lightweight `account` object for compatibility.
+      // Preserve resetTime once set to avoid creating a different value on every
+      // call (which can trigger excessive sync writes and hit quota limits).
       const account = {
         isLoggedIn: true,
         email: user.email,
-        tier: "starter",
-        searchesUsedToday: 0,
-        searchesRemaining: -1,
-        resetTime: new Date().toISOString()
+        is_verified: user.is_verified,
+        welcome_bonus_used: user.welcome_bonus_used ?? false,
+        tier: existingAccount?.tier || "starter",
+        searchesUsedToday: existingAccount?.searchesUsedToday ?? 0,
+        searchesRemaining: existingAccount?.searchesRemaining ?? -1,
+        resetTime: existingAccount?.resetTime || new Date().toISOString()
       }
-      await this.storageSet({ account })
+
+      const updates: Record<string, any> = {}
+      if (!this.isDeepEqual(existingUser, user)) {
+        updates[this.USER_KEY] = user
+      }
+      if (!this.isDeepEqual(existingAccount, account)) {
+        updates.account = account
+      }
+
+      if (Object.keys(updates).length > 0) {
+        await this.storageSet(updates)
+        console.log("AuthService: User/account updated in storage", Object.keys(updates))
+      } else {
+        console.log("AuthService: User/account unchanged, skipping storage write")
+      }
       console.log("AuthService: User saved successfully")
     } catch (error) {
       console.error("Failed to set current user:", error)
