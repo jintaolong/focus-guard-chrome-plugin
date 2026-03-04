@@ -224,7 +224,7 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
       }
       
       // Show different text based on cache status
-      const buttonText = isCached === false ? "Generate Report" : "Analyze Comments"
+      const buttonText = isCached === false ? "Summarize Comments" : "Someone analyzed it!"
       
       // Get icon URL safely - handle extension context invalidation
       let iconUrl: string | null = null

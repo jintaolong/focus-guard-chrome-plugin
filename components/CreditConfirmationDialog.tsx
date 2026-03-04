@@ -275,6 +275,22 @@ export const CreditConfirmationDialog = ({
               </div>
             </div>
 
+            {/* Compact disclaimer about estimate and refunds */}
+            <div
+              style={{
+                backgroundColor: "#f3f4f6",
+                borderRadius: "8px",
+                padding: "12px",
+                marginBottom: "20px",
+                fontSize: "12px",
+                color: "#4b5563",
+                lineHeight: "1.4"
+              }}>
+              <strong>Note:</strong> Credits shown are based on the comments you asked for. Actual
+              cost may be lower (free/starter capped at 100), and we try to refund credits if the
+              analysis fails.
+            </div>
+
             <div style={{ display: "flex", gap: "12px" }}>
               <button
                 onClick={onCancel}
