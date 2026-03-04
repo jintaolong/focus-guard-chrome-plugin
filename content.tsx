@@ -1318,14 +1318,28 @@ const ContentScript = () => {
       }
     }
     
+    // Always fetch latest settings from storage before estimating/proceeding so
+    // popup changes apply immediately even if React state in this content script
+    // is stale for a short time.
+    let latestSettings = settings
+    try {
+      const result = await chrome.storage.sync.get(["settings"])
+      if (result.settings) {
+        latestSettings = result.settings
+        setSettings(result.settings)
+      }
+    } catch (error) {
+      console.warn("Failed to refresh settings before analysis start, using in-memory settings:", error)
+    }
+
     // Check if we should confirm credit usage
-    const shouldConfirm = settings?.videoAnalysis?.confirmCreditUsage !== false
+    const shouldConfirm = latestSettings?.videoAnalysis?.confirmCreditUsage !== false
     
     if (shouldConfirm) {
       // Estimate credit cost with tier-based limit enforcement
-      const settingsMaxComments = settings?.videoAnalysis?.maxCommentDepth || 100
+      const settingsMaxComments = latestSettings?.videoAnalysis?.maxCommentDepth || 100
       const maxCommentDepth = currentTier === 'pro' ? settingsMaxComments : Math.min(settingsMaxComments, 100)
-      console.log("💰 Credit Estimate Params:", { tier: currentTier, settingsMaxComments, maxCommentDepth, settings: settings?.videoAnalysis })
+      console.log("💰 Credit Estimate Params:", { tier: currentTier, settingsMaxComments, maxCommentDepth, settings: latestSettings?.videoAnalysis })
       try {
         const estimate = await FocusGuardAPI.estimateCreditCost(maxCommentDepth, false)
         console.log("💰 Credit Estimate Response:", estimate)
@@ -1418,15 +1432,17 @@ const ContentScript = () => {
       const analysisStartTime = Date.now()
       console.log("Starting video analysis for:", videoId)
       
-      // Ensure settings are loaded before proceeding - load fresh from storage
+      // Ensure settings are loaded before proceeding - always load fresh from storage
+      // so newly changed maxCommentDepth is applied immediately.
       let currentSettings = settings
-      if (!currentSettings) {
-        console.warn("⚠️ Settings not loaded in state, loading from storage...")
+      try {
         const result = await chrome.storage.sync.get(["settings"])
-        currentSettings = result.settings || null
+        currentSettings = result.settings || currentSettings
         if (currentSettings) {
           setSettings(currentSettings)
         }
+      } catch (error) {
+        console.warn("⚠️ Failed loading fresh settings from storage, using in-memory settings:", error)
       }
       console.log("📋 Current settings for analysis:", currentSettings)
       
@@ -2511,10 +2527,15 @@ const ContentScript = () => {
               const newSettings = {
                 ...settings,
                 videoAnalysis: {
-                  ...settings.videoAnalysis,
+                  showPreWatchPopover: settings.videoAnalysis?.showPreWatchPopover ?? true,
+                  autoAnalyze: settings.videoAnalysis?.autoAnalyze ?? false,
+                  botDetectionEnabled: settings.videoAnalysis?.botDetectionEnabled ?? true,
+                  showCachedVerdict: settings.videoAnalysis?.showCachedVerdict ?? false,
+                  confirmCreditUsage: settings.videoAnalysis?.confirmCreditUsage ?? true,
                   maxCommentDepth: maxComments
                 }
               }
+              setSettings(newSettings)
               chrome.storage.sync.set({ settings: newSettings })
               
               // Start analysis with custom settings

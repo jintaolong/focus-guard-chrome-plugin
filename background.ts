@@ -18,8 +18,7 @@ let oauthTabId: number | null = null
 let oauthState: string | null = null
 
 // Proactive token refresh - refresh token every 8 minutes to prevent expiration
-// const TOKEN_REFRESH_INTERVAL_MS = 8 * 60 * 1000 // 8 minutes
-const TOKEN_REFRESH_INTERVAL_MS = 1 * 60 * 1000 // 1 minute for testing
+const TOKEN_REFRESH_INTERVAL_MS = 8 * 60 * 1000 // 8 minutes
 const MIN_TIME_BETWEEN_REFRESHES_MS = 60 * 1000 // Don't refresh more than once per minute
 let tokenRefreshAlarm: NodeJS.Timeout | null = null
 let lastTokenRefreshTime = 0
