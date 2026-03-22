@@ -12,6 +12,7 @@ interface ReportTabProps {
   onDownloadReport?: (format: "PDF" | "TXT") => void
   onReAnalyze?: (videoId: string) => void
   onDownloadHistoryReport?: (videoId: string) => void
+  onLoadHistoryItem?: (item: AnalysisHistoryItem) => void
 }
 
 export const ReportTab = ({
@@ -19,7 +20,8 @@ export const ReportTab = ({
   history = [],
   onDownloadReport,
   onReAnalyze,
-  onDownloadHistoryReport
+  onDownloadHistoryReport,
+  onLoadHistoryItem
 }: ReportTabProps) => {
   const [selectedFormat, setSelectedFormat] = useState<"PDF" | "TXT">("PDF")
   const [isDownloading, setIsDownloading] = useState(false)
@@ -204,6 +206,7 @@ export const ReportTab = ({
               return (
                 <div
                   key={item.videoId}
+                  onClick={() => onLoadHistoryItem?.(item)}
                   style={{
                     display: "flex",
                     gap: "12px",
@@ -211,7 +214,8 @@ export const ReportTab = ({
                     backgroundColor: "white",
                     border: `1px solid ${COLORS.ui.border}`,
                     borderRadius: "8px",
-                    transition: "box-shadow 0.2s"
+                    transition: "box-shadow 0.2s",
+                    cursor: onLoadHistoryItem ? "pointer" : "default",
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.1)"

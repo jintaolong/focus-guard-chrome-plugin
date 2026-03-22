@@ -55,6 +55,57 @@ export const COLORS = {
   }
 } as const
 
+// Dark mode color palette
+export const DARK_COLORS = {
+  high: {
+    primary: "#34d399",
+    light: "#064e3b",
+    dark: "#6ee7b7",
+    text: "#34d399"
+  },
+  medium: {
+    primary: "#fbbf24",
+    light: "#78350f",
+    dark: "#fcd34d",
+    text: "#fbbf24"
+  },
+  low: {
+    primary: "#f87171",
+    light: "#7f1d1d",
+    dark: "#fca5a5",
+    text: "#f87171"
+  },
+  neutral: {
+    primary: "#60a5fa",
+    light: "#1e3a5f",
+    dark: "#93c5fd",
+    text: "#93c5fd"
+  },
+  ui: {
+    background: "#0f172a",
+    surface: "#1e293b",
+    border: "#334155",
+    text: {
+      primary: "#f1f5f9",
+      secondary: "#94a3b8",
+      tertiary: "#64748b",
+      disabled: "#475569"
+    },
+    textPrimary: "#f1f5f9",
+    textSecondary: "#94a3b8",
+    textTertiary: "#64748b",
+    textDisabled: "#475569",
+    hover: "#334155"
+  }
+} as const
+
+export type ThemeMode = 'light' | 'dark'
+
+/** Return COLORS or DARK_COLORS based on theme mode */
+export function getThemeColors(mode: ThemeMode) {
+  return mode === 'dark' ? DARK_COLORS : COLORS
+}
+
 // Backwards-compatible color name aliases
 // Some components reference green/yellow/red directly; map them to the trust-level keys
 (COLORS as any).green = (COLORS as any).high;

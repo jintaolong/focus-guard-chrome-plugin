@@ -1338,7 +1338,7 @@ const ContentScript = () => {
     if (shouldConfirm) {
       // Estimate credit cost with tier-based limit enforcement
       const settingsMaxComments = latestSettings?.videoAnalysis?.maxCommentDepth || 100
-      const maxCommentDepth = currentTier === 'pro' ? settingsMaxComments : Math.min(settingsMaxComments, 100)
+      const maxCommentDepth = currentTier === 'pro' ? settingsMaxComments : Math.min(settingsMaxComments, 300)
       console.log("💰 Credit Estimate Params:", { tier: currentTier, settingsMaxComments, maxCommentDepth, settings: latestSettings?.videoAnalysis })
       try {
         const estimate = await FocusGuardAPI.estimateCreditCost(maxCommentDepth, false)
@@ -1513,8 +1513,8 @@ const ContentScript = () => {
           setCurrentJobId(jobId)
         } else {
           const settingsMaxComments = currentSettings?.videoAnalysis?.maxCommentDepth || 100
-          // Enforce tier-based limits: free/starter capped at 100, PRO can go higher
-          const maxComments = currentTier === 'pro' ? settingsMaxComments : Math.min(settingsMaxComments, 100)
+          // Enforce tier-based limits: starter capped at 300, PRO can go higher
+          const maxComments = currentTier === 'pro' ? settingsMaxComments : Math.min(settingsMaxComments, 300)
           console.log(`📊 Submitting summary job: video_id=${videoId}, force_refresh=${forceRefresh}, max_comments=${maxComments}`)
           console.log(`📊 Settings breakdown: maxCommentDepth=${currentSettings?.videoAnalysis?.maxCommentDepth}, tier=${currentTier}, enforced_max=${maxComments}`)
           const jobResponse = await FocusGuardAPI.submitSummaryJob({
@@ -2252,6 +2252,7 @@ const ContentScript = () => {
       }
       
       // Simplify error messages for common cases
+      // Backend handles stale/killed jobs - trust the status and show reason clearly
       let errorMessage = "Analysis failed"
       if (error instanceof Error) {
         const msg = error.message.toLowerCase()
@@ -2267,7 +2268,7 @@ const ContentScript = () => {
         } else if (msg.includes("auth") || msg.includes("login") || msg.includes("401")) {
           errorMessage = "Please log in"
         } else if (msg.includes("network") || msg.includes("connection")) {
-          errorMessage = "Network error"
+          errorMessage = "Network error — retry later"
         } else if (msg.includes("insufficient credits") || msg.includes("free queue")) {
           // Keep toggle-button message short and readable (space is very limited)
           if (msg.includes("already used") && msg.includes("free queue")) {
@@ -2279,8 +2280,23 @@ const ContentScript = () => {
           } else {
             errorMessage = "No credits · Free queue unavailable"
           }
+        } else if (msg.includes("job failed") || msg.includes("job was cancelled")) {
+          // Backend-reported job failure — show the reason from the backend clearly
+          // Truncate to fit toggle button (max ~60 chars)
+          const reason = error.message.replace(/^Job failed\s*[-:]*\s*/i, '').replace(/^Job was cancelled\s*[-:]*\s*/i, '').trim()
+          errorMessage = reason.length > 50
+            ? `Failed: ${reason.slice(0, 47)}…`
+            : reason
+              ? `Failed: ${reason}`
+              : "Job failed — tap to retry"
+        } else if (msg.includes("timeout") || msg.includes("timed out")) {
+          errorMessage = "Timed out — tap to retry"
         } else {
-          errorMessage = error.message
+          // Pass through backend message, truncated for toggle button
+          const trimmed = error.message.trim()
+          errorMessage = trimmed.length > 55
+            ? `${trimmed.slice(0, 52)}…`
+            : trimmed || "Analysis failed — tap to retry"
         }
       }
       
@@ -2492,6 +2508,11 @@ const ContentScript = () => {
             if (currentVideoId) {
               startVideoAnalysis(currentVideoId, true)
             }
+          }}
+          onLoadHistoryItem={(item) => {
+            // Navigate to that video's YouTube page; the URL-change listener
+            // will pick it up and load the cached analysis automatically.
+            window.location.href = `https://www.youtube.com/watch?v=${item.videoId}`
           }}
           progressPercent={progressPercent}
           progressMessage={progressMessage}

@@ -17,8 +17,8 @@ let WEB_PORTAL_URL = process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localho
 let oauthTabId: number | null = null
 let oauthState: string | null = null
 
-// Proactive token refresh - refresh token every 8 minutes to prevent expiration
-const TOKEN_REFRESH_INTERVAL_MS = 8 * 60 * 1000 // 8 minutes
+// Proactive token refresh - refresh token every 25 minutes (access tokens now valid 1h)
+const TOKEN_REFRESH_INTERVAL_MS = 25 * 60 * 1000 // 25 minutes
 const MIN_TIME_BETWEEN_REFRESHES_MS = 60 * 1000 // Don't refresh more than once per minute
 let tokenRefreshAlarm: NodeJS.Timeout | null = null
 let lastTokenRefreshTime = 0
@@ -457,7 +457,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 
 /**
  * Start periodic token refresh to prevent token expiration
- * Tokens typically expire after 15-30 minutes, so we refresh every 8 minutes
+ * Access tokens are valid for 1 hour, so we refresh every 25 minutes
  */
 function startTokenRefreshMechanism() {
   console.log("Background: startTokenRefreshMechanism called")

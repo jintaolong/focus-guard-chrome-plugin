@@ -7,3 +7,11 @@ dist
 .DS_Store
 node_modules/
 *.zip
+
+# web portal for dev reference
+.gitmodules
+/web-portal
+
+
+# doc
+API_ENDPOINTS_IO_REFERENCE.md
