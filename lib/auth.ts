@@ -25,7 +25,7 @@ export class AuthService {
   private static REFRESH_TOKEN_KEY = "focus_guard_refresh_token"
   private static USER_KEY = "focus_guard_user"
   private static lastTokenValidation: number = 0
-  private static TOKEN_VALIDATION_CACHE_MS = 30000 // Cache token validation for 30 seconds
+  private static TOKEN_VALIDATION_CACHE_MS = 300000 // Cache token validation for 5 minutes (tokens valid 1h)
   private static tokenValidationPromise: Promise<string> | null = null
 
   private static isDeepEqual(a: any, b: any): boolean {
@@ -651,6 +651,10 @@ export class AuthService {
    */
   static async isAuthenticated(): Promise<boolean> {
     console.log("AuthService: isAuthenticated() called")
+    // Detect extension context invalidation — chrome.runtime.id is undefined when context is stale
+    if (!chrome?.runtime?.id) {
+      throw new Error("Extension context invalidated — please refresh the page")
+    }
     const token = await this.getAccessToken()
     if (!token) {
       console.log("AuthService: No access token found - NOT authenticated")

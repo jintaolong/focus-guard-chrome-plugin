@@ -287,8 +287,8 @@ export const CreditConfirmationDialog = ({
                 lineHeight: "1.4"
               }}>
               <strong>Note:</strong> Credits shown are based on the comments you asked for. Actual
-              cost may be lower (free/starter capped at 100), and we try to refund credits if the
-              analysis fails.
+              cost may be lower (free capped at 100, starter capped at 300), and we try to refund
+              credits if the analysis fails.
             </div>
 
             <div style={{ display: "flex", gap: "12px" }}>

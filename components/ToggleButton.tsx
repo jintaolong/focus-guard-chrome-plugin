@@ -2,6 +2,41 @@ import { useState, useEffect, useRef } from "react";
 import type React from "react";
 import { COLORS, getTrustScoreColor, getClickbaitVerdictColor, getClickbaitColorPart } from "~lib/colors";
 
+// CSS animations injected once in the DOM —  module-level constant to avoid recreation
+const TOGGLE_CSS = `
+  @keyframes cv-orbit-slow {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+  @keyframes cv-orbit-fast {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+  @keyframes cv-color-cycle {
+    0%   { stroke: #10b981; filter: drop-shadow(0 0 7px rgba(16,185,129,0.95)); }
+    18%  { stroke: #f59e0b; filter: drop-shadow(0 0 7px rgba(245,158,11,0.95)); }
+    36%  { stroke: #3b82f6; filter: drop-shadow(0 0 7px rgba(59,130,246,0.95)); }
+    54%  { stroke: #ef4444; filter: drop-shadow(0 0 7px rgba(239,68,68,0.95)); }
+    72%  { stroke: #991b1b; filter: drop-shadow(0 0 7px rgba(153,27,27,0.85)); }
+    90%  { stroke: #10b981; filter: drop-shadow(0 0 7px rgba(16,185,129,0.95)); }
+    100% { stroke: #10b981; filter: drop-shadow(0 0 7px rgba(16,185,129,0.95)); }
+  }
+  @keyframes cv-idle-pulse {
+    0%, 100% { opacity: 0.35; }
+    50%       { opacity: 0.85; }
+  }
+`
+
+// WiFi signal watermark — reusable SVG group
+const WiFiWatermark = ({ opacity }: { opacity: number }) => (
+  <g opacity={opacity} fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
+    <circle cx="35" cy="46" r="2.5" fill="white" stroke="none" />
+    <path d="M 29 41 Q 35 33 41 41" />
+    <path d="M 22 36 Q 35 25 48 36" />
+    <path d="M 16 31 Q 35 17 54 31" />
+  </g>
+)
+
 interface ToggleButtonProps {
   // accepted shapes: a raw number, or an object like { score: number }
   trustScore?: number | { score?: number } | null
@@ -107,45 +142,24 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
 
   // Calculate position based on dock
   const getPositionStyle = (): React.CSSProperties => {
-    // Use amber (medium) color for error state (milder than red), neutral for idle/analyzing, verdict color for complete
-    const bgColor = errorMessage ? COLORS.medium.primary : 
-                    state === "complete" ? COLORS[verdictColor].primary : 
-                    COLORS.neutral.primary
-    
-      const baseStyle: React.CSSProperties = {
+    const baseStyle: React.CSSProperties = {
       position: "fixed",
       zIndex: 10000,
       display: "flex",
-      flexDirection: "column",
       alignItems: "center",
       justifyContent: "center",
-      gap: "3px",
-      padding: "8px 11px",
-      backgroundColor: bgColor,
-      border: `3px solid white`,
+      padding: "4px",
+      backgroundColor: "transparent",
+      border: "none",
       cursor: isDragging ? "grabbing" : (state === "analyzing" ? "wait" : "pointer"),
-      boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3)",
       transition: isDragging ? "none" : "all 0.18s ease",
-      userSelect: "none"
+      userSelect: "none",
     }
 
     if (dockPosition === "left") {
-      return {
-        ...baseStyle,
-        left: 0,
-        top: "50%",
-        transform: "translateY(-50%)",
-        borderRadius: "0 12px 12px 0"
-      }
+      return { ...baseStyle, left: "4px", top: "50%", transform: "translateY(-50%)" }
     }
-
-    return {
-      ...baseStyle,
-      right: 0,
-      top: "50%",
-      transform: "translateY(-50%)",
-      borderRadius: "12px 0 0 12px"
-    }
+    return { ...baseStyle, right: "4px", top: "50%", transform: "translateY(-50%)" }
   }
 
   const handleClick = (e: React.MouseEvent) => {
@@ -155,212 +169,197 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
     }
   }
 
+    // CSS animations for all circle states — injected from module constant
+
+  // Reusable WiFi signal watermark (SVG group) — defined at module level
+
   // Render content based on state
   const renderContent = () => {
-    // Show error message if present
+    // ── Error ──────────────────────────────────────────────────────────────────
     if (errorMessage) {
       return (
-        <div style={{ 
-          display: "flex", 
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: "4px",
-          textAlign: "center",
-          padding: "4px 8px",
-          maxWidth: "100px"
-        }}>
-          <span style={{ fontSize: "20px" }}>⚠️</span>
-          <span style={{ 
-            fontSize: "11px", 
-            fontWeight: "600",
-            color: "white",
-            textShadow: "0 1px 2px rgba(0,0,0,0.3)",
-            lineHeight: 1.2
-          }}>
-            {errorMessage}
-          </span>
+        <div style={{ width: 70, height: 70, position: "relative" }}>
+          <style>{TOGGLE_CSS}</style>
+          <svg width="70" height="70" viewBox="0 0 70 70">
+            <circle cx="35" cy="35" r="33" fill="rgba(217,119,6,0.85)" />
+            <circle cx="35" cy="35" r="33" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2" />
+          </svg>
+          <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "3px" }}>
+            <span style={{ fontSize: "18px" }}>⚠️</span>
+            <span style={{ fontSize: "8px", fontWeight: "600", color: "white", textShadow: "0 1px 2px rgba(0,0,0,0.4)", textAlign: "center", maxWidth: "52px", lineHeight: 1.2 }}>
+              {errorMessage}
+            </span>
+          </div>
         </div>
       )
     }
 
+    // ── Idle ──────────────────────────────────────────────────────────────────
     if (state === "idle") {
-      // If there's a cached analysis but showCachedVerdict is false, show "Verdict Available"
-      // Note: isCached=true means it's cached, showCachedVerdict controls whether to show the verdict
+
+      // ── Sub-state: Cache available, verdict hidden → Rainbow orbit glow ──
       if (isCached === true && showCachedVerdict === false) {
         return (
-          <div style={{ 
-            display: "flex", 
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "3px",
-            textAlign: "center",
-            padding: "3px 0"
-          }}>
-            <span style={{ fontSize: "22px" }}>✅</span>
-            <span style={{ 
-              fontSize: "9px", 
-              fontWeight: "700",
-              color: "white",
-              textShadow: "0 1px 2px rgba(0,0,0,0.3)",
-              lineHeight: 1.2,
-              maxWidth: "70px"
+          <div style={{ width: 70, height: 70, position: "relative" }}>
+            <style>{TOGGLE_CSS}</style>
+            <svg width="70" height="70" viewBox="0 0 70 70">
+              {/* Dark navy fill */}
+              <circle cx="35" cy="35" r="31" fill="rgba(15,23,42,0.9)" />
+              {/* Track ring */}
+              <circle cx="35" cy="35" r="33" fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="4" />
+              {/* Orbiting colour-cycling glow arc */}
+              <circle cx="35" cy="35" r="33" fill="none" strokeWidth="4" strokeLinecap="round"
+                strokeDasharray="55 152"
+                style={{
+                  animation: "cv-orbit-slow 5s linear infinite, cv-color-cycle 10s linear infinite",
+                  transformOrigin: "center",
+                }} />
+            </svg>
+            <div style={{
+              position: "absolute", inset: 0,
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
             }}>
-              Verdict Available!
-            </span>
-            <span style={{ 
-              fontSize: "8px", 
-              fontWeight: "600",
-              color: "white",
-              textShadow: "0 1px 2px rgba(0,0,0,0.3)",
-              lineHeight: 1.2,
-              maxWidth: "70px"
-            }}>
-              View Report (Free)
-            </span>
+              <span style={{ fontSize: "9px", fontWeight: "900", color: "white", letterSpacing: "0.07em", textAlign: "center", lineHeight: 1.2 }}>
+                ANALYZED
+              </span>
+              <span style={{ fontSize: "7px", fontWeight: "600", color: "rgba(255,255,255,0.6)", textAlign: "center", marginTop: "3px" }}>
+                View Report
+              </span>
+              <span style={{ fontSize: "7px", color: "rgba(255,255,255,0.4)", textAlign: "center" }}>
+                Free ↗
+              </span>
+            </div>
           </div>
         )
       }
-      
-      // Show different text based on cache status
-      const buttonText = isCached === false ? "Summarize Comments" : "Someone analyzed it!"
-      
-      // Get icon URL safely - handle extension context invalidation
-      let iconUrl: string | null = null
-      try {
-        iconUrl = chrome.runtime.getURL("assets/stroke.png")
-      } catch (error) {
-        // Extension context invalidated - will show emoji instead
-        console.warn("ToggleButton: Extension context invalidated, using emoji fallback")
-      }
-      
+
+      // ── Sub-state: Normal idle (or cached+showCachedVerdict=true) ──
+      const buttonText = isCached === false ? "Summarize" : "Analyzed!"
       return (
-        <div style={{ 
-          display: "flex", 
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: "3px",
-          textAlign: "center",
-          padding: "3px 0"
-        }}>
-          {iconUrl ? (
-            <img src={iconUrl} alt="Comment Verdict" style={{ width: "27px", height: "27px" }} />
-          ) : (
-            <span style={{ fontSize: "27px" }}>🛡️</span>
-          )}
-          <span style={{ 
-            fontSize: "9px", 
-            fontWeight: "700",
-            color: "white",
-            textShadow: "0 1px 2px rgba(0,0,0,0.3)",
-            lineHeight: 1.2,
-            maxWidth: "60px"
+        <div style={{ width: 70, height: 70, position: "relative" }}>
+          <style>{TOGGLE_CSS}</style>
+          <svg width="70" height="70" viewBox="0 0 70 70">
+            {/* Semi-transparent logo-blue fill */}
+            <circle cx="35" cy="35" r="33" fill="rgba(37,99,235,0.55)" />
+            {/* Pulsing ring */}
+            <circle cx="35" cy="35" r="33" fill="none" stroke="rgba(96,165,250,0.6)" strokeWidth="2"
+              style={{ animation: "cv-idle-pulse 2.5s ease-in-out infinite" }} />
+            {/* WiFi watermark */}
+            <WiFiWatermark opacity={0.2} />
+          </svg>
+          <div style={{
+            position: "absolute", inset: 0,
+            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
           }}>
-            {buttonText}
-          </span>
+            <span style={{
+              fontSize: "9px", fontWeight: "700", color: "white",
+              textShadow: "0 1px 3px rgba(0,0,0,0.5)",
+              textAlign: "center", lineHeight: 1.3, maxWidth: "52px",
+            }}>
+              {buttonText}
+            </span>
+          </div>
         </div>
       )
     }
 
+    // ── Analyzing ─────────────────────────────────────────────────────────────
     if (state === "analyzing") {
-      // Check if we're in cache checking phase (no score yet) vs actual analysis
       const isCheckingCache = !trustScore && isCached === null
       const hasProgress = progressPercent !== null && progressPercent !== undefined && progressPercent >= 0
-      
+
       return (
-        <div style={{ 
-          display: "flex", 
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: "4px",
-          textAlign: "center"
-        }}>
-          <div
-            style={{
-              width: "16px",
-              height: "16px",
-              border: "2px solid rgba(255,255,255,0.3)",
-              borderTopColor: "white",
-              borderRadius: "50%",
-              animation: "spin 0.8s linear infinite"
-            }}
-          />
-          {hasProgress ? (
-            <>
-              <span style={{ 
-                fontSize: "11px", 
-                fontWeight: "700",
-                color: "white",
-                textShadow: "0 1px 2px rgba(0,0,0,0.3)",
-                lineHeight: 1
-              }}>
-                {Math.round(progressPercent)}%
+        <div style={{ width: 70, height: 70, position: "relative" }}>
+          <style>{TOGGLE_CSS}</style>
+          <svg width="70" height="70" viewBox="0 0 70 70">
+            {/* Semi-transparent logo-blue fill */}
+            <circle cx="35" cy="35" r="33" fill="rgba(37,99,235,0.55)" />
+            {/* Track ring */}
+            <circle cx="35" cy="35" r="33" fill="none" stroke="rgba(96,165,250,0.18)" strokeWidth="4" />
+            {/* Spinning glow arc */}
+            <circle cx="35" cy="35" r="33" fill="none" stroke="#60a5fa" strokeWidth="4" strokeLinecap="round"
+              strokeDasharray="52 155"
+              style={{
+                filter: "drop-shadow(0 0 5px rgba(96,165,250,0.95))",
+                animation: "cv-orbit-fast 1.2s linear infinite",
+                transformOrigin: "center",
+              }} />
+            {/* Dimmed WiFi watermark */}
+            <WiFiWatermark opacity={0.1} />
+          </svg>
+          <div style={{
+            position: "absolute", inset: 0,
+            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "3px",
+          }}>
+            {hasProgress ? (
+              <>
+                <span style={{ fontSize: "14px", fontWeight: "900", color: "white", textShadow: "0 1px 3px rgba(0,0,0,0.5)", lineHeight: 1 }}>
+                  {Math.round(progressPercent!)}%
+                </span>
+                <span style={{ fontSize: "7px", fontWeight: "600", color: "rgba(255,255,255,0.85)", textAlign: "center", maxWidth: "52px", lineHeight: 1.3 }}>
+                  {progressMessage || "Analyzing..."}
+                </span>
+              </>
+            ) : (
+              <span style={{ fontSize: "8px", fontWeight: "600", color: "rgba(255,255,255,0.9)", textAlign: "center", maxWidth: "52px", lineHeight: 1.3 }}>
+                {isCheckingCache ? "Checking..." : progressMessage || "Analyzing..."}
               </span>
-              <span style={{ 
-                fontSize: "7px", 
-                fontWeight: "600",
-                color: "white",
-                textShadow: "0 1px 2px rgba(0,0,0,0.3)",
-                lineHeight: 1,
-                maxWidth: "70px"
-              }}>
-                {progressMessage || "Analyzing..."}
-              </span>
-            </>
-          ) : (
-            <span style={{ 
-              fontSize: "8px", 
-              fontWeight: "600",
-              color: "white",
-              textShadow: "0 1px 2px rgba(0,0,0,0.3)",
-              lineHeight: 1
-            }}>
-              {isCheckingCache ? "Checking..." : progressMessage || "Analyzing..."}
-            </span>
-          )}
-          <style>
-            {`
-              @keyframes spin {
-                to { transform: rotate(360deg); }
-              }
-            `}
-          </style>
+            )}
+          </div>
         </div>
       )
     }
 
-    // state === "complete"
+    // ── Complete: verdict gauge (unchanged) ────────────────────────────────
+    const gaugeStampColorMap: Record<string, { bg: string; text: string; arc: string }> = {
+      LEGIT:      { bg: '#D1FAE5', text: '#065F46', arc: '#10B981' },
+      CLICKBAIT:  { bg: '#FEE2E2', text: '#991B1B', arc: '#EF4444' },
+      DANGEROUS:  { bg: '#FEE2E2', text: '#7F1D1D', arc: '#991B1B' },
+      DISPUTED:   { bg: '#FEF3C7', text: '#92400E', arc: '#F59E0B' },
+      MISLEADING: { bg: '#FEF3C7', text: '#92400E', arc: '#F59E0B' },
+      MIXED:      { bg: '#DBEAFE', text: '#1E40AF', arc: '#3B82F6' },
+    }
+    const vUpper = verdictLabel.toUpperCase()
+    const gaugeSC = gaugeStampColorMap[vUpper] ?? gaugeStampColorMap.MIXED
+    const gaugeScore = Number.isFinite(numericScore) ? numericScore : 0
+    // Normalize score: if 0-10 scale, multiply by 10 for percentage arc
+    const arcPct = gaugeScore > 10 ? gaugeScore : gaugeScore * 10
+    const r = 28
+    const circ = 2 * Math.PI * r
+
     return (
       <div style={{ 
         display: "flex", 
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        gap: "6px",
-        textAlign: "center"
+        gap: "2px",
+        textAlign: "center",
+        padding: "2px 0",
       }}>
-        <span style={{ 
-          fontSize: "13px", 
-          fontWeight: "900",
-          color: "white",
-          textShadow: "0 1px 3px rgba(0,0,0,0.3)",
-          lineHeight: 1
-        }}>
-          {scoreDisplay}
-        </span>
-        <span style={{ 
-          fontSize: "9px", 
-          fontWeight: "700",
-          color: "white",
-          textShadow: "0 1px 2px rgba(0,0,0,0.3)",
-          letterSpacing: "0.5px",
-          lineHeight: 1
-        }}>
-          {verdictLabel}
-        </span>
+        <div style={{ width: "70px", height: "70px", position: "relative" }}>
+          <svg width="70" height="70" viewBox="0 0 70 70">
+            <circle cx="35" cy="35" r={r} fill={gaugeSC.bg} stroke="#e2e8f0" strokeWidth="4" />
+            <circle cx="35" cy="35" r={r} fill="none" stroke={gaugeSC.arc} strokeWidth="4" strokeLinecap="round"
+              strokeDasharray={`${(arcPct / 100) * circ} ${(1 - arcPct / 100) * circ}`}
+              style={{ transform: "rotate(-90deg)", transformOrigin: "35px 35px" }} />
+          </svg>
+          <div style={{
+            position: "absolute", inset: 0,
+            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+          }}>
+            <span style={{
+              fontWeight: "900", fontSize: vUpper.length > 8 ? "7px" : "9px", letterSpacing: "0.03em",
+              color: gaugeSC.text, lineHeight: 1, textAlign: "center", maxWidth: "52px",
+              wordBreak: "break-word",
+            }}>
+              {vUpper}
+            </span>
+            <span style={{ fontSize: "8px", fontWeight: "700", marginTop: "2px", color: gaugeSC.text, opacity: 0.7 }}>
+              {Math.round(arcPct)}%
+            </span>
+          </div>
+        </div>
       </div>
     )
   }

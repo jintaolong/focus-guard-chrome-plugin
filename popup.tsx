@@ -188,8 +188,10 @@ function IndexPopup() {
           setAccount(newAccount)
           
           // Sanitize settings based on current tier
+          // free: max 100, starter: max 300, pro: max 1000
+          const tierMaxComments = tier === "pro" ? 1000 : tier === "starter" ? 300 : 100
           const currentMaxCommentDepth = storedSettings.videoAnalysis?.maxCommentDepth ?? 100
-          const shouldEnforceLimit = tier !== "pro" && currentMaxCommentDepth > 100
+          const shouldEnforceLimit = currentMaxCommentDepth > tierMaxComments
           const needsUpdate = result.settings?.videoAnalysis?.confirmCreditUsage === undefined || shouldEnforceLimit
           
           if (needsUpdate) {
@@ -201,7 +203,7 @@ function IndexPopup() {
                 botDetectionEnabled: storedSettings.videoAnalysis?.botDetectionEnabled ?? true,
                 showCachedVerdict: storedSettings.videoAnalysis?.showCachedVerdict ?? false,
                 confirmCreditUsage: tier === "free", // ON for free, OFF for starter/pro
-                maxCommentDepth: tier === "pro" ? currentMaxCommentDepth : Math.min(currentMaxCommentDepth, 100) // Enforce 100 cap for free/starter
+                maxCommentDepth: Math.min(currentMaxCommentDepth, tierMaxComments)
               }
             }
             setSettings(updatedSettings)
@@ -560,84 +562,75 @@ function IndexPopup() {
           />
         </div>
 
-        {/* Comment Depth Slider - Always visible, disabled for free/starter */}
-        <div style={{ marginTop: "16px", opacity: account?.tier === "pro" ? 1 : 0.6 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-            <label style={{ fontSize: "12px", fontWeight: "600", color: "#666" }}>
-              Max Comments per Analysis
-              {account?.tier !== "pro" && (
-                <span style={{ fontSize: "10px", fontWeight: "400", color: "#f59e0b", marginLeft: "6px" }}>
-                  🔒 PRO Only
+        {/* Comment Depth Slider - free: locked at 100, starter: up to 300, pro: up to 1000 */}
+        {(() => {
+          const tier = account?.tier ?? "free"
+          const tierMax = tier === "pro" ? 1000 : tier === "starter" ? 300 : 100
+          const isLocked = tier === "free"
+          const currentDepth = Math.min(settings.videoAnalysis?.maxCommentDepth || 100, tierMax)
+          const creditCount = Math.ceil(currentDepth / 100)
+          return (
+            <div style={{ marginTop: "16px", opacity: isLocked ? 0.6 : 1 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                <label style={{ fontSize: "12px", fontWeight: "600", color: "#666" }}>
+                  Max Comments per Analysis
+                  {isLocked && (
+                    <span style={{ fontSize: "10px", fontWeight: "400", color: "#f59e0b", marginLeft: "6px" }}>
+                      🔒 Starter+
+                    </span>
+                  )}
+                </label>
+                <span style={{ fontSize: "12px", fontWeight: "700", color: isLocked ? "#999" : "#3b82f6" }}>
+                  {currentDepth} • {creditCount} credit{creditCount !== 1 ? "s" : ""}
                 </span>
+              </div>
+              <input
+                type="range"
+                min="100"
+                max={tierMax}
+                step="100"
+                value={currentDepth}
+                disabled={isLocked}
+                onChange={async (e) => {
+                  const newDepth = parseInt(e.target.value)
+                  const newSettings: FocusGuardSettings = {
+                    ...settings,
+                    videoAnalysis: {
+                      showPreWatchPopover: settings.videoAnalysis?.showPreWatchPopover ?? true,
+                      autoAnalyze: settings.videoAnalysis?.autoAnalyze ?? false,
+                      botDetectionEnabled: settings.videoAnalysis?.botDetectionEnabled ?? true,
+                      showCachedVerdict: settings.videoAnalysis?.showCachedVerdict ?? false,
+                      confirmCreditUsage: settings.videoAnalysis?.confirmCreditUsage ?? true,
+                      maxCommentDepth: newDepth
+                    }
+                  }
+                  setSettings(newSettings)
+                  await chrome.storage.sync.set({ settings: newSettings })
+                }}
+                style={{
+                  width: "100%",
+                  height: "6px",
+                  borderRadius: "3px",
+                  outline: "none",
+                  cursor: isLocked ? "not-allowed" : "pointer"
+                }}
+              />
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "#999", marginTop: "4px" }}>
+                <span>Fast (100)</span>
+                {tier === "starter" && <span style={{ color: "#3b82f6" }}>Starter max: 300</span>}
+                <span>{tier === "pro" ? "Deep (1000)" : tier === "starter" ? "Max (300)" : "Free (100)"}</span>
+              </div>
+              {isLocked && (
+                <div style={{
+                  fontSize: "11px", color: "#f59e0b", marginTop: "8px", padding: "8px",
+                  backgroundColor: "#fffbeb", borderRadius: "4px", border: "1px solid #fef3c7"
+                }}>
+                  🚀 <strong>Upgrade to Starter</strong> to analyze up to 300 comments, or <strong>Pro</strong> for up to 1,000.
+                </div>
               )}
-            </label>
-            <span style={{ fontSize: "12px", fontWeight: "700", color: account?.tier === "pro" ? "#3b82f6" : "#999" }}>
-              {(() => {
-                const rawValue = settings.videoAnalysis?.maxCommentDepth || 100
-                const displayValue = account?.tier === "pro" ? rawValue : Math.min(rawValue, 100)
-                return `${displayValue} • ${Math.ceil(displayValue / 100)} credit${displayValue > 100 ? 's' : ''}`
-              })()}
-            </span>
-          </div>
-          <input
-            type="range"
-            min="100"
-            max="1000"
-            step="100"
-            value={(() => {
-              const rawValue = settings.videoAnalysis?.maxCommentDepth || 100
-              return account?.tier === "pro" ? rawValue : Math.min(rawValue, 100)
-            })()}
-            disabled={!account || account.tier !== "pro"}
-            onChange={async (e) => {
-              const newDepth = parseInt(e.target.value)
-              console.log("📊 Slider onChange: newDepth =", newDepth)
-              const newSettings: FocusGuardSettings = {
-                ...settings,
-                videoAnalysis: {
-                  showPreWatchPopover: settings.videoAnalysis?.showPreWatchPopover ?? true,
-                  autoAnalyze: settings.videoAnalysis?.autoAnalyze ?? false,
-                  botDetectionEnabled: settings.videoAnalysis?.botDetectionEnabled ?? true,
-                  showCachedVerdict: settings.videoAnalysis?.showCachedVerdict ?? false,
-                  confirmCreditUsage: settings.videoAnalysis?.confirmCreditUsage ?? true,
-                  maxCommentDepth: newDepth
-                }
-              }
-              console.log("📊 Saving settings to storage:", newSettings)
-              setSettings(newSettings)
-              await chrome.storage.sync.set({ settings: newSettings })
-              console.log("✅ Settings saved to chrome.storage.sync")
-              
-              // Verify it was saved
-              const verify = await chrome.storage.sync.get(["settings"])
-              console.log("🔍 Verified saved settings:", verify.settings)
-            }}
-            style={{
-              width: "100%",
-              height: "6px",
-              borderRadius: "3px",
-              outline: "none",
-              cursor: account?.tier === "pro" ? "pointer" : "not-allowed"
-            }}
-          />
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "#999", marginTop: "4px" }}>
-            <span>Fast (100)</span>
-            <span>Deep (1000)</span>
-          </div>
-          {account.tier !== "pro" && (
-            <div style={{
-              fontSize: "11px",
-              color: "#f59e0b",
-              marginTop: "8px",
-              padding: "8px",
-              backgroundColor: "#fffbeb",
-              borderRadius: "4px",
-              border: "1px solid #fef3c7"
-            }}>
-              💎 <strong>Upgrade to PRO</strong> to analyze up to 1,000 comments per video for deeper insights.
             </div>
-          )}
-        </div>
+          )
+        })()}
       </div>
 
       {/* Footer */}

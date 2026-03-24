@@ -6,6 +6,7 @@ import type { FocusGuardSettings } from "~types/popup"
 interface AnalysisSettingsModalProps {
   isOpen: boolean
   settings: FocusGuardSettings
+  userTier?: "free" | "starter" | "pro"
   onClose: () => void
   onApply: (maxComments: number, customContext?: string, forceRefresh?: boolean) => void
 }
@@ -13,10 +14,14 @@ interface AnalysisSettingsModalProps {
 export const AnalysisSettingsModal = ({
   isOpen,
   settings,
+  userTier = "pro",
   onClose,
   onApply
 }: AnalysisSettingsModalProps) => {
-  const [commentDepth, setCommentDepth] = useState(settings.videoAnalysis?.maxCommentDepth || 100)
+  const maxAllowedComments = userTier === "pro" ? 1000 : 300
+  const [commentDepth, setCommentDepth] = useState(
+    Math.min(settings.videoAnalysis?.maxCommentDepth || 100, userTier === "pro" ? 1000 : 300)
+  )
   const [customContext, setCustomContext] = useState("")
   const [forceRefresh, setForceRefresh] = useState(false)
   const [estimatedCredits, setEstimatedCredits] = useState(1)
@@ -94,7 +99,7 @@ export const AnalysisSettingsModal = ({
               Analysis Settings
             </h3>
             <span style={{ fontSize: "11px", backgroundColor: COLORS.neutral.primary, padding: "4px 8px", borderRadius: "6px", fontWeight: "700" }}>
-              PRO
+              {userTier === "pro" ? "PRO" : "STARTER"}
             </span>
           </div>
           <p style={{ margin: 0, fontSize: "12px", color: "rgba(255, 255, 255, 0.8)" }}>
@@ -118,7 +123,7 @@ export const AnalysisSettingsModal = ({
             <input
               type="range"
               min="100"
-              max="1000"
+              max={maxAllowedComments}
               step="100"
               value={commentDepth}
               onChange={(e) => setCommentDepth(parseInt(e.target.value))}
@@ -133,7 +138,10 @@ export const AnalysisSettingsModal = ({
             />
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: COLORS.ui.text.secondary, marginTop: "6px", fontWeight: "600" }}>
               <span>Fast (100)</span>
-              <span>Deep (1000)</span>
+              {userTier !== "pro" && (
+                <span style={{ color: COLORS.neutral.primary }}>Starter max: 300</span>
+              )}
+              <span>{userTier === "pro" ? "Deep (1000)" : "Max (300)"}</span>
             </div>
           </div>
 

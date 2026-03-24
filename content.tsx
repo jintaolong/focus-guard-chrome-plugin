@@ -850,8 +850,9 @@ const ContentScript = () => {
         // Display core results immediately - NO MORE WAITING FOR SECONDARY DATA
         setVideoAnalysis({
           videoId: videoId,
-          videoTitle: relevancyData?.data?.video_title || summaryData?.video_title || null,
+          videoTitle: relevancyData?.data?.video_title || summaryData?.video_title || cacheStatus.title || null,
           videoUrl: `https://www.youtube.com/watch?v=${videoId}`,
+          channelName: (cacheStatus as any).channel_name || null,
           snapshotShareCode: summaryData?.share_code ?? null,
           snapshotId: summaryData?.snapshot_id ?? null,
           summary: minimalSummary,
@@ -1167,6 +1168,8 @@ const ContentScript = () => {
 
             const updatedAnalysis: any = {
               ...prev,
+              // Update channelName from credibility API response if not already set
+              channelName: prev.channelName || (credibilityData as any)?.channel_name || prev.channelName,
               // Only update channelCredibility if we have new data
               channelCredibility: hasNewCredibility 
                 ? buildChannelCredibility(credibilityData) 
@@ -1338,7 +1341,7 @@ const ContentScript = () => {
     if (shouldConfirm) {
       // Estimate credit cost with tier-based limit enforcement
       const settingsMaxComments = latestSettings?.videoAnalysis?.maxCommentDepth || 100
-      const maxCommentDepth = currentTier === 'pro' ? settingsMaxComments : Math.min(settingsMaxComments, 100)
+      const maxCommentDepth = currentTier === 'pro' ? settingsMaxComments : Math.min(settingsMaxComments, 300)
       console.log("💰 Credit Estimate Params:", { tier: currentTier, settingsMaxComments, maxCommentDepth, settings: latestSettings?.videoAnalysis })
       try {
         const estimate = await FocusGuardAPI.estimateCreditCost(maxCommentDepth, false)
@@ -1513,8 +1516,8 @@ const ContentScript = () => {
           setCurrentJobId(jobId)
         } else {
           const settingsMaxComments = currentSettings?.videoAnalysis?.maxCommentDepth || 100
-          // Enforce tier-based limits: free/starter capped at 100, PRO can go higher
-          const maxComments = currentTier === 'pro' ? settingsMaxComments : Math.min(settingsMaxComments, 100)
+          // Enforce tier-based limits: starter capped at 300, PRO can go higher
+          const maxComments = currentTier === 'pro' ? settingsMaxComments : Math.min(settingsMaxComments, 300)
           console.log(`📊 Submitting summary job: video_id=${videoId}, force_refresh=${forceRefresh}, max_comments=${maxComments}`)
           console.log(`📊 Settings breakdown: maxCommentDepth=${currentSettings?.videoAnalysis?.maxCommentDepth}, tier=${currentTier}, enforced_max=${maxComments}`)
           const jobResponse = await FocusGuardAPI.submitSummaryJob({
@@ -2032,12 +2035,41 @@ const ContentScript = () => {
         setCurrentJobId(null)
         return
       }
+
+      const likelyChannelId = (name: unknown): boolean =>
+        typeof name === "string" && /^UC[a-zA-Z0-9_-]{20,}$/.test(name.trim())
+
+      const pageChannelNameRaw =
+        document.querySelector("ytd-watch-metadata ytd-channel-name a")?.textContent ||
+        document.querySelector("ytd-video-owner-renderer ytd-channel-name a")?.textContent ||
+        document.querySelector("#owner #channel-name a")?.textContent ||
+        document.querySelector("yt-formatted-string#owner-name a")?.textContent ||
+        null
+      const pageChannelName = pageChannelNameRaw?.trim() || null
+
+      const apiChannelName =
+        // Priority 1: database-stored channel name (same source as web-portal snap.channel_name)
+        (cacheStatus as any)?.channel_name ??
+        // Priority 2: channel trust API response
+        credibilityData?.channel_name ??
+        // Priority 3: job result nested credibility block
+        (resultData as any)?.channel_credibility?.channel_name ??
+        (resultData as any)?.comprehensive_data?.channel_credibility?.channel_name ??
+        null
+
+      const channelDisplayName =
+        (pageChannelName && !likelyChannelId(pageChannelName) ? pageChannelName : null) ||
+        (apiChannelName && !likelyChannelId(apiChannelName) ? apiChannelName : null) ||
+        pageChannelName ||
+        apiChannelName
       
       const videoAnalysisData = {
         // Video identification
         videoId: videoId,
         videoTitle: relevancyData?.data?.video_title || summaryData?.video_title || null,
         videoUrl: `https://www.youtube.com/watch?v=${videoId}`,
+        videoThumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+        channelName: channelDisplayName ?? null,
         // Share code for public report link
         // async-job path: result_data.comprehensive_data.share_code
         // direct summary / fallback path: summaryData.share_code
@@ -2252,6 +2284,7 @@ const ContentScript = () => {
       }
       
       // Simplify error messages for common cases
+      // Backend handles stale/killed jobs - trust the status and show reason clearly
       let errorMessage = "Analysis failed"
       if (error instanceof Error) {
         const msg = error.message.toLowerCase()
@@ -2264,10 +2297,12 @@ const ContentScript = () => {
           } catch {
             errorMessage = "Daily limit reached"
           }
+        } else if (msg.includes("context invalidated") || msg.includes("refresh the page")) {
+          errorMessage = "Refresh page to continue"
         } else if (msg.includes("auth") || msg.includes("login") || msg.includes("401")) {
           errorMessage = "Please log in"
         } else if (msg.includes("network") || msg.includes("connection")) {
-          errorMessage = "Network error"
+          errorMessage = "Network error — retry later"
         } else if (msg.includes("insufficient credits") || msg.includes("free queue")) {
           // Keep toggle-button message short and readable (space is very limited)
           if (msg.includes("already used") && msg.includes("free queue")) {
@@ -2279,8 +2314,23 @@ const ContentScript = () => {
           } else {
             errorMessage = "No credits · Free queue unavailable"
           }
+        } else if (msg.includes("job failed") || msg.includes("job was cancelled")) {
+          // Backend-reported job failure — show the reason from the backend clearly
+          // Truncate to fit toggle button (max ~60 chars)
+          const reason = error.message.replace(/^Job failed\s*[-:]*\s*/i, '').replace(/^Job was cancelled\s*[-:]*\s*/i, '').trim()
+          errorMessage = reason.length > 50
+            ? `Failed: ${reason.slice(0, 47)}…`
+            : reason
+              ? `Failed: ${reason}`
+              : "Job failed — tap to retry"
+        } else if (msg.includes("timeout") || msg.includes("timed out")) {
+          errorMessage = "Timed out — tap to retry"
         } else {
-          errorMessage = error.message
+          // Pass through backend message, truncated for toggle button
+          const trimmed = error.message.trim()
+          errorMessage = trimmed.length > 55
+            ? `${trimmed.slice(0, 52)}…`
+            : trimmed || "Analysis failed — tap to retry"
         }
       }
       
@@ -2438,8 +2488,8 @@ const ContentScript = () => {
               }}
             />
 
-            {/* Settings Button for PRO users - temporarily hidden */}
-            {false && userTierInfo?.tier === 'pro' && analysisState === 'idle' && (
+            {/* Settings Button - temporarily hidden */}
+            {false && (userTierInfo?.tier === 'pro' || userTierInfo?.tier === 'starter') && analysisState === 'idle' && (
               <button
                 onClick={() => setShowSettingsModal(true)}
                 style={{
@@ -2493,6 +2543,11 @@ const ContentScript = () => {
               startVideoAnalysis(currentVideoId, true)
             }
           }}
+          onLoadHistoryItem={(item) => {
+            // Navigate to that video's YouTube page; the URL-change listener
+            // will pick it up and load the cached analysis automatically.
+            window.location.href = `https://www.youtube.com/watch?v=${item.videoId}`
+          }}
           progressPercent={progressPercent}
           progressMessage={progressMessage}
           panelDock={panelDock}
@@ -2514,11 +2569,12 @@ const ContentScript = () => {
           />
         )}
 
-        {/* Analysis Settings Modal for PRO Users */}
+        {/* Analysis Settings Modal for Starter & PRO Users */}
         {settings && (
           <AnalysisSettingsModal
             isOpen={showSettingsModal}
             settings={settings}
+            userTier={(userTierInfo?.tier || 'pro') as "free" | "starter" | "pro"}
             onClose={() => setShowSettingsModal(false)}
             onApply={(maxComments, customContext, forceRefresh) => {
               console.log("Analysis settings applied:", { maxComments, customContext, forceRefresh })

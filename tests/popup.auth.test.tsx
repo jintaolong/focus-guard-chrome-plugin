@@ -191,8 +191,8 @@ describe('Popup - Authentication UI State', () => {
       
       // Should display tier information
       await waitFor(() => {
-        const tierElement = screen.queryByText(/starter/i)
-        expect(tierElement).toBeTruthy()
+        const tierElements = screen.queryAllByText(/starter/i)
+        expect(tierElements.length).toBeGreaterThan(0)
       })
     })
 
