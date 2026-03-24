@@ -63,6 +63,7 @@ global.chrome = {
     }
   },
   runtime: {
+    id: 'test-extension-id',
     lastError: undefined,
     sendMessage: vi.fn(async (message: any) => {
       // Default test behavior: if global.fetch is mocked, forward the request
