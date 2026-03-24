@@ -651,6 +651,10 @@ export class AuthService {
    */
   static async isAuthenticated(): Promise<boolean> {
     console.log("AuthService: isAuthenticated() called")
+    // Detect extension context invalidation — chrome.runtime.id is undefined when context is stale
+    if (!chrome?.runtime?.id) {
+      throw new Error("Extension context invalidated — please refresh the page")
+    }
     const token = await this.getAccessToken()
     if (!token) {
       console.log("AuthService: No access token found - NOT authenticated")
