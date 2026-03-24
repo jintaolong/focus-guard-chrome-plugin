@@ -2297,6 +2297,8 @@ const ContentScript = () => {
           } catch {
             errorMessage = "Daily limit reached"
           }
+        } else if (msg.includes("context invalidated") || msg.includes("refresh the page")) {
+          errorMessage = "Refresh page to continue"
         } else if (msg.includes("auth") || msg.includes("login") || msg.includes("401")) {
           errorMessage = "Please log in"
         } else if (msg.includes("network") || msg.includes("connection")) {
@@ -2486,8 +2488,8 @@ const ContentScript = () => {
               }}
             />
 
-            {/* Settings Button for Starter & PRO users */}
-            {(userTierInfo?.tier === 'pro' || userTierInfo?.tier === 'starter') && analysisState === 'idle' && (
+            {/* Settings Button - temporarily hidden */}
+            {false && (userTierInfo?.tier === 'pro' || userTierInfo?.tier === 'starter') && analysisState === 'idle' && (
               <button
                 onClick={() => setShowSettingsModal(true)}
                 style={{
