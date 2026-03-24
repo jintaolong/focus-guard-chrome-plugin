@@ -797,7 +797,7 @@ export const SidePanel = ({
 }
 
 // ── Reusable loading placeholder ────────────────────────────────────────────
-const LoadingPlaceholder = ({ label, colors }: { label: string; colors: typeof COLORS }) => (
+const LoadingPlaceholder = ({ label, colors }: { label: string; colors: typeof COLORS | typeof DARK_COLORS }) => (
   <div style={{
     display: "flex", flexDirection: "column", alignItems: "center",
     justifyContent: "center", padding: "64px 24px", color: colors.ui.text.secondary,
