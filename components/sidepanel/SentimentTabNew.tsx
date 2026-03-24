@@ -39,6 +39,10 @@ export const SentimentTabNew = ({ analysis }: SentimentTabNewProps) => {
   const neutralPct = Math.round((dist.neutral / total) * 100)
   const negativePct = Math.round((dist.negative / total) * 100)
   const mixedPct = dist.mixed ? Math.round((dist.mixed / total) * 100) : 0
+  const positiveCount = Math.max(0, Math.round(Number(dist.positive || 0)))
+  const neutralCount = Math.max(0, Math.round(Number(dist.neutral || 0)))
+  const negativeCount = Math.max(0, Math.round(Number(dist.negative || 0)))
+  const mixedCount = Math.max(0, Math.round(Number(dist.mixed || 0)))
 
   const examples = dist.exampleComments || {}
   const posExamples: (string | CommentObject)[] = examples.positive || []
@@ -71,10 +75,10 @@ export const SentimentTabNew = ({ analysis }: SentimentTabNewProps) => {
           </span>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-          <SentimentBar label="Positive" percentage={positivePct} color="#10b981" count={dist.positive} />
-          <SentimentBar label="Neutral" percentage={neutralPct} color="#94a3b8" count={dist.neutral} />
-          <SentimentBar label="Negative" percentage={negativePct} color="#ef4444" count={dist.negative} />
-          {mixedPct > 0 && <SentimentBar label="Mixed" percentage={mixedPct} color="#fbbf24" count={dist.mixed} />}
+          <SentimentBar label="Positive" percentage={positivePct} color="#10b981" count={positiveCount} />
+          <SentimentBar label="Neutral" percentage={neutralPct} color="#94a3b8" count={neutralCount} />
+          <SentimentBar label="Negative" percentage={negativePct} color="#ef4444" count={negativeCount} />
+          {mixedPct > 0 && <SentimentBar label="Mixed" percentage={mixedPct} color="#fbbf24" count={mixedCount} />}
         </div>
       </div>
 
@@ -93,7 +97,7 @@ export const SentimentTabNew = ({ analysis }: SentimentTabNewProps) => {
                 <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
                   <span style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: "#10b981", display: "inline-block" }} />
                   <span style={{ fontSize: "11px", fontWeight: "700", color: "#059669", textTransform: "uppercase" }}>
-                    Positive ({dist.positive.toLocaleString()})
+                    Positive ({positiveCount.toLocaleString()})
                   </span>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -108,7 +112,7 @@ export const SentimentTabNew = ({ analysis }: SentimentTabNewProps) => {
                 <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
                   <span style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: "#ef4444", display: "inline-block" }} />
                   <span style={{ fontSize: "11px", fontWeight: "700", color: "#DC2626", textTransform: "uppercase" }}>
-                    Negative ({dist.negative.toLocaleString()})
+                    Negative ({negativeCount.toLocaleString()})
                   </span>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -123,7 +127,7 @@ export const SentimentTabNew = ({ analysis }: SentimentTabNewProps) => {
                 <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
                   <span style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: "#94a3b8", display: "inline-block" }} />
                   <span style={{ fontSize: "11px", fontWeight: "700", color: "#64748b", textTransform: "uppercase" }}>
-                    Neutral ({dist.neutral.toLocaleString()})
+                    Neutral ({neutralCount.toLocaleString()})
                   </span>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -154,7 +158,7 @@ const SentimentBar = ({ label, percentage, color, count }: { label: string; perc
     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
       <span style={{ fontSize: "12px", fontWeight: "700", color: C.ui.text.primary }}>{label}</span>
       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-        {count !== undefined && count > 0 && (
+        {count !== undefined && (
           <span style={{ fontSize: "11px", color: C.ui.text.tertiary }}>{count.toLocaleString()}</span>
         )}
         <span style={{ fontSize: "12px", fontWeight: "700", color: C.ui.text.primary }}>{percentage}%</span>

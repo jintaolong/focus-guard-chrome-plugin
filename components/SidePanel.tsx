@@ -206,6 +206,17 @@ export const SidePanel = ({
     }
   }, [analysis])
 
+  const likelyChannelId = (name?: string | null): boolean =>
+    typeof name === "string" && /^UC[a-zA-Z0-9_-]{20,}$/.test(name.trim())
+
+  const headerChannelName = (() => {
+    const names = [analysis?.channelName, analysis?.channelTrust?.channel_name]
+      .map((n) => (typeof n === "string" ? n.trim() : ""))
+      .filter(Boolean)
+    const readable = names.find((n) => !likelyChannelId(n))
+    return readable || names[0] || null
+  })()
+
   // ── Tab definitions with counts ─────────────────────────────────────────
   const claimsCount = (analysis?.summary as any)?.clickbaitVerdict?.claims?.length ?? 0
   const gapsCount = analysis?.contentGaps?.unansweredQuestions?.length ?? 0
@@ -505,9 +516,9 @@ export const SidePanel = ({
                   {analysis.videoTitle || "Untitled Video"}
                 </h1>
                 <div style={{ display: "flex", alignItems: "center", gap: "12px", marginTop: "4px", fontSize: "11px", color: C.ui.text.secondary, flexWrap: "wrap" }}>
-                  {(analysis.channelName || analysis.channelTrust?.channel_name) && (
+                  {headerChannelName && (
                     <span style={{ display: "flex", alignItems: "center", gap: "3px" }}>
-                      <Users size={11} /> {analysis.channelName || analysis.channelTrust?.channel_name}
+                      <Users size={11} /> {headerChannelName}
                     </span>
                   )}
                   {analysis.actualCommentsFetched && (

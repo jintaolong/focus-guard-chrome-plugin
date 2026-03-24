@@ -850,8 +850,9 @@ const ContentScript = () => {
         // Display core results immediately - NO MORE WAITING FOR SECONDARY DATA
         setVideoAnalysis({
           videoId: videoId,
-          videoTitle: relevancyData?.data?.video_title || summaryData?.video_title || null,
+          videoTitle: relevancyData?.data?.video_title || summaryData?.video_title || cacheStatus.title || null,
           videoUrl: `https://www.youtube.com/watch?v=${videoId}`,
+          channelName: (cacheStatus as any).channel_name || null,
           snapshotShareCode: summaryData?.share_code ?? null,
           snapshotId: summaryData?.snapshot_id ?? null,
           summary: minimalSummary,
@@ -1167,6 +1168,8 @@ const ContentScript = () => {
 
             const updatedAnalysis: any = {
               ...prev,
+              // Update channelName from credibility API response if not already set
+              channelName: prev.channelName || (credibilityData as any)?.channel_name || prev.channelName,
               // Only update channelCredibility if we have new data
               channelCredibility: hasNewCredibility 
                 ? buildChannelCredibility(credibilityData) 
@@ -2032,6 +2035,33 @@ const ContentScript = () => {
         setCurrentJobId(null)
         return
       }
+
+      const likelyChannelId = (name: unknown): boolean =>
+        typeof name === "string" && /^UC[a-zA-Z0-9_-]{20,}$/.test(name.trim())
+
+      const pageChannelNameRaw =
+        document.querySelector("ytd-watch-metadata ytd-channel-name a")?.textContent ||
+        document.querySelector("ytd-video-owner-renderer ytd-channel-name a")?.textContent ||
+        document.querySelector("#owner #channel-name a")?.textContent ||
+        document.querySelector("yt-formatted-string#owner-name a")?.textContent ||
+        null
+      const pageChannelName = pageChannelNameRaw?.trim() || null
+
+      const apiChannelName =
+        // Priority 1: database-stored channel name (same source as web-portal snap.channel_name)
+        (cacheStatus as any)?.channel_name ??
+        // Priority 2: channel trust API response
+        credibilityData?.channel_name ??
+        // Priority 3: job result nested credibility block
+        (resultData as any)?.channel_credibility?.channel_name ??
+        (resultData as any)?.comprehensive_data?.channel_credibility?.channel_name ??
+        null
+
+      const channelDisplayName =
+        (pageChannelName && !likelyChannelId(pageChannelName) ? pageChannelName : null) ||
+        (apiChannelName && !likelyChannelId(apiChannelName) ? apiChannelName : null) ||
+        pageChannelName ||
+        apiChannelName
       
       const videoAnalysisData = {
         // Video identification
@@ -2039,9 +2069,7 @@ const ContentScript = () => {
         videoTitle: relevancyData?.data?.video_title || summaryData?.video_title || null,
         videoUrl: `https://www.youtube.com/watch?v=${videoId}`,
         videoThumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-        channelName: credibilityData?.channel_name
-          ?? (resultData as any)?.channel_credibility?.channel_name
-          ?? null,
+        channelName: channelDisplayName ?? null,
         // Share code for public report link
         // async-job path: result_data.comprehensive_data.share_code
         // direct summary / fallback path: summaryData.share_code
