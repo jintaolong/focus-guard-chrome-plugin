@@ -79,6 +79,8 @@ export interface VideoAnalysis {
   videoId: string
   videoTitle?: string
   videoUrl?: string
+  videoThumbnail?: string  // YouTube thumbnail URL
+  channelName?: string     // Channel display name
   executiveSummary?: string // AI-generated executive summary
 
   // Comment count tracking (for transparency and credit calculation)

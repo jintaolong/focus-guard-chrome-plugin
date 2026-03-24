@@ -2038,6 +2038,10 @@ const ContentScript = () => {
         videoId: videoId,
         videoTitle: relevancyData?.data?.video_title || summaryData?.video_title || null,
         videoUrl: `https://www.youtube.com/watch?v=${videoId}`,
+        videoThumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+        channelName: credibilityData?.channel_name
+          ?? (resultData as any)?.channel_credibility?.channel_name
+          ?? null,
         // Share code for public report link
         // async-job path: result_data.comprehensive_data.share_code
         // direct summary / fallback path: summaryData.share_code

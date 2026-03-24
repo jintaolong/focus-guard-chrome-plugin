@@ -5,6 +5,7 @@ import { useState } from "react"
 import type { VideoAnalysis, AnalysisHistoryItem } from "~types/analysis"
 import { COLORS, getTrustScoreColor } from "~lib/colors"
 import { BlurredContent } from "~components/UpgradePrompt"
+import { useTheme } from "~components/SidePanel"
 
 interface ReportTabProps {
   analysis: VideoAnalysis
@@ -25,6 +26,8 @@ export const ReportTab = ({
 }: ReportTabProps) => {
   const [selectedFormat, setSelectedFormat] = useState<"PDF" | "TXT">("PDF")
   const [isDownloading, setIsDownloading] = useState(false)
+  const { colors: C, mode } = useTheme()
+  const isDark = mode === "dark"
 
   const handleDownload = async () => {
     if (!onDownloadReport) return
@@ -45,10 +48,10 @@ export const ReportTab = ({
       <div style={{ marginBottom: "32px" }}>
         <h3
           style={{
-            margin: "0 0 16px 0",
-            fontSize: "18px",
-            fontWeight: "600",
-            color: COLORS.ui.textPrimary
+            margin: "0 0 12px 0",
+            fontSize: "14px",
+            fontWeight: "700",
+            color: C.ui.text.primary
           }}>
           Download Report
         </h3>
@@ -57,10 +60,10 @@ export const ReportTab = ({
         <div style={{ marginBottom: "16px" }}>
           <p
             style={{
-              margin: "0 0 12px 0",
-              fontSize: "14px",
+              margin: "0 0 8px 0",
+              fontSize: "12px",
               fontWeight: "600",
-              color: COLORS.ui.text.secondary
+              color: C.ui.text.secondary
             }}>
             Select Format:
           </p>
@@ -71,25 +74,25 @@ export const ReportTab = ({
                 onClick={() => setSelectedFormat(format)}
                 style={{
                   flex: 1,
-                  padding: "12px",
+                  padding: "8px",
                   backgroundColor:
-                    selectedFormat === format ? COLORS.neutral.primary : "white",
-                  color: selectedFormat === format ? "white" : COLORS.ui.textPrimary,
-                  border: `2px solid ${COLORS.neutral.primary}`,
+                    selectedFormat === format ? C.neutral.primary : C.ui.background,
+                  color: selectedFormat === format ? "white" : C.ui.text.primary,
+                  border: `1.5px solid ${C.neutral.primary}`,
                   borderRadius: "8px",
-                  fontSize: "14px",
+                  fontSize: "12px",
                   fontWeight: "600",
                   cursor: "pointer",
                   transition: "all 0.2s"
                 }}
                 onMouseEnter={(e) => {
                   if (selectedFormat !== format) {
-                    e.currentTarget.style.backgroundColor = COLORS.neutral.light
+                    e.currentTarget.style.backgroundColor = C.neutral.light
                   }
                 }}
                 onMouseLeave={(e) => {
                   if (selectedFormat !== format) {
-                    e.currentTarget.style.backgroundColor = "white"
+                    e.currentTarget.style.backgroundColor = C.ui.background
                   }
                 }}>
                 {format}
@@ -104,12 +107,12 @@ export const ReportTab = ({
           disabled={isDownloading}
           style={{
             width: "100%",
-            padding: "14px",
-            backgroundColor: isDownloading ? COLORS.ui.border : COLORS.neutral.primary,
+            padding: "10px",
+            backgroundColor: isDownloading ? C.ui.border : C.neutral.primary,
             color: "white",
             border: "none",
             borderRadius: "8px",
-            fontSize: "15px",
+            fontSize: "13px",
             fontWeight: "600",
             cursor: isDownloading ? "not-allowed" : "pointer",
             transition: "background-color 0.2s",
@@ -120,12 +123,12 @@ export const ReportTab = ({
           }}
           onMouseEnter={(e) => {
             if (!isDownloading) {
-              e.currentTarget.style.backgroundColor = COLORS.neutral.dark
+              e.currentTarget.style.backgroundColor = C.neutral.dark
             }
           }}
           onMouseLeave={(e) => {
             if (!isDownloading) {
-              e.currentTarget.style.backgroundColor = COLORS.neutral.primary
+              e.currentTarget.style.backgroundColor = C.neutral.primary
             }
           }}>
           {isDownloading ? (
@@ -153,9 +156,9 @@ export const ReportTab = ({
         {/* Analysis Date */}
           <p
           style={{
-            margin: "12px 0 0 0",
-            fontSize: "12px",
-              color: COLORS.ui.textSecondary,
+            margin: "8px 0 0 0",
+            fontSize: "11px",
+              color: C.ui.text.secondary,
             textAlign: "center"
           }}>
           Analysis performed: {analysis.reportInfo?.analysisDate ? new Date(analysis.reportInfo.analysisDate).toLocaleString() : "Unknown"}
@@ -166,10 +169,10 @@ export const ReportTab = ({
       <div>
         <h3
           style={{
-            margin: "0 0 16px 0",
-            fontSize: "18px",
-            fontWeight: "600",
-            color: COLORS.ui.text.primary
+            margin: "0 0 12px 0",
+            fontSize: "14px",
+            fontWeight: "700",
+            color: C.ui.text.primary
           }}>
           Recent Analysis History
         </h3>
@@ -177,17 +180,17 @@ export const ReportTab = ({
         {history.length === 0 ? (
           <div
             style={{
-              padding: "24px",
+              padding: "20px",
               textAlign: "center",
-              backgroundColor: COLORS.ui.surface,
-              border: `1px solid ${COLORS.ui.border}`,
+              backgroundColor: C.ui.surface,
+              border: `1px solid ${C.ui.border}`,
               borderRadius: "8px"
             }}>
             <p
               style={{
                 margin: 0,
-                fontSize: "14px",
-                color: COLORS.ui.text.secondary
+                fontSize: "12px",
+                color: C.ui.text.secondary
               }}>
               No analysis history yet
             </p>
@@ -209,10 +212,10 @@ export const ReportTab = ({
                   onClick={() => onLoadHistoryItem?.(item)}
                   style={{
                     display: "flex",
-                    gap: "12px",
-                    padding: "12px",
-                    backgroundColor: "white",
-                    border: `1px solid ${COLORS.ui.border}`,
+                    gap: "10px",
+                    padding: "10px",
+                    backgroundColor: C.ui.background,
+                    border: `1px solid ${C.ui.border}`,
                     borderRadius: "8px",
                     transition: "box-shadow 0.2s",
                     cursor: onLoadHistoryItem ? "pointer" : "default",
@@ -240,10 +243,10 @@ export const ReportTab = ({
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p
                       style={{
-                        margin: "0 0 6px 0",
-                        fontSize: "13px",
+                        margin: "0 0 4px 0",
+                        fontSize: "12px",
                         fontWeight: "600",
-                        color: COLORS.ui.text.primary,
+                        color: C.ui.text.primary,
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap"
@@ -261,19 +264,19 @@ export const ReportTab = ({
                       <div
                         style={{
                           padding: "2px 8px",
-                          backgroundColor: COLORS[trustColor].light,
-                          border: `1px solid ${COLORS[trustColor].primary}`,
+                          backgroundColor: C[trustColor].light,
+                          border: `1px solid ${C[trustColor].primary}`,
                           borderRadius: "4px",
-                          fontSize: "12px",
+                          fontSize: "11px",
                           fontWeight: "700",
-                          color: COLORS[trustColor].text
+                          color: C[trustColor].text
                         }}>
                         {item.trustScore.toFixed(1)}
                       </div>
                       <span
                         style={{
-                          fontSize: "11px",
-                          color: COLORS.ui.text.secondary
+                          fontSize: "10px",
+                          color: C.ui.text.secondary
                         }}>
                         {new Date(item.analyzedAt).toLocaleDateString()}
                       </span>
@@ -285,12 +288,12 @@ export const ReportTab = ({
                         <button
                           onClick={() => onReAnalyze(item.videoId)}
                           style={{
-                            padding: "4px 10px",
-                            fontSize: "11px",
+                            padding: "3px 8px",
+                            fontSize: "10px",
                             fontWeight: "600",
-                            color: COLORS.neutral.primary,
+                            color: C.neutral.primary,
                             backgroundColor: "transparent",
-                            border: `1px solid ${COLORS.neutral.primary}`,
+                            border: `1px solid ${C.neutral.primary}`,
                             borderRadius: "4px",
                             cursor: "pointer"
                           }}>
@@ -301,12 +304,12 @@ export const ReportTab = ({
                         <button
                           onClick={() => onDownloadHistoryReport(item.videoId)}
                           style={{
-                            padding: "4px 10px",
-                            fontSize: "11px",
+                            padding: "3px 8px",
+                            fontSize: "10px",
                             fontWeight: "600",
-                            color: COLORS.neutral.primary,
+                            color: C.neutral.primary,
                             backgroundColor: "transparent",
-                            border: `1px solid ${COLORS.neutral.primary}`,
+                            border: `1px solid ${C.neutral.primary}`,
                             borderRadius: "4px",
                             cursor: "pointer"
                           }}>
