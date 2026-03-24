@@ -221,15 +221,24 @@ export const SidePanel = ({
   const claimsCount = (analysis?.summary as any)?.clickbaitVerdict?.claims?.length ?? 0
   const gapsCount = analysis?.contentGaps?.unansweredQuestions?.length ?? 0
   const insightsCount = analysis?.topicClustersData?.clusters?.length ?? 0
+  const sentimentIsLocked = !!(analysis as any)?.sentiment?.tierRestriction
+  const insightsIsLocked = !!(analysis as any)?.viewerInsights?.tierRestriction
+  const gapsIsLocked = !!(analysis as any)?.contentGaps?.tierRestriction
+  const reportIsLocked = !!(analysis as any)?.reportInfo?.tierRestriction
 
-  const tabs: { id: TabId; label: string; icon: React.ReactNode; count?: number }[] = [
+  const sentimentRequiredTier = (analysis as any)?.sentiment?.tierRestriction?.required_tier as "starter" | "pro" | undefined
+  const insightsRequiredTier = (analysis as any)?.viewerInsights?.tierRestriction?.required_tier as "starter" | "pro" | undefined
+  const gapsRequiredTier = (analysis as any)?.contentGaps?.tierRestriction?.required_tier as "starter" | "pro" | undefined
+  const reportRequiredTier = (analysis as any)?.reportInfo?.tierRestriction?.required_tier as "starter" | "pro" | undefined
+
+  const tabs: { id: TabId; label: string; icon: React.ReactNode; count?: number; locked?: boolean; requiredTier?: "starter" | "pro" }[] = [
     { id: "overview",   label: "Overview",    icon: <LayoutGrid size={tabIconSize} /> },
     { id: "claims",     label: "Claims",      icon: <Search size={tabIconSize} />, count: claimsCount || undefined },
     { id: "trust",      label: "Trust",       icon: <ShieldCheck size={tabIconSize} /> },
-    { id: "sentiment",  label: "Sentiment",   icon: <SmilePlus size={tabIconSize} /> },
-    { id: "insights",   label: "Insights",    icon: <MessageSquare size={tabIconSize} />, count: insightsCount || undefined },
-    { id: "gaps",       label: "Gaps",        icon: <AlertTriangle size={tabIconSize} />, count: gapsCount || undefined },
-    { id: "report",     label: "Report",      icon: <FileText size={tabIconSize} /> }
+    { id: "sentiment",  label: "Sentiment",   icon: <SmilePlus size={tabIconSize} />, locked: sentimentIsLocked, requiredTier: sentimentRequiredTier },
+    { id: "insights",   label: "Insights",    icon: <MessageSquare size={tabIconSize} />, count: insightsCount || undefined, locked: insightsIsLocked, requiredTier: insightsRequiredTier },
+    { id: "gaps",       label: "Gaps",        icon: <AlertTriangle size={tabIconSize} />, count: gapsCount || undefined, locked: gapsIsLocked, requiredTier: gapsRequiredTier },
+    { id: "report",     label: "Report",      icon: <FileText size={tabIconSize} />, locked: reportIsLocked, requiredTier: reportRequiredTier }
   ]
 
   if (!isOpen) return null
@@ -590,7 +599,7 @@ export const SidePanel = ({
           {tabs.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => { if (!tab.locked) setActiveTab(tab.id) }}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -600,15 +609,15 @@ export const SidePanel = ({
                 border: "none",
                 fontSize: "12px",
                 fontWeight: "600",
-                cursor: "pointer",
                 transition: "all 0.15s",
                 whiteSpace: "nowrap",
                 flexShrink: 0,
                 backgroundColor: activeTab === tab.id ? "#2563eb" : "transparent",
-                color: activeTab === tab.id ? "white" : C.ui.text.secondary,
+                color: activeTab === tab.id ? "white" : tab.locked ? C.ui.text.tertiary : C.ui.text.secondary,
+                cursor: tab.locked ? "not-allowed" : "pointer",
               }}
               onMouseEnter={(e) => {
-                if (activeTab !== tab.id) {
+                if (activeTab !== tab.id && !tab.locked) {
                   e.currentTarget.style.backgroundColor = C.ui.hover
                 }
               }}
@@ -619,6 +628,21 @@ export const SidePanel = ({
               }}>
               <span style={{ display: "flex", alignItems: "center" }}>{tab.icon}</span>
               {tab.label}
+              {tab.locked && (() => {
+                const isStarter = tab.requiredTier === "starter"
+                const label = isStarter ? "STARTER" : "PRO"
+                return (
+                  <span style={{
+                    padding: "1px 5px", borderRadius: "4px", fontSize: "10px", fontWeight: "700",
+                    backgroundColor: activeTab === tab.id ? "rgba(255,255,255,0.25)" : (themeMode === "dark"
+                      ? (isStarter ? "rgba(234,179,8,0.2)" : "rgba(59,130,246,0.2)")
+                      : (isStarter ? "#fef9c3" : "#dbeafe")),
+                    color: activeTab === tab.id ? "white" : (themeMode === "dark"
+                      ? (isStarter ? "#fcd34d" : "#93c5fd")
+                      : (isStarter ? "#92400e" : "#1d4ed8")),
+                  }}>{label}</span>
+                )
+              })()}
               {tab.count !== undefined && (
                 <span style={{
                   padding: "1px 6px", borderRadius: "4px", fontSize: "10px", fontWeight: "700",
