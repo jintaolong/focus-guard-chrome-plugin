@@ -2486,8 +2486,8 @@ const ContentScript = () => {
               }}
             />
 
-            {/* Settings Button for PRO users - temporarily hidden */}
-            {false && userTierInfo?.tier === 'pro' && analysisState === 'idle' && (
+            {/* Settings Button for Starter & PRO users */}
+            {(userTierInfo?.tier === 'pro' || userTierInfo?.tier === 'starter') && analysisState === 'idle' && (
               <button
                 onClick={() => setShowSettingsModal(true)}
                 style={{
@@ -2567,11 +2567,12 @@ const ContentScript = () => {
           />
         )}
 
-        {/* Analysis Settings Modal for PRO Users */}
+        {/* Analysis Settings Modal for Starter & PRO Users */}
         {settings && (
           <AnalysisSettingsModal
             isOpen={showSettingsModal}
             settings={settings}
+            userTier={(userTierInfo?.tier || 'pro') as "free" | "starter" | "pro"}
             onClose={() => setShowSettingsModal(false)}
             onApply={(maxComments, customContext, forceRefresh) => {
               console.log("Analysis settings applied:", { maxComments, customContext, forceRefresh })
