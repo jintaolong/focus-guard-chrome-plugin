@@ -4,6 +4,7 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from "react"
 import type { VideoAnalysis, TopicCluster, ParentTheme, SegmentHighlight } from "~types/analysis"
 import { BlurredContent } from "~components/UpgradePrompt"
+import { useTheme } from "~components/SidePanel"
 
 type SortBy = "insight_score" | "comments"
 
@@ -25,16 +26,22 @@ const getCategoryColor = (cat: string): string => {
 const intensity = (val: number, max: number) =>
   Math.max(0.35, Math.min(1, val / max))
 
-const opaqueBlend = (r: number, g: number, b: number, a: number) => {
-  const rr = Math.round(255 + (r - 255) * a)
-  const gg = Math.round(255 + (g - 255) * a)
-  const bb = Math.round(255 + (b - 255) * a)
+const opaqueBlend = (r: number, g: number, b: number, a: number, isDark = false) => {
+  // In dark mode, blend toward dark base (#0f172a = 15,23,42) instead of white
+  const baseR = isDark ? 15 : 255
+  const baseG = isDark ? 23 : 255
+  const baseB = isDark ? 42 : 255
+  const rr = Math.round(baseR + (r - baseR) * a)
+  const gg = Math.round(baseG + (g - baseG) * a)
+  const bb = Math.round(baseB + (b - baseB) * a)
   return `rgb(${rr}, ${gg}, ${bb})`
 }
 
 // ── Main component ──────────────────────────────────────────────────────────────
 
 export const InsightsTabNew = ({ analysis }: InsightsTabNewProps) => {
+  const { colors: C, mode } = useTheme()
+  const isDark = mode === "dark"
   const topicData = analysis.topicClustersData
   const viewerInsights = (analysis as any)?.viewerInsights
   const tierRestriction = viewerInsights?.tierRestriction
@@ -48,8 +55,8 @@ export const InsightsTabNew = ({ analysis }: InsightsTabNewProps) => {
 
   // Filters
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
-  const [minInsightScore, setMinInsightScore] = useState(0)
-  const [minCommentCount, setMinCommentCount] = useState(1)
+  const [minInsightScore, setMinInsightScore] = useState(6.0)
+  const [minCommentCount, setMinCommentCount] = useState(3)
 
   // Animation
   const [animPhase, setAnimPhase] = useState<"idle" | "slide-left" | "show-children">("idle")
@@ -76,6 +83,7 @@ export const InsightsTabNew = ({ analysis }: InsightsTabNewProps) => {
   const childNodesRef = useRef<Map<number, HTMLDivElement>>(new Map())
   const containerRef = useRef<HTMLDivElement>(null)
   const [edgePaths, setEdgePaths] = useState<string[]>([])
+  const [edgesVisible, setEdgesVisible] = useState(true)
 
   const measureEdges = useCallback(() => {
     const parent = parentNodeRef.current
@@ -103,6 +111,19 @@ export const InsightsTabNew = ({ analysis }: InsightsTabNewProps) => {
       return () => { clearTimeout(t1); clearTimeout(t2) }
     } else { setEdgePaths([]) }
   }, [animPhase, measureEdges, selectedThemeId, selectedClusterId])
+
+  // Re-compute edges when filters change while a level is selected (fade out then back in)
+  useEffect(() => {
+    if (animPhase === "show-children") {
+      setEdgesVisible(false)
+      childNodesRef.current.clear()
+      const t = setTimeout(() => {
+        measureEdges()
+        setEdgesVisible(true)
+      }, 300)
+      return () => clearTimeout(t)
+    }
+  }, [selectedCategories, minInsightScore, minCommentCount])
 
   useEffect(() => {
     const handler = () => measureEdges()
@@ -186,7 +207,7 @@ export const InsightsTabNew = ({ analysis }: InsightsTabNewProps) => {
 
   if (allClusters.length === 0) {
     return (
-      <div style={{ padding: "48px 24px", textAlign: "center", color: "#6b7280" }}>
+      <div style={{ padding: "48px 24px", textAlign: "center", color: C.ui.text.secondary }}>
         <p style={{ margin: 0, fontSize: "14px", fontWeight: "600" }}>No insights data available.</p>
       </div>
     )
@@ -194,6 +215,14 @@ export const InsightsTabNew = ({ analysis }: InsightsTabNewProps) => {
 
   const content = (
     <div style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "16px" }}>
+      {/* Comment count metadata */}
+      {analysis.actualCommentsFetched && (
+        <div style={{ fontSize: "11px", color: C.ui.text.tertiary, display: "flex", gap: "8px" }}>
+          <span>Based on <strong style={{ color: C.ui.text.primary }}>{analysis.actualCommentsFetched.toLocaleString()}</strong> comments analyzed</span>
+          {allClusters.length > 0 && <span>· <strong style={{ color: C.ui.text.primary }}>{allClusters.length}</strong> insight clusters</span>}
+        </div>
+      )}
+
       {/* Filter bar */}
       <FilterBar
         allCategories={allCategories}
@@ -212,13 +241,13 @@ export const InsightsTabNew = ({ analysis }: InsightsTabNewProps) => {
       <div style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "12px", flexWrap: "wrap" }}>
         {breadcrumb.map((item, i) => (
           <React.Fragment key={i}>
-            {i > 0 && <span style={{ color: "#94a3b8", fontSize: "10px" }}>▶</span>}
+            {i > 0 && <span style={{ color: C.ui.text.tertiary, fontSize: "10px" }}>▶</span>}
             <button
               onClick={item.onClick}
               style={{
                 padding: "4px 8px", borderRadius: "6px", border: "none", cursor: "pointer",
-                background: i === breadcrumb.length - 1 ? "#DBEAFE" : "transparent",
-                color: i === breadcrumb.length - 1 ? "#1D4ED8" : "#64748b",
+                background: i === breadcrumb.length - 1 ? (isDark ? "rgba(59,130,246,0.3)" : "#DBEAFE") : "transparent",
+                color: i === breadcrumb.length - 1 ? (isDark ? "#93c5fd" : "#1D4ED8") : C.ui.text.secondary,
                 fontWeight: i === breadcrumb.length - 1 ? "700" : "500",
                 fontSize: "11px",
               }}>
@@ -231,7 +260,7 @@ export const InsightsTabNew = ({ analysis }: InsightsTabNewProps) => {
       {/* === LEVEL 3: Cluster → quotes === */}
       {selectedCluster && selectedTheme && (
         <div ref={containerRef} style={{ position: "relative", display: "flex", alignItems: "flex-start", gap: "32px", overflowX: "auto", paddingBottom: "8px" }}>
-          <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 0, overflow: "visible" }}>
+          <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 0, overflow: "visible", opacity: edgesVisible ? 1 : 0, transition: "opacity 0.3s" }}>
             {edgePaths.map((d, i) => <path key={i} d={d} stroke="#93c5fd" strokeWidth="2" fill="none" />)}
           </svg>
           <div ref={parentNodeRef} style={{
@@ -260,19 +289,19 @@ export const InsightsTabNew = ({ analysis }: InsightsTabNewProps) => {
                   ref={el => { if (el) childNodesRef.current.set(qi, el); else childNodesRef.current.delete(qi) }}
                   style={{
                     borderRadius: "12px", padding: "12px",
-                    backgroundColor: opaqueBlend(99, 102, 241, opac * 0.15 + 0.05),
-                    border: `1px solid ${opaqueBlend(99, 102, 241, opac * 0.5 + 0.2)}`,
+                    backgroundColor: opaqueBlend(99, 102, 241, opac * 0.15 + 0.05, isDark),
+                    border: `1px solid ${opaqueBlend(99, 102, 241, opac * 0.5 + 0.2, isDark)}`,
                     transitionDelay: `${qi * 40}ms`,
                   }}>
-                  <p style={{ margin: 0, fontSize: "11px", color: "#334155", lineHeight: "1.5" }}>{q.highlighted_segment}</p>
-                  <div style={{ display: "flex", gap: "8px", marginTop: "6px", fontSize: "10px", color: "#94a3b8" }}>
+                  <p style={{ margin: 0, fontSize: "11px", color: C.ui.text.primary, lineHeight: "1.5" }}>{q.highlighted_segment}</p>
+                  <div style={{ display: "flex", gap: "8px", marginTop: "6px", fontSize: "10px", color: C.ui.text.tertiary }}>
                     <span>{q.user || "Viewer"}</span>
                     {q.likes > 0 && <span>{q.likes} likes</span>}
                   </div>
                 </div>
               )
             }) : (
-              <div style={{ fontSize: "11px", color: "#94a3b8", fontStyle: "italic", padding: "12px" }}>No supporting quotes available</div>
+              <div style={{ fontSize: "11px", color: C.ui.text.tertiary, fontStyle: "italic", padding: "12px" }}>No supporting quotes available</div>
             )}
           </div>
         </div>
@@ -281,7 +310,7 @@ export const InsightsTabNew = ({ analysis }: InsightsTabNewProps) => {
       {/* === LEVEL 2: Theme → clusters === */}
       {!selectedCluster && selectedTheme && (
         <div ref={containerRef} style={{ position: "relative", display: "flex", alignItems: "flex-start", gap: "32px", overflowX: "auto", paddingBottom: "8px" }}>
-          <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 0, overflow: "visible" }}>
+          <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 0, overflow: "visible", opacity: edgesVisible ? 1 : 0, transition: "opacity 0.3s" }}>
             {edgePaths.map((d, i) => <path key={i} d={d} stroke="#c4b5fd" strokeWidth="2" fill="none" />)}
           </svg>
           {/* Themes column */}
@@ -343,7 +372,7 @@ export const InsightsTabNew = ({ analysis }: InsightsTabNewProps) => {
                 </div>
               )
             }) : (
-              <div style={{ fontSize: "11px", color: "#94a3b8", fontStyle: "italic", padding: "12px" }}>No clusters match filters</div>
+              <div style={{ fontSize: "11px", color: C.ui.text.tertiary, fontStyle: "italic", padding: "12px" }}>No clusters match filters</div>
             )}
           </div>
         </div>
@@ -404,7 +433,7 @@ export const InsightsTabNew = ({ analysis }: InsightsTabNewProps) => {
               )
             })}
             {filteredClusters.length === 0 && (
-              <div style={{ textAlign: "center", padding: "48px 24px", color: "#94a3b8" }}>
+              <div style={{ textAlign: "center", padding: "48px 24px", color: C.ui.text.tertiary }}>
                 <p style={{ margin: 0, fontWeight: "600" }}>No insights match your filters</p>
               </div>
             )}
@@ -438,6 +467,8 @@ const FilterBar = ({
   sortBy: SortBy
   setSortBy: (s: SortBy) => void
 }) => {
+  const { colors: C, mode } = useTheme()
+  const isDark = mode === "dark"
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [localScore, setLocalScore] = useState(minInsightScore)
   const [localComments, setLocalComments] = useState(minCommentCount)
@@ -445,20 +476,20 @@ const FilterBar = ({
   const pillActive: React.CSSProperties = { borderRadius: "9999px", padding: "4px 12px", fontSize: "11px", fontWeight: "700", border: "none", cursor: "pointer", transition: "all 0.15s" }
 
   return (
-    <div style={{ backgroundColor: "white", borderRadius: "12px", border: "1px solid #e2e8f0", padding: "12px" }}>
+    <div style={{ backgroundColor: C.ui.background, borderRadius: "12px", border: `1px solid ${C.ui.border}`, padding: "12px" }}>
       {/* Sort */}
       <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-        <span style={{ fontSize: "11px", fontWeight: "700", color: "#64748b", textTransform: "uppercase" }}>Sort:</span>
-        <button onClick={() => setSortBy("insight_score")} style={{ ...pillActive, backgroundColor: sortBy === "insight_score" ? "#7c3aed" : "#f1f5f9", color: sortBy === "insight_score" ? "white" : "#475569" }}>Insight Score</button>
-        <button onClick={() => setSortBy("comments")} style={{ ...pillActive, backgroundColor: sortBy === "comments" ? "#7c3aed" : "#f1f5f9", color: sortBy === "comments" ? "white" : "#475569" }}>Comments</button>
-        <button onClick={() => setFiltersOpen(o => !o)} style={{ ...pillActive, marginLeft: "auto", backgroundColor: "#f1f5f9", color: "#64748b" }}>
+        <span style={{ fontSize: "11px", fontWeight: "700", color: C.ui.text.secondary, textTransform: "uppercase" }}>Sort:</span>
+        <button onClick={() => setSortBy("insight_score")} style={{ ...pillActive, backgroundColor: sortBy === "insight_score" ? "#7c3aed" : C.ui.surface, color: sortBy === "insight_score" ? "white" : C.ui.text.secondary }}>Insight Score</button>
+        <button onClick={() => setSortBy("comments")} style={{ ...pillActive, backgroundColor: sortBy === "comments" ? "#7c3aed" : C.ui.surface, color: sortBy === "comments" ? "white" : C.ui.text.secondary }}>Comments</button>
+        <button onClick={() => setFiltersOpen(o => !o)} style={{ ...pillActive, marginLeft: "auto", backgroundColor: C.ui.surface, color: C.ui.text.secondary }}>
           {filtersOpen ? "Hide Filters" : "Filters"}
         </button>
       </div>
       {/* Filters */}
       {filtersOpen && (
-        <div style={{ marginTop: "8px", paddingTop: "8px", borderTop: "1px solid #f1f5f9", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px" }}>
-          <span style={{ fontSize: "11px", fontWeight: "700", color: "#64748b", textTransform: "uppercase" }}>Categories:</span>
+        <div style={{ marginTop: "8px", paddingTop: "8px", borderTop: `1px solid ${C.ui.border}`, display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px" }}>
+          <span style={{ fontSize: "11px", fontWeight: "700", color: C.ui.text.secondary, textTransform: "uppercase" }}>Categories:</span>
           {allCategories.map(cat => {
             const active = selectedCategories.includes(cat)
             return (
@@ -466,23 +497,23 @@ const FilterBar = ({
                 setSelectedCategories(active ? selectedCategories.filter(c => c !== cat) : [...selectedCategories, cat])
               }} style={{
                 ...pillActive,
-                backgroundColor: active ? getCategoryColor(cat) : "#f1f5f9",
-                color: active ? "white" : "#475569",
+                backgroundColor: active ? getCategoryColor(cat) : C.ui.surface,
+                color: active ? "white" : C.ui.text.secondary,
               }}>{cat}</button>
             )
           })}
-          <div style={{ width: "1px", height: "20px", backgroundColor: "#e2e8f0", margin: "0 4px" }} />
+          <div style={{ width: "1px", height: "20px", backgroundColor: C.ui.border, margin: "0 4px" }} />
           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            <span style={{ fontSize: "11px", color: "#94a3b8", whiteSpace: "nowrap" }}>Min Score: {localScore}</span>
+            <span style={{ fontSize: "11px", color: C.ui.text.tertiary, whiteSpace: "nowrap" }}>Min Score: {localScore}</span>
             <input type="range" min={0} max={10} step={0.5} value={localScore}
               onChange={e => setLocalScore(parseFloat(e.target.value))}
               onMouseUp={e => setMinInsightScore(parseFloat((e.target as HTMLInputElement).value))}
               onTouchEnd={e => setMinInsightScore(parseFloat((e.target as HTMLInputElement).value))}
               style={{ width: "100px" }} />
           </div>
-          <div style={{ width: "1px", height: "20px", backgroundColor: "#e2e8f0", margin: "0 4px" }} />
+          <div style={{ width: "1px", height: "20px", backgroundColor: C.ui.border, margin: "0 4px" }} />
           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            <span style={{ fontSize: "11px", color: "#94a3b8", whiteSpace: "nowrap" }}>Min Comments: {localComments}</span>
+            <span style={{ fontSize: "11px", color: C.ui.text.tertiary, whiteSpace: "nowrap" }}>Min Comments: {localComments}</span>
             <input type="range" min={1} max={20} step={1} value={localComments}
               onChange={e => setLocalComments(parseInt(e.target.value))}
               onMouseUp={e => setMinCommentCount(parseInt((e.target as HTMLInputElement).value))}

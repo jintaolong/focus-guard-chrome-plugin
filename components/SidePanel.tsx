@@ -4,6 +4,7 @@
 import { useState, useEffect, useMemo, createContext, useContext } from "react"
 import type { VideoAnalysis, AnalysisHistoryItem } from "~types/analysis"
 import { COLORS, DARK_COLORS, type ThemeMode } from "~lib/colors"
+import { LayoutGrid, Search, ShieldCheck, SmilePlus, MessageSquare, AlertTriangle, FileText, ExternalLink, Share2, RefreshCw, Moon, Sun, PanelLeft, PanelRight, Columns2, X, Users, Copy, Check } from "lucide-react"
 import { SummaryTab } from "./sidepanel/SummaryTab"
 import { KeyInsightsTab } from "./sidepanel/KeyInsightsTab"
 import { CommentSentimentTab } from "./sidepanel/CommentSentimentTab"
@@ -65,8 +66,8 @@ export const SidePanel = ({
   const [isShareOpen, setIsShareOpen] = useState(false)
   const [shareCopied, setShareCopied] = useState(false)
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
-    try { return (localStorage.getItem("cv-theme") as ThemeMode) || "light" }
-    catch { return "light" }
+    try { return (localStorage.getItem("cv-theme") as ThemeMode) || "dark" }
+    catch { return "dark" }
   })
   const [panelLayout, setPanelLayout] = useState<PanelLayout>(() => {
     try { return (localStorage.getItem("cv-panel-layout") as PanelLayout) || "center" }
@@ -132,6 +133,9 @@ export const SidePanel = ({
     }
   }
 
+  // Lucide icon size for tab bar
+  const tabIconSize = 14
+
   const buildShareText = () => {
     const title   = analysis?.videoTitle || "this video"
     const verdict = analysis?.clickbaitVerdict?.verdict ||
@@ -192,7 +196,7 @@ export const SidePanel = ({
   const sentimentPcts = useMemo(() => {
     const dist = (analysis as any)?.sentiment?.distribution
     if (!dist) return null
-    const total = (dist.positive || 0) + (dist.neutral || 0) + (dist.negative || 0) + (dist.mixed || 0)
+    const total = dist.totalCommentsAnalyzed || ((dist.positive || 0) + (dist.neutral || 0) + (dist.negative || 0) + (dist.mixed || 0))
     if (total === 0) return null
     return {
       positive: Math.round(((dist.positive || 0) / total) * 100),
@@ -207,14 +211,14 @@ export const SidePanel = ({
   const gapsCount = analysis?.contentGaps?.unansweredQuestions?.length ?? 0
   const insightsCount = analysis?.topicClustersData?.clusters?.length ?? 0
 
-  const tabs: { id: TabId; label: string; icon: string; count?: number }[] = [
-    { id: "overview",   label: "Overview",    icon: "📊" },
-    { id: "claims",     label: "Claims",      icon: "🔍", count: claimsCount || undefined },
-    { id: "trust",      label: "Trust",       icon: "🛡️" },
-    { id: "sentiment",  label: "Sentiment",   icon: "😊" },
-    { id: "insights",   label: "Insights",    icon: "💬", count: insightsCount || undefined },
-    { id: "gaps",       label: "Gaps",        icon: "⚠️", count: gapsCount || undefined },
-    { id: "report",     label: "Report",      icon: "📄" }
+  const tabs: { id: TabId; label: string; icon: React.ReactNode; count?: number }[] = [
+    { id: "overview",   label: "Overview",    icon: <LayoutGrid size={tabIconSize} /> },
+    { id: "claims",     label: "Claims",      icon: <Search size={tabIconSize} />, count: claimsCount || undefined },
+    { id: "trust",      label: "Trust",       icon: <ShieldCheck size={tabIconSize} /> },
+    { id: "sentiment",  label: "Sentiment",   icon: <SmilePlus size={tabIconSize} /> },
+    { id: "insights",   label: "Insights",    icon: <MessageSquare size={tabIconSize} />, count: insightsCount || undefined },
+    { id: "gaps",       label: "Gaps",        icon: <AlertTriangle size={tabIconSize} />, count: gapsCount || undefined },
+    { id: "report",     label: "Report",      icon: <FileText size={tabIconSize} /> }
   ]
 
   if (!isOpen) return null
@@ -318,7 +322,7 @@ export const SidePanel = ({
                 onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent" }}
                 onClick={() => window.open(reportUrl, "_blank")}
                 title="Open full report in browser">
-                <span style={{ fontSize: "14px" }}>↗</span>
+                <ExternalLink size={14} />
               </button>
             )}
 
@@ -334,7 +338,7 @@ export const SidePanel = ({
                   onMouseLeave={(e) => { if (!isShareOpen) e.currentTarget.style.backgroundColor = "transparent" }}
                   onClick={() => setIsShareOpen(!isShareOpen)}
                   title="Share analysis">
-                  <span style={{ fontSize: "14px" }}>📤</span>
+                  <Share2 size={14} />
                 </button>
 
                 {isShareOpen && (
@@ -408,7 +412,7 @@ export const SidePanel = ({
                             fontSize: "14px",
                             background: shareCopied ? C.high.light : C.ui.surface,
                             borderRadius: "4px", flexShrink: 0,
-                          }}>{shareCopied ? "✓" : "🔗"}</span>
+                          }}>{shareCopied ? <Check size={12} /> : <Copy size={12} />}</span>
                           {shareCopied ? "Copied!" : "Copy link"}
                         </button>
                       </div>
@@ -426,7 +430,7 @@ export const SidePanel = ({
                 onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent" }}
                 onClick={onForceRefresh}
                 title="Force refresh analysis">
-                <span style={{ fontSize: "14px" }}>🔄</span>
+                <RefreshCw size={14} />
               </button>
             )}
 
@@ -440,7 +444,7 @@ export const SidePanel = ({
               onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent" }}
               onClick={() => setThemeMode(themeMode === "light" ? "dark" : "light")}
               title={`Switch to ${themeMode === "light" ? "dark" : "light"} mode`}>
-              <span style={{ fontSize: "14px" }}>{themeMode === "light" ? "🌙" : "☀️"}</span>
+              {themeMode === "light" ? <Moon size={14} /> : <Sun size={14} />}
             </button>
 
             {/* Layout toggle (center / dock) */}
@@ -454,9 +458,7 @@ export const SidePanel = ({
                 setPanelLayout(cycle[(idx + 1) % cycle.length])
               }}
               title={`Layout: ${panelLayout} (click to change)`}>
-              <span style={{ fontSize: "14px" }}>
-                {panelLayout === "center" ? "⬜" : panelLayout === "right" ? "◧" : "◨"}
-              </span>
+              {panelLayout === "center" ? <Columns2 size={14} /> : panelLayout === "right" ? <PanelRight size={14} /> : <PanelLeft size={14} />}
             </button>
 
             {/* Close */}
@@ -470,7 +472,7 @@ export const SidePanel = ({
               onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent" }}
               onClick={onClose}
               title="Close panel">
-              <span style={{ fontSize: "14px", lineHeight: 1 }}>✕</span>
+              <X size={14} />
             </button>
           </div>
         </div>
@@ -503,7 +505,11 @@ export const SidePanel = ({
                   {analysis.videoTitle || "Untitled Video"}
                 </h1>
                 <div style={{ display: "flex", alignItems: "center", gap: "12px", marginTop: "4px", fontSize: "11px", color: C.ui.text.secondary, flexWrap: "wrap" }}>
-                  {analysis.channelName && <span>👤 {analysis.channelName}</span>}
+                  {(analysis.channelName || analysis.channelTrust?.channel_name) && (
+                    <span style={{ display: "flex", alignItems: "center", gap: "3px" }}>
+                      <Users size={11} /> {analysis.channelName || analysis.channelTrust?.channel_name}
+                    </span>
+                  )}
                   {analysis.actualCommentsFetched && (
                     <span>{analysis.actualCommentsFetched.toLocaleString()} comments analyzed</span>
                   )}
@@ -540,7 +546,7 @@ export const SidePanel = ({
             {sentimentPcts && (
               <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "10px", flexWrap: "wrap" }}>
                 <span style={{ fontSize: "10px", fontWeight: "700", color: C.ui.text.tertiary, textTransform: "uppercase", flexShrink: 0 }}>Sentiment</span>
-                <div style={{ flex: 1, display: "flex", height: "8px", borderRadius: "9999px", overflow: "hidden", backgroundColor: "#f1f5f9", minWidth: "100px" }}>
+                <div style={{ flex: 1, display: "flex", height: "8px", borderRadius: "9999px", overflow: "hidden", backgroundColor: themeMode === "dark" ? "#334155" : "#f1f5f9", minWidth: "100px" }}>
                   <div style={{ width: `${sentimentPcts.positive}%`, backgroundColor: "#10b981", transition: "width 0.5s" }} />
                   <div style={{ width: `${sentimentPcts.neutral}%`, backgroundColor: "#94a3b8", transition: "width 0.5s" }} />
                   <div style={{ width: `${sentimentPcts.negative}%`, backgroundColor: "#ef4444", transition: "width 0.5s" }} />
@@ -564,6 +570,7 @@ export const SidePanel = ({
           display: "flex",
           gap: "4px",
           padding: "6px 16px",
+          minHeight: "44px",
           backgroundColor: themeMode === "dark" ? "#1e293b" : "white",
           borderBottom: `1px solid ${C.ui.border}`,
           overflowX: "auto",
@@ -581,7 +588,7 @@ export const SidePanel = ({
                 borderRadius: "8px",
                 border: "none",
                 fontSize: "12px",
-                fontWeight: activeTab === tab.id ? "800" : "600",
+                fontWeight: "600",
                 cursor: "pointer",
                 transition: "all 0.15s",
                 whiteSpace: "nowrap",
@@ -599,13 +606,13 @@ export const SidePanel = ({
                   e.currentTarget.style.backgroundColor = "transparent"
                 }
               }}>
-              <span style={{ fontSize: "14px" }}>{tab.icon}</span>
+              <span style={{ display: "flex", alignItems: "center" }}>{tab.icon}</span>
               {tab.label}
               {tab.count !== undefined && (
                 <span style={{
                   padding: "1px 6px", borderRadius: "4px", fontSize: "10px", fontWeight: "700",
-                  backgroundColor: activeTab === tab.id ? "rgba(255,255,255,0.2)" : "#e2e8f0",
-                  color: activeTab === tab.id ? "white" : "#475569",
+                  backgroundColor: activeTab === tab.id ? "rgba(255,255,255,0.2)" : (themeMode === "dark" ? "rgba(255,255,255,0.1)" : "#e2e8f0"),
+                  color: activeTab === tab.id ? "white" : (themeMode === "dark" ? "#94a3b8" : "#475569"),
                 }}>{tab.count}</span>
               )}
             </button>

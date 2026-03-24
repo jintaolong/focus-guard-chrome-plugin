@@ -4,6 +4,7 @@
 import { useState } from "react"
 import type { VideoAnalysis } from "~types/analysis"
 import { BlurredContent } from "~components/UpgradePrompt"
+import { useTheme } from "~components/SidePanel"
 
 // Helpers to handle both backend field naming conventions
 const getClaimText = (claim: any): string => claim?.claim_text || claim?.claim || ""
@@ -21,6 +22,8 @@ interface ClaimsTabNewProps {
 }
 
 export const ClaimsTabNew = ({ analysis }: ClaimsTabNewProps) => {
+  const { colors: C, mode } = useTheme()
+  const isDark = mode === "dark"
   const [expandedClaims, setExpandedClaims] = useState<Set<number>>(new Set())
 
   const summary = (analysis.summary || {}) as any
@@ -38,7 +41,7 @@ export const ClaimsTabNew = ({ analysis }: ClaimsTabNewProps) => {
 
   if (claimsList.length === 0) {
     return (
-      <div style={{ padding: "48px 24px", textAlign: "center", color: "#6b7280" }}>
+      <div style={{ padding: "48px 24px", textAlign: "center", color: C.ui.text.secondary }}>
         <p style={{ margin: 0, fontSize: "14px", fontWeight: "600" }}>No claims to verify for this video.</p>
       </div>
     )
@@ -47,8 +50,8 @@ export const ClaimsTabNew = ({ analysis }: ClaimsTabNewProps) => {
   const content = (
     <div style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "16px" }}>
       {oneLineSummary && (
-        <div style={{ backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: "12px", padding: "12px 16px" }}>
-          <p style={{ margin: 0, fontSize: "13px", color: "#1E40AF", fontWeight: "500" }}>{oneLineSummary}</p>
+        <div style={{ backgroundColor: isDark ? C.neutral.light : "#EFF6FF", border: `1px solid ${isDark ? C.ui.border : "#BFDBFE"}`, borderRadius: "12px", padding: "12px 16px" }}>
+          <p style={{ margin: 0, fontSize: "13px", color: isDark ? C.neutral.text : "#1E40AF", fontWeight: "500" }}>{oneLineSummary}</p>
         </div>
       )}
 
@@ -64,7 +67,7 @@ export const ClaimsTabNew = ({ analysis }: ClaimsTabNewProps) => {
         return (
           <div key={i} style={{
             borderRadius: "12px",
-            backgroundColor: "white",
+            backgroundColor: C.ui.background,
             overflow: "hidden",
             position: "relative",
             boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
@@ -97,7 +100,9 @@ export const ClaimsTabNew = ({ analysis }: ClaimsTabNewProps) => {
                 padding: "16px", paddingRight: "100px",
                 background: "none", border: "none", cursor: "pointer",
               }}>
-              <p style={{ margin: 0, fontWeight: "700", fontSize: "13px", color: "#1e293b", lineHeight: "1.4" }}>
+              <p style={{ margin: 0, fontWeight: "700", fontSize: "13px", color: C.ui.text.primary, lineHeight: "1.4",
+                overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical",
+              }}>
                 {getClaimText(claim)}
               </p>
               <div style={{ display: "flex", gap: "12px", marginTop: "8px" }}>
@@ -116,7 +121,7 @@ export const ClaimsTabNew = ({ analysis }: ClaimsTabNewProps) => {
                 <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "8px" }}>
                   <span style={{
                     display: "inline-block", width: "20px", height: "20px",
-                    color: "#94a3b8", fontSize: "14px",
+                    color: C.ui.text.tertiary, fontSize: "14px",
                     transition: "transform 0.2s",
                     transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
                   }}>▼</span>
@@ -137,23 +142,23 @@ export const ClaimsTabNew = ({ analysis }: ClaimsTabNewProps) => {
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                       {evidenceFor.length > 0 ? evidenceFor.map((c: any, ci: number) => (
-                        <div key={ci} style={{ padding: "10px", borderRadius: "8px", backgroundColor: "rgba(209,250,229,0.4)" }}>
+                        <div key={ci} style={{ padding: "10px", borderRadius: "8px", backgroundColor: isDark ? "rgba(6,78,59,0.3)" : "rgba(209,250,229,0.4)" }}>
                           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
-                            <span style={{ fontWeight: "600", color: "#334155", fontSize: "11px" }}>{c.user || "Viewer"}</span>
-                            {c.likes > 0 && <span style={{ color: "#94a3b8", fontSize: "11px" }}>👍 {c.likes}</span>}
+                            <span style={{ fontWeight: "600", color: C.ui.text.primary, fontSize: "11px" }}>{c.author_display_name || c.author || c.user || "Viewer"}</span>
+                            {c.likes > 0 && <span style={{ color: C.ui.text.tertiary, fontSize: "11px" }}>👍 {c.likes}</span>}
                           </div>
-                          <p style={{ margin: 0, fontSize: "11px", color: "#475569", fontStyle: "italic", lineHeight: "1.5" }}>
+                          <p style={{ margin: 0, fontSize: "11px", color: C.ui.text.secondary, fontStyle: "italic", lineHeight: "1.5" }}>
                             &ldquo;{c.text}&rdquo;
                           </p>
                         </div>
                       )) : (
-                        <p style={{ margin: 0, fontSize: "11px", color: "#94a3b8", fontStyle: "italic" }}>No supporting evidence</p>
+                        <p style={{ margin: 0, fontSize: "11px", color: C.ui.text.tertiary, fontStyle: "italic" }}>No supporting evidence</p>
                       )}
                     </div>
                   </div>
 
                   {/* AGAINST lane */}
-                  <div style={{ padding: "12px", position: "relative", minHeight: "60px", borderLeft: "1px solid #f1f5f9" }}>
+                  <div style={{ padding: "12px", position: "relative", minHeight: "60px", borderLeft: `1px solid ${C.ui.border}` }}>
                     <div style={{ marginBottom: "8px" }}>
                       <span style={{ fontSize: "11px", fontWeight: "700", color: "#B91C1C", textTransform: "uppercase" }}>
                         Against ({evidenceAgainst.length})
@@ -161,17 +166,17 @@ export const ClaimsTabNew = ({ analysis }: ClaimsTabNewProps) => {
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                       {evidenceAgainst.length > 0 ? evidenceAgainst.map((c: any, ci: number) => (
-                        <div key={ci} style={{ padding: "10px", borderRadius: "8px", backgroundColor: "rgba(254,226,226,0.4)" }}>
+                        <div key={ci} style={{ padding: "10px", borderRadius: "8px", backgroundColor: isDark ? "rgba(127,29,29,0.3)" : "rgba(254,226,226,0.4)" }}>
                           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
-                            <span style={{ fontWeight: "600", color: "#334155", fontSize: "11px" }}>{c.user || "Viewer"}</span>
-                            {c.likes > 0 && <span style={{ color: "#94a3b8", fontSize: "11px" }}>👍 {c.likes}</span>}
+                            <span style={{ fontWeight: "600", color: C.ui.text.primary, fontSize: "11px" }}>{c.author_display_name || c.author || c.user || "Viewer"}</span>
+                            {c.likes > 0 && <span style={{ color: C.ui.text.tertiary, fontSize: "11px" }}>👍 {c.likes}</span>}
                           </div>
-                          <p style={{ margin: 0, fontSize: "11px", color: "#475569", fontStyle: "italic", lineHeight: "1.5" }}>
+                          <p style={{ margin: 0, fontSize: "11px", color: C.ui.text.secondary, fontStyle: "italic", lineHeight: "1.5" }}>
                             &ldquo;{c.text}&rdquo;
                           </p>
                         </div>
                       )) : (
-                        <p style={{ margin: 0, fontSize: "11px", color: "#94a3b8", fontStyle: "italic" }}>No opposing evidence</p>
+                        <p style={{ margin: 0, fontSize: "11px", color: C.ui.text.tertiary, fontStyle: "italic" }}>No opposing evidence</p>
                       )}
                     </div>
                   </div>
@@ -180,14 +185,14 @@ export const ClaimsTabNew = ({ analysis }: ClaimsTabNewProps) => {
                 {/* Danger warnings */}
                 {dangerWarnings.length > 0 && (
                   <div style={{
-                    marginTop: "12px", backgroundColor: "#FEF3C7",
+                    marginTop: "12px", backgroundColor: isDark ? "rgba(120,53,15,0.3)" : "#FEF3C7",
                     borderRadius: "8px", padding: "12px",
                     borderLeft: "4px solid #F59E0B",
                   }}>
-                    <span style={{ fontSize: "11px", fontWeight: "700", color: "#92400E", textTransform: "uppercase" }}>Warnings</span>
+                    <span style={{ fontSize: "11px", fontWeight: "700", color: isDark ? "#fbbf24" : "#92400E", textTransform: "uppercase" }}>Warnings</span>
                     <ul style={{ margin: "4px 0 0", padding: 0, listStyle: "none" }}>
                       {dangerWarnings.map((w: string, wi: number) => (
-                        <li key={wi} style={{ fontSize: "11px", color: "#78350F", marginTop: "4px" }}>&bull; {w}</li>
+                        <li key={wi} style={{ fontSize: "11px", color: isDark ? "#fcd34d" : "#78350F", marginTop: "4px" }}>&bull; {w}</li>
                       ))}
                     </ul>
                   </div>

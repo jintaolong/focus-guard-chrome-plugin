@@ -108,8 +108,9 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
   // Calculate position based on dock
   const getPositionStyle = (): React.CSSProperties => {
     // Use amber (medium) color for error state (milder than red), neutral for idle/analyzing, verdict color for complete
+    const isComplete = state === "complete"
     const bgColor = errorMessage ? COLORS.medium.primary : 
-                    state === "complete" ? COLORS[verdictColor].primary : 
+                    isComplete ? "transparent" : 
                     COLORS.neutral.primary
     
       const baseStyle: React.CSSProperties = {
@@ -120,11 +121,11 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
       alignItems: "center",
       justifyContent: "center",
       gap: "3px",
-      padding: "8px 11px",
+      padding: isComplete ? "4px" : "8px 11px",
       backgroundColor: bgColor,
-      border: `3px solid white`,
+      border: isComplete ? "none" : `3px solid white`,
       cursor: isDragging ? "grabbing" : (state === "analyzing" ? "wait" : "pointer"),
-      boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3)",
+      boxShadow: isComplete ? "none" : "0 4px 12px rgba(0, 0, 0, 0.3)",
       transition: isDragging ? "none" : "all 0.18s ease",
       userSelect: "none"
     }
@@ -333,34 +334,56 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
     }
 
     // state === "complete"
+    // Show SVG verdict gauge when cached results available and user opted in
+    const gaugeStampColorMap: Record<string, { bg: string; text: string; arc: string }> = {
+      LEGIT:      { bg: '#D1FAE5', text: '#065F46', arc: '#10B981' },
+      CLICKBAIT:  { bg: '#FEE2E2', text: '#991B1B', arc: '#EF4444' },
+      DANGEROUS:  { bg: '#FEE2E2', text: '#7F1D1D', arc: '#991B1B' },
+      DISPUTED:   { bg: '#FEF3C7', text: '#92400E', arc: '#F59E0B' },
+      MISLEADING: { bg: '#FEF3C7', text: '#92400E', arc: '#F59E0B' },
+      MIXED:      { bg: '#DBEAFE', text: '#1E40AF', arc: '#3B82F6' },
+    }
+    const vUpper = verdictLabel.toUpperCase()
+    const gaugeSC = gaugeStampColorMap[vUpper] ?? gaugeStampColorMap.MIXED
+    const gaugeScore = Number.isFinite(numericScore) ? numericScore : 0
+    // Normalize score: if 0-10 scale, multiply by 10 for percentage arc
+    const arcPct = gaugeScore > 10 ? gaugeScore : gaugeScore * 10
+    const r = 28
+    const circ = 2 * Math.PI * r
+
     return (
       <div style={{ 
         display: "flex", 
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        gap: "6px",
-        textAlign: "center"
+        gap: "2px",
+        textAlign: "center",
+        padding: "2px 0",
       }}>
-        <span style={{ 
-          fontSize: "13px", 
-          fontWeight: "900",
-          color: "white",
-          textShadow: "0 1px 3px rgba(0,0,0,0.3)",
-          lineHeight: 1
-        }}>
-          {scoreDisplay}
-        </span>
-        <span style={{ 
-          fontSize: "9px", 
-          fontWeight: "700",
-          color: "white",
-          textShadow: "0 1px 2px rgba(0,0,0,0.3)",
-          letterSpacing: "0.5px",
-          lineHeight: 1
-        }}>
-          {verdictLabel}
-        </span>
+        <div style={{ width: "70px", height: "70px", position: "relative" }}>
+          <svg width="70" height="70" viewBox="0 0 70 70">
+            <circle cx="35" cy="35" r={r} fill={gaugeSC.bg} stroke="#e2e8f0" strokeWidth="4" />
+            <circle cx="35" cy="35" r={r} fill="none" stroke={gaugeSC.arc} strokeWidth="4" strokeLinecap="round"
+              strokeDasharray={`${(arcPct / 100) * circ} ${(1 - arcPct / 100) * circ}`}
+              style={{ transform: "rotate(-90deg)", transformOrigin: "35px 35px" }} />
+          </svg>
+          <div style={{
+            position: "absolute", inset: 0,
+            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+          }}>
+            <span style={{
+              fontWeight: "900", fontSize: vUpper.length > 8 ? "7px" : "9px", letterSpacing: "0.03em",
+              color: gaugeSC.text, lineHeight: 1, textAlign: "center", maxWidth: "52px",
+              wordBreak: "break-word",
+            }}>
+              {vUpper}
+            </span>
+            <span style={{ fontSize: "8px", fontWeight: "700", marginTop: "2px", color: gaugeSC.text, opacity: 0.7 }}>
+              {Math.round(arcPct)}%
+            </span>
+          </div>
+        </div>
       </div>
     )
   }

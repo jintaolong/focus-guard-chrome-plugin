@@ -1,4 +1,5 @@
 import { COLORS, getTrustScoreColor } from "~lib/colors"
+import { useTheme } from "~components/SidePanel"
 
 interface ChannelCredibilitySubTabProps {
   channelCredibility: any
@@ -40,6 +41,7 @@ export const ChannelCredibilitySubTab = ({
   credibilityScore, 
   credibilityFactors 
 }: ChannelCredibilitySubTabProps) => {
+  const { colors: C } = useTheme()
   // Debug logging
   console.log("ChannelCredibilitySubTab - channelCredibility:", channelCredibility)
   console.log("ChannelCredibilitySubTab - credibilityScore:", credibilityScore)
@@ -53,7 +55,7 @@ export const ChannelCredibilitySubTab = ({
   
   // Determine color theme based on trust score
   const trustColorKey = getTrustScoreColor(score)
-  const chartColor = COLORS[trustColorKey].primary
+  const chartColor = C[trustColorKey].primary
 
   // Render NEW format with 5 metrics
   if (isNewFormat) {
@@ -140,7 +142,7 @@ export const ChannelCredibilitySubTab = ({
               margin: "0 0 16px 0",
               fontSize: "16px",
               fontWeight: "600",
-              color: COLORS.ui.textPrimary
+              color: C.ui.text.primary
             }}>
             Channel Trust
           </h3>
@@ -152,22 +154,22 @@ export const ChannelCredibilitySubTab = ({
               alignItems: "center", 
               gap: "12px",
               padding: "16px 24px",
-              backgroundColor: COLORS.neutral.light,
+              backgroundColor: C.neutral.light,
               borderRadius: "12px",
-              border: `2px solid ${score >= 70 ? COLORS.high.primary : score >= 40 ? COLORS.medium.primary : COLORS.low.primary}`
+              border: `2px solid ${score >= 70 ? C.high.primary : score >= 40 ? C.medium.primary : C.low.primary}`
             }}>
               <div style={{
                 fontSize: "42px",
                 fontWeight: "700",
-                color: score >= 70 ? COLORS.high.primary : score >= 40 ? COLORS.medium.primary : COLORS.low.primary
+                color: score >= 70 ? C.high.primary : score >= 40 ? C.medium.primary : C.low.primary
               }}>
                 {Math.round(score)}
               </div>
               <div style={{ textAlign: "left" }}>
-                <div style={{ fontSize: "11px", color: COLORS.ui.textSecondary, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                <div style={{ fontSize: "11px", color: C.ui.text.secondary, textTransform: "uppercase", letterSpacing: "0.5px" }}>
                   Overall Trust
                 </div>
-                <div style={{ fontSize: "14px", fontWeight: "600", color: COLORS.ui.textPrimary }}>
+                <div style={{ fontSize: "14px", fontWeight: "600", color: C.ui.text.primary }}>
                   out of 100
                 </div>
               </div>
@@ -216,7 +218,7 @@ export const ChannelCredibilitySubTab = ({
                           cy={centerY}
                           r={radius * level}
                           fill="none"
-                          stroke={COLORS.ui.border}
+                          stroke={C.ui.border}
                           strokeWidth="1"
                           opacity={0.3}
                         />
@@ -230,7 +232,7 @@ export const ChannelCredibilitySubTab = ({
                           y1={centerY}
                           x2={point.x}
                           y2={point.y}
-                          stroke={COLORS.ui.border}
+                          stroke={C.ui.border}
                           strokeWidth="1"
                           opacity={0.5}
                         />
@@ -274,7 +276,7 @@ export const ChannelCredibilitySubTab = ({
                             dominantBaseline="middle"
                             fontSize="10"
                             fontWeight="600"
-                            fill={COLORS.ui.textPrimary}
+                            fill={C.ui.text.primary}
                             style={{ userSelect: 'none' }}>
                             {words.map((word: string, wordIdx: number) => (
                               <tspan 
@@ -297,125 +299,125 @@ export const ChannelCredibilitySubTab = ({
             {/* 5-Pillar Trust Framework Table */}
             <div style={{
               marginTop: "24px",
-              backgroundColor: COLORS.ui.surface,
+              backgroundColor: C.ui.surface,
               borderRadius: "8px",
               padding: "16px",
-              border: `1px solid ${COLORS.ui.border}`
+              border: `1px solid ${C.ui.border}`
             }}>
               <h4 style={{ 
                 margin: "0 0 16px 0", 
                 fontSize: "14px", 
                 fontWeight: "600",
-                color: COLORS.ui.textPrimary,
-                borderBottom: `2px solid ${COLORS.ui.border}`,
+                color: C.ui.text.primary,
+                borderBottom: `2px solid ${C.ui.border}`,
                 paddingBottom: "8px"
               }}>
                 5-Pillar Trust Framework
               </h4>
               
               {/* Metric 1: Audience Reach */}
-              <div style={{ marginBottom: "20px", borderBottom: `1px solid ${COLORS.ui.border}`, paddingBottom: "16px" }}>
+              <div style={{ marginBottom: "20px", borderBottom: `1px solid ${C.ui.border}`, paddingBottom: "16px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
                   <div>
-                    <div style={{ fontSize: "14px", fontWeight: "700", color: COLORS.ui.textPrimary }}>
+                    <div style={{ fontSize: "14px", fontWeight: "700", color: C.ui.text.primary }}>
                       📊 Audience Reach
                     </div>
-                    <div style={{ fontSize: "11px", color: COLORS.high.primary, fontWeight: "600", marginTop: "2px" }}>
+                    <div style={{ fontSize: "11px", color: C.high.primary, fontWeight: "600", marginTop: "2px" }}>
                       {getReachLabel(subscribers)}
                     </div>
                   </div>
-                  <div style={{ fontSize: "24px", fontWeight: "700", color: metrics.audience_reach?.score >= 70 ? COLORS.high.primary : COLORS.medium.primary }}>
+                  <div style={{ fontSize: "24px", fontWeight: "700", color: metrics.audience_reach?.score >= 70 ? C.high.primary : C.medium.primary }}>
                     {Math.round(metrics.audience_reach?.score || 0)}
                   </div>
                 </div>
-                <div style={{ fontSize: "11px", color: COLORS.ui.textSecondary, fontStyle: "italic", marginBottom: "8px" }}>
+                <div style={{ fontSize: "11px", color: C.ui.text.secondary, fontStyle: "italic", marginBottom: "8px" }}>
                   Shows the 'size of the room' this creator speaks to. Balances subscribers with views to filter out 'dead' channels.
                 </div>
-                <div style={{ fontSize: "11px", color: COLORS.ui.textSecondary, marginBottom: "6px" }}>
+                <div style={{ fontSize: "11px", color: C.ui.text.secondary, marginBottom: "6px" }}>
                   Formula: Geometric mean of subscriber and view counts, normalized to 0-100 scale
                 </div>
-                <div style={{ fontSize: "12px", color: COLORS.ui.textPrimary }}>
+                <div style={{ fontSize: "12px", color: C.ui.text.primary }}>
                   <div>• Subscribers: <strong>{formatNumber(subscribers)}</strong></div>
                   <div>• Total Views: <strong>{formatNumber(totalViews)}</strong></div>
                 </div>
               </div>
               
               {/* Metric 2: Creator Authority */}
-              <div style={{ marginBottom: "20px", borderBottom: `1px solid ${COLORS.ui.border}`, paddingBottom: "16px" }}>
+              <div style={{ marginBottom: "20px", borderBottom: `1px solid ${C.ui.border}`, paddingBottom: "16px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
                   <div>
-                    <div style={{ fontSize: "14px", fontWeight: "700", color: COLORS.ui.textPrimary }}>
+                    <div style={{ fontSize: "14px", fontWeight: "700", color: C.ui.text.primary }}>
                       ⭐ Creator Authority
                     </div>
-                    <div style={{ fontSize: "11px", color: COLORS.high.primary, fontWeight: "600", marginTop: "2px" }}>
+                    <div style={{ fontSize: "11px", color: C.high.primary, fontWeight: "600", marginTop: "2px" }}>
                       {getAuthorityLabel(ageYears, videoCount)}
                     </div>
                   </div>
-                  <div style={{ fontSize: "24px", fontWeight: "700", color: metrics.creator_authority?.score >= 70 ? COLORS.high.primary : COLORS.medium.primary }}>
+                  <div style={{ fontSize: "24px", fontWeight: "700", color: metrics.creator_authority?.score >= 70 ? C.high.primary : C.medium.primary }}>
                     {Math.round(metrics.creator_authority?.score || 0)}
                   </div>
                 </div>
-                <div style={{ fontSize: "11px", color: COLORS.ui.textSecondary, fontStyle: "italic", marginBottom: "8px" }}>
+                <div style={{ fontSize: "11px", color: C.ui.text.secondary, fontStyle: "italic", marginBottom: "8px" }}>
                   Separates 'viral hit wonders' from seasoned veterans. Rewards longevity and library depth, signaling reliability.
                 </div>
-                <div style={{ fontSize: "11px", color: COLORS.ui.textSecondary, marginBottom: "6px" }}>
+                <div style={{ fontSize: "11px", color: C.ui.text.secondary, marginBottom: "6px" }}>
                   Formula: Weighted combination of channel age (years) and video count, normalized to 0-100
                 </div>
-                <div style={{ fontSize: "12px", color: COLORS.ui.textPrimary }}>
+                <div style={{ fontSize: "12px", color: C.ui.text.primary }}>
                   <div>• Channel Age: <strong>{ageYears.toFixed(1)} years</strong> ({ageDays} days)</div>
                   <div>• Total Videos: <strong>{formatNumber(videoCount)}</strong></div>
                 </div>
               </div>
               
               {/* Metric 3: Niche Focus */}
-              <div style={{ marginBottom: "20px", borderBottom: `1px solid ${COLORS.ui.border}`, paddingBottom: "16px" }}>
+              <div style={{ marginBottom: "20px", borderBottom: `1px solid ${C.ui.border}`, paddingBottom: "16px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
                   <div>
-                    <div style={{ fontSize: "14px", fontWeight: "700", color: COLORS.ui.textPrimary }}>
+                    <div style={{ fontSize: "14px", fontWeight: "700", color: C.ui.text.primary }}>
                       🎯 Niche Focus
                     </div>
-                    <div style={{ fontSize: "11px", color: metrics.niche_focus?.score >= 60 ? COLORS.high.primary : COLORS.medium.primary, fontWeight: "600", marginTop: "2px" }}>
+                    <div style={{ fontSize: "11px", color: metrics.niche_focus?.score >= 60 ? C.high.primary : C.medium.primary, fontWeight: "600", marginTop: "2px" }}>
                       {getFocusLabel(metrics.niche_focus?.score || 0)}
                     </div>
                   </div>
-                  <div style={{ fontSize: "24px", fontWeight: "700", color: metrics.niche_focus?.score >= 70 ? COLORS.high.primary : metrics.niche_focus?.score >= 40 ? COLORS.medium.primary : COLORS.low.primary }}>
+                  <div style={{ fontSize: "24px", fontWeight: "700", color: metrics.niche_focus?.score >= 70 ? C.high.primary : metrics.niche_focus?.score >= 40 ? C.medium.primary : C.low.primary }}>
                     {Math.round(metrics.niche_focus?.score || 0)}
                   </div>
                 </div>
-                <div style={{ fontSize: "11px", color: COLORS.ui.textSecondary, fontStyle: "italic", marginBottom: "8px" }}>
+                <div style={{ fontSize: "11px", color: C.ui.text.secondary, fontStyle: "italic", marginBottom: "8px" }}>
                   High consistency = dedicated expert; chaos = trend-chaser. Measures content specialization vs 'jack of all trades' approach.
                 </div>
-                <div style={{ fontSize: "11px", color: COLORS.ui.textSecondary, marginBottom: "6px" }}>
+                <div style={{ fontSize: "11px", color: C.ui.text.secondary, marginBottom: "6px" }}>
                   Formula: Category consistency in recent 10 videos, scaled to 0-100
                 </div>
-                <div style={{ fontSize: "12px", color: COLORS.ui.textPrimary }}>
+                <div style={{ fontSize: "12px", color: C.ui.text.primary }}>
                   <div>• Primary Category: <strong>{primaryCategory || "None found"}</strong></div>
                   <div>• Topic Labels: <strong>{hasTopicLabels ? "✓ Enabled" : "✗ Disabled"}</strong></div>
                 </div>
               </div>
               
               {/* Metric 4: Community Loyalty */}
-              <div style={{ marginBottom: "20px", borderBottom: `1px solid ${COLORS.ui.border}`, paddingBottom: "16px" }}>
+              <div style={{ marginBottom: "20px", borderBottom: `1px solid ${C.ui.border}`, paddingBottom: "16px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
                   <div>
-                    <div style={{ fontSize: "14px", fontWeight: "700", color: COLORS.ui.textPrimary }}>
+                    <div style={{ fontSize: "14px", fontWeight: "700", color: C.ui.text.primary }}>
                       ❤️ Community Loyalty
                     </div>
-                    <div style={{ fontSize: "11px", color: ((likeRatio !== null && likeRatio !== undefined) || (totalLikes !== null && totalLikes !== undefined)) ? COLORS.medium.primary : COLORS.ui.textSecondary, fontWeight: "600", marginTop: "2px" }}>
+                    <div style={{ fontSize: "11px", color: ((likeRatio !== null && likeRatio !== undefined) || (totalLikes !== null && totalLikes !== undefined)) ? C.medium.primary : C.ui.text.secondary, fontWeight: "600", marginTop: "2px" }}>
                       {getLoyaltyLabel(likeRatio)}
                     </div>
                   </div>
-                  <div style={{ fontSize: "24px", fontWeight: "700", color: metrics.community_loyalty?.score >= 70 ? COLORS.high.primary : COLORS.medium.primary }}>
+                  <div style={{ fontSize: "24px", fontWeight: "700", color: metrics.community_loyalty?.score >= 70 ? C.high.primary : C.medium.primary }}>
                     {Math.round(metrics.community_loyalty?.score || 0)}
                   </div>
                 </div>
-                <div style={{ fontSize: "11px", color: COLORS.ui.textSecondary, fontStyle: "italic", marginBottom: "8px" }}>
+                <div style={{ fontSize: "11px", color: C.ui.text.secondary, fontStyle: "italic", marginBottom: "8px" }}>
                   Views can be bought; engagement ratios prove real fans. High like-to-view ratio means the audience actually cares.
                 </div>
-                <div style={{ fontSize: "11px", color: COLORS.ui.textSecondary, marginBottom: "6px" }}>
+                <div style={{ fontSize: "11px", color: C.ui.text.secondary, marginBottom: "6px" }}>
                   Formula: Like-to-view ratio clamped between 0.5% (floor) and 5% (ceiling), scaled to 0-100
                 </div>
-                <div style={{ fontSize: "12px", color: COLORS.ui.textPrimary }}>
+                <div style={{ fontSize: "12px", color: C.ui.text.primary }}>
                   {((likeRatio !== null && likeRatio !== undefined) || (totalLikes !== null && totalLikes !== undefined)) ? (
                     (likeRatio !== null && likeRatio !== undefined) ? (
                       <div>
@@ -435,26 +437,26 @@ export const ChannelCredibilitySubTab = ({
               <div style={{ marginBottom: "8px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
                   <div>
-                    <div style={{ fontSize: "14px", fontWeight: "700", color: COLORS.ui.textPrimary }}>
+                    <div style={{ fontSize: "14px", fontWeight: "700", color: C.ui.text.primary }}>
                       🔄 Content Freshness
                     </div>
-                    <div style={{ fontSize: "11px", color: avgGapDays ? COLORS.medium.primary : COLORS.ui.textSecondary, fontWeight: "600", marginTop: "2px" }}>
+                    <div style={{ fontSize: "11px", color: avgGapDays ? C.medium.primary : C.ui.text.secondary, fontWeight: "600", marginTop: "2px" }}>
                       {getFreshnessLabel(avgGapDays)}
                     </div>
                   </div>
-                  <div style={{ fontSize: "24px", fontWeight: "700", color: metrics.content_freshness?.score >= 70 ? COLORS.high.primary : COLORS.medium.primary }}>
+                  <div style={{ fontSize: "24px", fontWeight: "700", color: metrics.content_freshness?.score >= 70 ? C.high.primary : C.medium.primary }}>
                     {Math.round(metrics.content_freshness?.score || 0)}
                   </div>
                 </div>
-                <div style={{ fontSize: "11px", color: COLORS.ui.textSecondary, fontStyle: "italic", marginBottom: "8px" }}>
+                <div style={{ fontSize: "11px", color: C.ui.text.secondary, fontStyle: "italic", marginBottom: "8px" }}>
                   Dead channels shouldn't be rated 'credible'. Active creators provide current, relevant information.
                 </div>
-                <div style={{ fontSize: "11px", color: COLORS.ui.textSecondary, marginBottom: "6px" }}>
+                <div style={{ fontSize: "11px", color: C.ui.text.secondary, marginBottom: "6px" }}>
                   Formula: Average upload gap in days, inverted and scaled (shorter gap = higher score)
                 </div>
-                <div style={{ fontSize: "12px", color: COLORS.ui.textPrimary }}>
+                <div style={{ fontSize: "12px", color: C.ui.text.primary }}>
                   <div>• Average Upload Gap: <strong>{avgGapDays ? `${avgGapDays.toFixed(1)} days` : "N/A"}</strong></div>
-                  <div style={{ fontSize: "10px", color: COLORS.ui.textSecondary, marginTop: "4px" }}>
+                  <div style={{ fontSize: "10px", color: C.ui.text.secondary, marginTop: "4px" }}>
                     (&lt;7d = Daily | &lt;30d = Weekly | &lt;90d = Monthly | &gt;90d = Dormant)
                   </div>
                 </div>
@@ -478,7 +480,7 @@ export const ChannelCredibilitySubTab = ({
               margin: "0 0 16px 0",
               fontSize: "16px",
               fontWeight: "600",
-              color: COLORS.ui.textPrimary
+              color: C.ui.text.primary
             }}>
             Channel Trust
           </h3>
@@ -495,22 +497,22 @@ export const ChannelCredibilitySubTab = ({
               alignItems: "center", 
               gap: "12px",
               padding: "16px 24px",
-              backgroundColor: COLORS.neutral.light,
+              backgroundColor: C.neutral.light,
               borderRadius: "12px",
-              border: `2px solid ${credibilityScore >= 70 ? COLORS.high.primary : credibilityScore >= 40 ? COLORS.medium.primary : COLORS.low.primary}`
+              border: `2px solid ${credibilityScore >= 70 ? C.high.primary : credibilityScore >= 40 ? C.medium.primary : C.low.primary}`
             }}>
               <div style={{
                 fontSize: "42px",
                 fontWeight: "700",
-                color: credibilityScore >= 70 ? COLORS.high.primary : credibilityScore >= 40 ? COLORS.medium.primary : COLORS.low.primary
+                color: credibilityScore >= 70 ? C.high.primary : credibilityScore >= 40 ? C.medium.primary : C.low.primary
               }}>
                 {credibilityScore}
               </div>
               <div style={{ textAlign: "left" }}>
-                <div style={{ fontSize: "11px", color: COLORS.ui.textSecondary, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                <div style={{ fontSize: "11px", color: C.ui.text.secondary, textTransform: "uppercase", letterSpacing: "0.5px" }}>
                   Channel Trust
                 </div>
-                <div style={{ fontSize: "14px", fontWeight: "600", color: COLORS.ui.textPrimary }}>
+                <div style={{ fontSize: "14px", fontWeight: "600", color: C.ui.text.primary }}>
                   out of 100
                 </div>
               </div>
@@ -601,7 +603,7 @@ export const ChannelCredibilitySubTab = ({
                       cy={centerY}
                       r={radius * level}
                       fill="none"
-                      stroke={COLORS.ui.border}
+                      stroke={C.ui.border}
                       strokeWidth="1"
                       opacity={0.3}
                     />
@@ -615,7 +617,7 @@ export const ChannelCredibilitySubTab = ({
                       y1={centerY}
                       x2={point.x}
                       y2={point.y}
-                      stroke={COLORS.ui.border}
+                      stroke={C.ui.border}
                       strokeWidth="1"
                       opacity={0.5}
                     />
@@ -662,7 +664,7 @@ export const ChannelCredibilitySubTab = ({
                         dominantBaseline="middle"
                         fontSize="10"
                         fontWeight="600"
-                        fill={COLORS.ui.textPrimary}
+                        fill={C.ui.text.primary}
                         style={{ 
                           userSelect: 'none',
                           maxWidth: '70px'
@@ -686,7 +688,7 @@ export const ChannelCredibilitySubTab = ({
               {/* Factor Details Table */}
               <div style={{ 
                 marginTop: "16px",
-                backgroundColor: COLORS.neutral.light,
+                backgroundColor: C.neutral.light,
                 borderRadius: "8px",
                 padding: "12px",
                 fontSize: "12px"
@@ -697,8 +699,8 @@ export const ChannelCredibilitySubTab = ({
                   gap: "8px",
                   fontWeight: "600",
                   paddingBottom: "8px",
-                  borderBottom: `1px solid ${COLORS.ui.border}`,
-                  color: COLORS.ui.textSecondary
+                  borderBottom: `1px solid ${C.ui.border}`,
+                  color: C.ui.text.secondary
                 }}>
                   <div>Metric Category</div>
                   <div style={{ textAlign: "right" }}>Score</div>
@@ -717,7 +719,7 @@ export const ChannelCredibilitySubTab = ({
                       }}>
                       <div style={{ 
                         fontWeight: "500", 
-                        color: COLORS.ui.textPrimary,
+                        color: C.ui.text.primary,
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap"
@@ -727,13 +729,13 @@ export const ChannelCredibilitySubTab = ({
                       <div style={{ 
                         textAlign: "right",
                         fontWeight: "700",
-                        color: factor.displayScore >= 70 ? COLORS.high.primary : factor.displayScore >= 40 ? COLORS.medium.primary : COLORS.low.primary
+                        color: factor.displayScore >= 70 ? C.high.primary : factor.displayScore >= 40 ? C.medium.primary : C.low.primary
                       }}>
                         {Math.round(factor.displayScore)}
                       </div>
                       <div style={{ 
                         textAlign: "right",
-                        color: COLORS.ui.textSecondary,
+                        color: C.ui.text.secondary,
                         fontSize: "11px",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
@@ -758,7 +760,7 @@ export const ChannelCredibilitySubTab = ({
               <div style={{ 
                 marginTop: "12px",
                 fontSize: "11px",
-                color: COLORS.ui.textSecondary,
+                color: C.ui.text.secondary,
                 textAlign: "center",
                 fontStyle: "italic"
               }}>
@@ -774,7 +776,7 @@ export const ChannelCredibilitySubTab = ({
   
   // If neither old nor new format, show error message
   return (
-    <div style={{ padding: "20px", textAlign: "center", color: COLORS.ui.textSecondary }}>
+    <div style={{ padding: "20px", textAlign: "center", color: C.ui.text.secondary }}>
       <p>Channel trust data is not available in a recognized format.</p>
     </div>
   )

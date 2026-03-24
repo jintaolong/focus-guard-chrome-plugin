@@ -1,143 +1,151 @@
-// FR-102 Tab 1: Summary & Score
-// Executive Summary, Trust Score, Channel Credibility Gauge, Bot Detection
+// FR-102 Tab 1: Overview
+// Executive Summary + Key Takeaways (no sub-tabs — claims and trust are now independent tabs)
 
 import { useState } from "react"
 import type { VideoAnalysis } from "~types/analysis"
-import { COLORS, getTrustScoreColor, getClickbaitVerdictColor } from "~lib/colors"
-import { OverviewSubTab } from "./OverviewSubTab"
-import { VideoCredibilitySubTab } from "./VideoCredibilitySubTab"
-import { ChannelCredibilitySubTab } from "./ChannelCredibilitySubTab"
+import { getClickbaitVerdictColor } from "~lib/colors"
+import { useTheme } from "~components/SidePanel"
 
 interface SummaryTabProps {
   analysis?: VideoAnalysis | null
   panelDock?: "left" | "right"
 }
 
-export const SummaryTab = ({ analysis, panelDock = "right" }: SummaryTabProps) => {
-  const [activeSubTab, setActiveSubTab] = useState<"overview" | "video" | "channel">("video")
-  const [isExecutiveSummaryExpanded, setIsExecutiveSummaryExpanded] = useState(false)
-  
+export const SummaryTab = ({ analysis }: SummaryTabProps) => {
+  const [isExpanded, setIsExpanded] = useState(false)
+  const { colors: C, mode } = useTheme()
+  const isDark = mode === "dark"
+
   if (!analysis) return null
-  
-  // Support both legacy and new data shapes
+
   const summary = (analysis.summary || {}) as any
-  
-  // Extract executive summary from analysis
-  const executiveSummary = analysis.executiveSummary || "This video has been analyzed by Focus Guard AI to assess its relevancy, credibility, and viewer insights based on comments, transcript, and metadata."
-  
-  // Extract key takeaways from summary (from summary/v2 response)
-  const keyTakeaways = summary.key_takeaways || summary.keyTakeaways || []
-  
-  // Channel trust data - support both old and new formats
-  // Priority: channelTrust (new) > channelCredibility (old)
-  const channelTrust = summary.channelTrust || analysis.channelTrust
-  const channelCredibility = summary.channelCredibility || analysis.channelCredibility || {}
-  
-  // Use new format if available, otherwise fall back to old format
-  const hasNewFormat = channelTrust && channelTrust.metrics
-  const displayData = hasNewFormat ? channelTrust : channelCredibility
-  const trustScore = hasNewFormat ? channelTrust.trust_score : (summary.trustScore ?? analysis.trustScore?.score ?? channelCredibility.score ?? 0)
-  const trustColor = getTrustScoreColor(trustScore)
+  const executiveSummary = analysis.executiveSummary || "This video has been analyzed by Comment Verdict AI."
+  const keyTakeaways: string[] = summary.key_takeaways || summary.keyTakeaways || []
   const verdictColor = getClickbaitVerdictColor(summary.clickbaitVerdict?.label ?? "unknown")
-  const trustFactors = hasNewFormat ? [] : (channelCredibility.factors || [])
+  const verdictColors = C[verdictColor] || C.neutral
+  // Dark mode: use more muted tones for exec summary header/takeaways
+  const execBg = isDark ? `${verdictColors.primary}22` : (verdictColors.light || C.ui.surface)
+  const execBorder = verdictColors.primary || C.ui.border
+  const execText = isDark ? verdictColors.primary : (verdictColors.text || C.ui.text.primary)
+  const isLong = executiveSummary.length > 200
+  const displayText = isLong && !isExpanded ? executiveSummary.slice(0, 200) + "…" : executiveSummary
 
-  // Claims list (normalize type for TS inference)
-  const claimsList = (summary.clickbaitVerdict?.claims || []) as any[]
-
-  // Sub-tab navigation
-  const subTabs = [
-    { id: "overview" as const, label: "Summary" },
-    { id: "video" as const, label: "Video Trust" },
-    { id: "channel" as const, label: "Channel Trust" }
-  ]
+  const creditCost = analysis.actualCommentsFetched ? Math.ceil(analysis.actualCommentsFetched / 100) : null
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", maxHeight: "calc(100vh - 120px)" }}>
-      {/* Sub-tab Navigation */}
+    <div style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "20px" }}>
+      {/* Comment Analysis Info */}
+      {(analysis.maxCommentsRequested || analysis.actualCommentsFetched) && (
+        <div style={{
+          padding: "12px 16px", borderRadius: "12px",
+          backgroundColor: isDark ? C.neutral.light : "#eff6ff", border: `1px solid ${isDark ? C.ui.border : "#bfdbfe"}`,
+          display: "flex", alignItems: "center", gap: "10px",
+          fontSize: "12px", color: isDark ? C.neutral.text : "#1e40af", fontWeight: "600",
+        }}>
+          <span style={{ fontSize: "16px" }}>📊</span>
+          <span>
+            {analysis.maxCommentsRequested && analysis.actualCommentsFetched
+              ? <>Requested: <strong>{analysis.maxCommentsRequested}</strong> · Analyzed: <strong>{analysis.actualCommentsFetched}</strong>{creditCost != null && <> · Cost: <strong>{creditCost} credit{creditCost !== 1 ? "s" : ""}</strong></>}</>
+              : analysis.actualCommentsFetched
+                ? <>Analyzed: <strong>{analysis.actualCommentsFetched}</strong> comments{creditCost != null && <> · Cost: <strong>{creditCost} credit{creditCost !== 1 ? "s" : ""}</strong></>}</>
+                : null}
+          </span>
+        </div>
+      )}
+
+      {/* Executive Summary */}
       <div style={{
-        display: "flex",
-        gap: "4px",
-        padding: "8px 12px 0 12px",
-        borderBottom: `2px solid ${COLORS.ui.border}`,
-        backgroundColor: COLORS.ui.background
+        borderRadius: "16px", border: `1px solid ${C.ui.border}`, overflow: "hidden",
+        backgroundColor: C.ui.background, boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
       }}>
-        {subTabs.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveSubTab(tab.id)}
-            style={{
-              flex: 1,
-              minWidth: 0,
-              padding: "12px 0",
-              fontSize: "14px",
-              fontWeight: "600",
-              color: activeSubTab === tab.id ? COLORS.neutral.primary : COLORS.ui.textSecondary,
-              backgroundColor: activeSubTab === tab.id ? COLORS.ui.surface : "transparent",
-              border: "none",
-              borderBottom: activeSubTab === tab.id ? `3px solid ${COLORS.neutral.primary}` : "3px solid transparent",
-              borderRadius: "6px 6px 0 0",
-              cursor: "pointer",
-              transition: "all 0.2s",
-              textAlign: "center"
+        <div style={{
+          padding: "10px 20px",
+          backgroundColor: execBg,
+          borderBottom: `1px solid ${execBorder}`,
+          fontSize: "10px", fontWeight: "900", textTransform: "uppercase" as const,
+          letterSpacing: "0.1em",
+          color: execText,
+        }}>
+          Executive Summary
+        </div>
+        <div style={{ padding: "20px" }}>
+          <p style={{ margin: 0, fontSize: "14px", lineHeight: "1.7", color: C.ui.text.primary, fontWeight: "500" }}>
+            {displayText}
+          </p>
+          {isLong && (
+            <button onClick={() => setIsExpanded(!isExpanded)} style={{
+              marginTop: "8px", padding: "4px 8px", fontSize: "12px",
+              color: C.neutral.primary, background: "none", border: "none",
+              cursor: "pointer", textDecoration: "underline",
             }}>
-            {tab.label}
-          </button>
-        ))}
-      </div>
+              {isExpanded ? "Show less" : "Show more"}
+            </button>
+          )}
+        </div>
 
-      {/* Sub-tab Content */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "24px" }}>
-        {activeSubTab === "overview" && (
-          <OverviewSubTab
-            executiveSummary={executiveSummary}
-            isExecutiveSummaryExpanded={isExecutiveSummaryExpanded}
-            setIsExecutiveSummaryExpanded={setIsExecutiveSummaryExpanded}
-            verdictColor={verdictColor}
-            verdictLabel={summary.clickbaitVerdict?.label}
-            keyTakeaways={keyTakeaways}
-            maxCommentsRequested={analysis.maxCommentsRequested}
-            actualCommentsFetched={analysis.actualCommentsFetched}
-          />
-        )}
-
-        {activeSubTab === "video" && (
-          <VideoCredibilitySubTab
-            summary={summary}
-            trustScore={trustScore}
-            verdictColor={verdictColor}
-            claimsList={claimsList}
-            videoId={analysis.videoId}
-            panelDock={panelDock}
-          />
-        )}
-
-        {activeSubTab === "channel" && (
-          analysis.channelCredibility || summary.channelCredibility || summary.channelTrust ? (
-            <ChannelCredibilitySubTab
-              channelCredibility={displayData}
-              credibilityScore={trustScore}
-              credibilityFactors={trustFactors}
-            />
-          ) : (
+        {/* Key Takeaways */}
+        {keyTakeaways.length > 0 && (
+          <div style={{
+            padding: "16px 20px",
+            borderTop: `1px solid ${execBorder}`,
+            backgroundColor: execBg,
+          }}>
             <div style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: "48px 24px",
-              color: COLORS.ui.text.secondary
+              fontSize: "10px", fontWeight: "900", textTransform: "uppercase" as const,
+              letterSpacing: "0.1em", marginBottom: "10px",
+              color: execText,
             }}>
-              <div style={{
-                fontSize: "32px",
-                marginBottom: "16px",
-                animation: "spin 1s linear infinite"
-              }}>⏳</div>
-              <p style={{ margin: 0, fontSize: "14px", fontWeight: "500" }}>Loading channel credibility...</p>
-              <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+              ✨ Key Takeaway{keyTakeaways.length > 1 ? "s" : ""}
             </div>
-          )
+            <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "8px" }}>
+              {keyTakeaways.map((item: string, i: number) => (
+                <li key={i} style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
+                  <span style={{
+                    marginTop: "6px", width: "6px", height: "6px", borderRadius: "50%", flexShrink: 0,
+                    backgroundColor: execBorder,
+                  }} />
+                  <span style={{ fontSize: "13px", fontWeight: "600", color: C.ui.text.primary, lineHeight: "1.5" }}>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </div>
+
+      {/* Stats row */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: "10px" }}>
+        {analysis.actualCommentsFetched && (
+          <StatCard label="Comments" value={analysis.actualCommentsFetched.toLocaleString()} colorKey="neutral" />
+        )}
+        {(analysis.channelTrust?.trust_score ?? analysis.channelCredibility?.trust_score) != null && (
+          <StatCard label="Channel Trust" value={`${Math.round(analysis.channelTrust?.trust_score ?? analysis.channelCredibility?.trust_score ?? 0)}/100`} colorKey="neutral" />
+        )}
+        {summary.clickbaitVerdict?.claims?.length > 0 && (
+          <StatCard label="Key Insights" value={String(analysis.topicClustersData?.clusters?.length || summary.clickbaitVerdict.claims.length)} colorKey="medium" />
+        )}
+        {(() => {
+          const dist = (analysis as any)?.sentiment?.distribution
+          if (!dist) return null
+          const total = dist.totalCommentsAnalyzed || (dist.positive + dist.neutral + dist.negative + (dist.mixed || 0))
+          if (!total) return null
+          const posPct = Math.round((dist.positive / total) * 100)
+          return <StatCard label="Positive Sentiment" value={`${posPct}%`} colorKey="high" />
+        })()}
+        {analysis.contentGaps?.unansweredQuestions?.length != null && (
+          <StatCard label="Gaps" value={String(analysis.contentGaps.unansweredQuestions.length)} colorKey="low" />
+        )}
+      </div>
+    </div>
+  )
+}
+
+const StatCard = ({ label, value, colorKey }: { label: string; value: string; colorKey: "high" | "medium" | "low" | "neutral" }) => {
+  const { colors: C } = useTheme()
+  const ck = C[colorKey]
+  return (
+    <div style={{ padding: "12px", borderRadius: "12px", backgroundColor: ck.light, border: `1px solid ${ck.primary}` }}>
+      <div style={{ fontSize: "10px", fontWeight: "700", textTransform: "uppercase" as const, color: ck.text }}>{label}</div>
+      <div style={{ fontSize: "18px", fontWeight: "900", color: ck.text, marginTop: "2px" }}>{value}</div>
     </div>
   )
 }
