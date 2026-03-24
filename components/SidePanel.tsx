@@ -302,7 +302,7 @@ export const SidePanel = ({
               flexShrink: 0,
             }}>
               <img
-                src={chrome.runtime.getURL("assets/blue.png")}
+                src={chrome.runtime.getURL("assets/stroke.png")}
                 alt="CV"
                 style={{ width: "20px", height: "20px" }}
               />
