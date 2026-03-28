@@ -2016,6 +2016,7 @@ const ContentScript = () => {
         // direct summary / fallback path: summaryData.share_code
         snapshotShareCode: cd?.share_code ?? summaryData?.share_code ?? null,
         snapshotId: summaryData?.snapshot_id ?? cd?.snapshot_id ?? null,
+        isFullyPublic: summaryData?.is_fully_public === true,
         // Legacy shape support
         summary: minimalSummary,
         trustScore: { score: verdictCertainty },

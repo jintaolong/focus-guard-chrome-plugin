@@ -311,6 +311,10 @@ export interface VideoAnalysis {
   /** Integer snapshot ID from the backend; used as a fallback report URL path segment
    *  until the backend supplies a UUID `share_code`. */
   snapshotId?: number | null
+  /** When true the snapshot owner has opted in to full public access.
+   *  All tier gates (BlurredContent / locked tabs) are bypassed, mirroring
+   *  the web portal's isFullyPublic behaviour. */
+  isFullyPublic?: boolean
 
   analyzedAt?: string
   isStale?: boolean

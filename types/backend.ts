@@ -364,6 +364,8 @@ export interface SummaryResponseV2 {
   confidence?: string | null
   max_comments_requested?: number | null // Number of comments requested for analysis
   actual_comments_fetched?: number | null // Number of comments actually analyzed
+  /** When true, the snapshot owner has opted in to full public access — bypass all tier gates */
+  is_fully_public?: boolean
 }
 
 export interface SummaryStatusResponse {
