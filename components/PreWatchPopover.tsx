@@ -315,22 +315,36 @@ export const PreWatchPopover = ({
               </h4>
               {analysis?.sentiment?.distribution ? (
                 <>
-                  <div style={{ display: "flex", gap: "8px" }}>
-                    <div style={{ flex: analysis.sentiment.distribution.positive || 0, height: "8px", backgroundColor: getColorSet("high").primary, borderRadius: "4px" }} />
-                    <div style={{ flex: analysis.sentiment.distribution.neutral || 0, height: "8px", backgroundColor: getColorSet("neutral").primary, borderRadius: "4px" }} />
-                    <div style={{ flex: analysis.sentiment.distribution.negative || 0, height: "8px", backgroundColor: getColorSet("low").primary, borderRadius: "4px" }} />
-                  </div>
-                  <div style={{ display: "flex", gap: "16px", marginTop: "8px", fontSize: "12px" }}>
-                    <span>
-                      <span style={{ color: getColorSet("high").primary }}>●</span> {Math.round(analysis.sentiment.distribution.positive || 0)}% Positive
-                    </span>
-                    <span>
-                      <span style={{ color: getColorSet("neutral").primary }}>●</span> {Math.round(analysis.sentiment.distribution.neutral || 0)}% Neutral
-                    </span>
-                    <span>
-                      <span style={{ color: getColorSet("low").primary }}>●</span> {Math.round(analysis.sentiment.distribution.negative || 0)}% Negative
-                    </span>
-                  </div>
+                  {(() => {
+                    const d = analysis.sentiment!.distribution
+                    const pCount = d.positive || 0
+                    const neuCount = d.neutral || 0
+                    const negCount = d.negative || 0
+                    const tot = pCount + neuCount + negCount || 1
+                    const pPct = Math.round((pCount / tot) * 100)
+                    const neuPct = Math.round((neuCount / tot) * 100)
+                    const negPct = 100 - pPct - neuPct
+                    return (
+                      <>
+                        <div style={{ display: "flex", gap: "8px" }}>
+                          <div style={{ flex: pCount || 0, height: "8px", backgroundColor: getColorSet("high").primary, borderRadius: "4px" }} />
+                          <div style={{ flex: neuCount || 0, height: "8px", backgroundColor: getColorSet("neutral").primary, borderRadius: "4px" }} />
+                          <div style={{ flex: negCount || 0, height: "8px", backgroundColor: getColorSet("low").primary, borderRadius: "4px" }} />
+                        </div>
+                        <div style={{ display: "flex", gap: "16px", marginTop: "8px", fontSize: "12px" }}>
+                          <span>
+                            <span style={{ color: getColorSet("high").primary }}>●</span> {pPct}% Positive
+                          </span>
+                          <span>
+                            <span style={{ color: getColorSet("neutral").primary }}>●</span> {neuPct}% Neutral
+                          </span>
+                          <span>
+                            <span style={{ color: getColorSet("low").primary }}>●</span> {negPct}% Negative
+                          </span>
+                        </div>
+                      </>
+                    )
+                  })()}
                   {analysis.sentiment.distribution.totalCommentsAnalyzed != null && analysis.sentiment.distribution.totalCommentsAnalyzed > 0 && (
                     <div style={{ marginTop: "8px", fontSize: "11px", color: COLORS.ui.textSecondary }}>
                       Based on {analysis.sentiment.distribution.totalCommentsAnalyzed.toLocaleString()} comments analyzed

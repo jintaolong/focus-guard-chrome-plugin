@@ -196,14 +196,37 @@ export const SidePanel = ({
   const sentimentPcts = useMemo(() => {
     const dist = (analysis as any)?.sentiment?.distribution
     if (!dist) return null
-    const total = dist.totalCommentsAnalyzed || ((dist.positive || 0) + (dist.neutral || 0) + (dist.negative || 0) + (dist.mixed || 0))
+    // dist.positive/neutral/negative are raw counts
+    const pos = dist.positive || 0
+    const neu = dist.neutral || 0
+    const neg = dist.negative || 0
+    const mix = dist.mixed || 0
+    const total = pos + neu + neg + mix
     if (total === 0) return null
-    return {
-      positive: Math.round(((dist.positive || 0) / total) * 100),
-      neutral: Math.round(((dist.neutral || 0) / total) * 100),
-      negative: Math.round(((dist.negative || 0) / total) * 100),
-      mixed: Math.round(((dist.mixed || 0) / total) * 100),
+    // Largest-remainder method to guarantee percentages sum to 100
+    const rawPos = (pos / total) * 100
+    const rawNeu = (neu / total) * 100
+    const rawNeg = (neg / total) * 100
+    const rawMix = (mix / total) * 100
+    let pPos = Math.floor(rawPos)
+    let pNeu = Math.floor(rawNeu)
+    let pNeg = Math.floor(rawNeg)
+    let pMix = Math.floor(rawMix)
+    const rem = 100 - pPos - pNeu - pNeg - pMix
+    const fracs = [
+      { key: 'pos', frac: rawPos - pPos },
+      { key: 'neu', frac: rawNeu - pNeu },
+      { key: 'neg', frac: rawNeg - pNeg },
+      { key: 'mix', frac: rawMix - pMix },
+    ].sort((a, b) => b.frac - a.frac)
+    for (let i = 0; i < rem; i++) {
+      const k = fracs[i].key
+      if (k === 'pos') pPos++
+      else if (k === 'neu') pNeu++
+      else if (k === 'neg') pNeg++
+      else pMix++
     }
+    return { positive: pPos, neutral: pNeu, negative: pNeg, mixed: pMix }
   }, [analysis])
 
   const likelyChannelId = (name?: string | null): boolean =>

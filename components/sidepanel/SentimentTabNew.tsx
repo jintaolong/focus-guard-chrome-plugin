@@ -34,15 +34,36 @@ export const SentimentTabNew = ({ analysis }: SentimentTabNewProps) => {
   }
 
   const dist = sentimentData.distribution
-  const total = dist.totalCommentsAnalyzed || (dist.positive + dist.neutral + dist.negative + (dist.mixed || 0)) || 1
-  const positivePct = Math.round((dist.positive / total) * 100)
-  const neutralPct = Math.round((dist.neutral / total) * 100)
-  const negativePct = Math.round((dist.negative / total) * 100)
-  const mixedPct = dist.mixed ? Math.round((dist.mixed / total) * 100) : 0
+  // dist.positive/neutral/negative are raw counts; totalCommentsAnalyzed is their sum
   const positiveCount = Math.max(0, Math.round(Number(dist.positive || 0)))
   const neutralCount = Math.max(0, Math.round(Number(dist.neutral || 0)))
   const negativeCount = Math.max(0, Math.round(Number(dist.negative || 0)))
   const mixedCount = Math.max(0, Math.round(Number(dist.mixed || 0)))
+  const total = positiveCount + neutralCount + negativeCount + mixedCount || 1
+
+  // Compute percentages using largest-remainder method to guarantee sum = 100%
+  const rawPos = (positiveCount / total) * 100
+  const rawNeu = (neutralCount / total) * 100
+  const rawNeg = (negativeCount / total) * 100
+  const rawMix = (mixedCount / total) * 100
+  let positivePct = Math.floor(rawPos)
+  let neutralPct = Math.floor(rawNeu)
+  let negativePct = Math.floor(rawNeg)
+  let mixedPct = Math.floor(rawMix)
+  const pctRemainder = 100 - positivePct - neutralPct - negativePct - mixedPct
+  const pctFracs = [
+    { key: 'pos', frac: rawPos - positivePct },
+    { key: 'neu', frac: rawNeu - neutralPct },
+    { key: 'neg', frac: rawNeg - negativePct },
+    { key: 'mix', frac: rawMix - mixedPct },
+  ].sort((a, b) => b.frac - a.frac)
+  for (let i = 0; i < pctRemainder; i++) {
+    const k = pctFracs[i].key
+    if (k === 'pos') positivePct++
+    else if (k === 'neu') neutralPct++
+    else if (k === 'neg') negativePct++
+    else mixedPct++
+  }
 
   const examples = dist.exampleComments || {}
   const posExamples: (string | CommentObject)[] = examples.positive || []

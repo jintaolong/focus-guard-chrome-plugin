@@ -1049,16 +1049,16 @@ const ContentScript = () => {
             const positiveCount = typeof data.data.positive === 'number' ? data.data.positive : (data.data.positive?.count ?? 0)
             const neutralCount = typeof data.data.neutral === 'number' ? data.data.neutral : (data.data.neutral?.count ?? 0)
             const negativeCount = typeof data.data.negative === 'number' ? data.data.negative : (data.data.negative?.count ?? 0)
-            const totalComments = data.data.total_comments ?? (positiveCount + neutralCount + negativeCount)
+            const analyzedTotal = positiveCount + neutralCount + negativeCount
             const positiveComments = typeof data.data.positive === 'object' ? data.data.positive?.top_comments ?? [] : []
             const neutralComments = typeof data.data.neutral === 'object' ? data.data.neutral?.top_comments ?? [] : []
             const negativeComments = typeof data.data.negative === 'object' ? data.data.negative?.top_comments ?? [] : []
 
             return {
-              positive: totalComments > 0 ? (positiveCount / totalComments) * 100 : 0,
-              neutral: totalComments > 0 ? (neutralCount / totalComments) * 100 : 0,
-              negative: totalComments > 0 ? (negativeCount / totalComments) * 100 : 0,
-              totalCommentsAnalyzed: totalComments,
+              positive: positiveCount,
+              neutral: neutralCount,
+              negative: negativeCount,
+              totalCommentsAnalyzed: analyzedTotal,
               exampleComments: { positive: positiveComments, neutral: neutralComments, negative: negativeComments }
             }
           }
@@ -1911,7 +1911,7 @@ const ContentScript = () => {
         const positiveCount = typeof sentimentData.data.positive === 'number' ? sentimentData.data.positive : (sentimentData.data.positive?.count ?? 0)
         const neutralCount = typeof sentimentData.data.neutral === 'number' ? sentimentData.data.neutral : (sentimentData.data.neutral?.count ?? 0)
         const negativeCount = typeof sentimentData.data.negative === 'number' ? sentimentData.data.negative : (sentimentData.data.negative?.count ?? 0)
-        const totalComments = sentimentData.data.total_comments ?? (positiveCount + neutralCount + negativeCount)
+        const analyzedTotal = positiveCount + neutralCount + negativeCount
         
         // Extract top comments
         const positiveComments = typeof sentimentData.data.positive === 'object' ? sentimentData.data.positive?.top_comments ?? [] : []
@@ -1919,10 +1919,10 @@ const ContentScript = () => {
         const negativeComments = typeof sentimentData.data.negative === 'object' ? sentimentData.data.negative?.top_comments ?? [] : []
         
         return {
-          positive: totalComments > 0 ? (positiveCount / totalComments) * 100 : 0,
-          neutral: totalComments > 0 ? (neutralCount / totalComments) * 100 : 0,
-          negative: totalComments > 0 ? (negativeCount / totalComments) * 100 : 0,
-          totalCommentsAnalyzed: totalComments,
+          positive: positiveCount,
+          neutral: neutralCount,
+          negative: negativeCount,
+          totalCommentsAnalyzed: analyzedTotal,
           exampleComments: {
             positive: positiveComments,
             neutral: neutralComments,
