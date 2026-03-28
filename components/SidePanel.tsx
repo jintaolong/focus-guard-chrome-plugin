@@ -684,7 +684,8 @@ export const SidePanel = ({
             overflowY: "auto",
             backgroundColor: C.ui.background,
           }}>
-          {isLoading ? (
+          {isLoading && !analysis ? (
+            // ── Full loading screen for fresh (first-time) analysis ──
             <div style={{ padding: "64px 24px", textAlign: "center" }}>
               <div style={{
                 width: "56px", height: "56px",
@@ -707,14 +708,73 @@ export const SidePanel = ({
               </p>
               <style>{`@keyframes cv-spin { to { transform: rotate(360deg); } }`}</style>
             </div>
-          ) : !analysis ? (
-            <div style={{ padding: "64px 24px", textAlign: "center" }}>
-              <p style={{ margin: 0, fontSize: "16px", fontWeight: "600", color: C.ui.text.secondary }}>
-                No analysis data available
-              </p>
-            </div>
           ) : (
-            <div style={{ maxWidth: "900px", margin: "0 auto" }}>
+            <>
+              {/* ── Inline refresh progress banner (force-refresh while panel is open) ── */}
+              {isLoading && analysis && (
+                <div style={{
+                  position: "sticky",
+                  top: 0,
+                  zIndex: 10,
+                  backgroundColor: themeMode === "dark" ? "#1e3a5f" : "#dbeafe",
+                  borderBottom: `1px solid ${themeMode === "dark" ? "#2563eb55" : "#93c5fd"}`,
+                  padding: "10px 20px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "12px",
+                }}>
+                  <div style={{
+                    width: "16px", height: "16px", flexShrink: 0,
+                    border: "2px solid rgba(37,99,235,0.3)",
+                    borderTopColor: "#2563eb",
+                    borderRadius: "50%",
+                    animation: "cv-spin 0.8s linear infinite",
+                  }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+                      <span style={{ fontSize: "12px", fontWeight: "600", color: themeMode === "dark" ? "#93c5fd" : "#1d4ed8" }}>
+                        {progressMessage || "Re-analyzing video..."}
+                      </span>
+                      {progressPercent != null && (
+                        <span style={{ fontSize: "12px", fontWeight: "700", color: "#2563eb" }}>
+                          {progressPercent}%
+                        </span>
+                      )}
+                    </div>
+                    <div style={{
+                      width: "100%", height: "4px", borderRadius: "2px",
+                      backgroundColor: themeMode === "dark" ? "rgba(37,99,235,0.2)" : "#bfdbfe",
+                      overflow: "hidden",
+                    }}>
+                      <div style={{
+                        height: "100%", borderRadius: "2px",
+                        backgroundColor: "#2563eb",
+                        width: progressPercent != null ? `${progressPercent}%` : "30%",
+                        transition: "width 0.4s ease",
+                        ...(progressPercent == null ? {
+                          animation: "cv-indeterminate 1.4s ease-in-out infinite",
+                        } : {}),
+                      }} />
+                    </div>
+                  </div>
+                  <style>{`
+                    @keyframes cv-spin { to { transform: rotate(360deg); } }
+                    @keyframes cv-indeterminate {
+                      0% { transform: translateX(-100%); width: 40%; }
+                      50% { transform: translateX(150%); width: 40%; }
+                      100% { transform: translateX(150%); width: 40%; }
+                    }
+                  `}</style>
+                </div>
+              )}
+              {!analysis ? (
+                <div style={{ padding: "64px 24px", textAlign: "center" }}>
+                  <p style={{ margin: 0, fontSize: "16px", fontWeight: "600", color: C.ui.text.secondary }}>
+                    No analysis data available
+                  </p>
+                </div>
+              ) : (
+                <div style={{ maxWidth: "900px", margin: "0 auto" }}>
               {activeTab === "overview" && <SummaryTab analysis={analysis} panelDock={dock} />}
               {activeTab === "claims" && (
                 <ClaimsTabNew analysis={analysis} panelDock={dock} />
@@ -772,7 +832,9 @@ export const SidePanel = ({
                   onLoadHistoryItem={onLoadHistoryItem}
                 />
               )}
-            </div>
+                </div>
+              )}
+            </>
           )}
         </div>
 
