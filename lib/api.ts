@@ -348,6 +348,13 @@ export class FocusGuardAPI {
     return this.fetchWithAuth<ReportMetadata>(`/videos/report-metadata/${videoId}`)
   }
 
+  /**
+   * Get snapshot metadata by snapshot_id to check is_fully_public status
+   */
+  static async getSnapshotMetadata(snapshotId: number): Promise<any> {
+    return this.fetchWithAuth<any>(`/videos/snapshots/${snapshotId}`)
+  }
+
   // ============================================================================
   // Async Job APIs (for first-time heavy analysis)
   // ============================================================================

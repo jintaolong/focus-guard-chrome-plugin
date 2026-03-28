@@ -1595,7 +1595,8 @@ const ContentScript = () => {
               key_takeaways: cd.summary.key_takeaways,
               max_comments_requested: cd.max_comments_requested ?? null,
               actual_comments_fetched: cd.actual_comments_fetched ?? null,
-              confidence: null
+              confidence: null,
+              is_fully_public: cd.is_fully_public ?? undefined
             }
             console.log("✅ Summary extracted from job result data")
           } else {
@@ -2003,6 +2004,22 @@ const ContentScript = () => {
         (apiChannelName && !likelyChannelId(apiChannelName) ? apiChannelName : null) ||
         pageChannelName ||
         apiChannelName
+      
+      // Fetch snapshot metadata to get is_fully_public status
+      let isFullyPublicFromMetadata = false
+      if (summaryData?.snapshot_id) {
+        try {
+          const snapshotMetadata = await FocusGuardAPI.getSnapshotMetadata(summaryData.snapshot_id)
+          const metadata = snapshotMetadata?.snapshot_metadata || snapshotMetadata
+          isFullyPublicFromMetadata = metadata?.is_fully_public === true
+          if (summaryData) {
+            summaryData.is_fully_public = isFullyPublicFromMetadata
+          }
+        } catch (error) {
+          console.warn("Failed to fetch snapshot metadata for is_fully_public status:", error)
+          // Not critical - continue without it
+        }
+      }
       
       const videoAnalysisData = {
         // Video identification
