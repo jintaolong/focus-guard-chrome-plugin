@@ -196,14 +196,37 @@ export const SidePanel = ({
   const sentimentPcts = useMemo(() => {
     const dist = (analysis as any)?.sentiment?.distribution
     if (!dist) return null
-    const total = dist.totalCommentsAnalyzed || ((dist.positive || 0) + (dist.neutral || 0) + (dist.negative || 0) + (dist.mixed || 0))
+    // dist.positive/neutral/negative are raw counts
+    const pos = dist.positive || 0
+    const neu = dist.neutral || 0
+    const neg = dist.negative || 0
+    const mix = dist.mixed || 0
+    const total = pos + neu + neg + mix
     if (total === 0) return null
-    return {
-      positive: Math.round(((dist.positive || 0) / total) * 100),
-      neutral: Math.round(((dist.neutral || 0) / total) * 100),
-      negative: Math.round(((dist.negative || 0) / total) * 100),
-      mixed: Math.round(((dist.mixed || 0) / total) * 100),
+    // Largest-remainder method to guarantee percentages sum to 100
+    const rawPos = (pos / total) * 100
+    const rawNeu = (neu / total) * 100
+    const rawNeg = (neg / total) * 100
+    const rawMix = (mix / total) * 100
+    let pPos = Math.floor(rawPos)
+    let pNeu = Math.floor(rawNeu)
+    let pNeg = Math.floor(rawNeg)
+    let pMix = Math.floor(rawMix)
+    const rem = 100 - pPos - pNeu - pNeg - pMix
+    const fracs = [
+      { key: 'pos', frac: rawPos - pPos },
+      { key: 'neu', frac: rawNeu - pNeu },
+      { key: 'neg', frac: rawNeg - pNeg },
+      { key: 'mix', frac: rawMix - pMix },
+    ].sort((a, b) => b.frac - a.frac)
+    for (let i = 0; i < rem; i++) {
+      const k = fracs[i].key
+      if (k === 'pos') pPos++
+      else if (k === 'neu') pNeu++
+      else if (k === 'neg') pNeg++
+      else pMix++
     }
+    return { positive: pPos, neutral: pNeu, negative: pNeg, mixed: pMix }
   }, [analysis])
 
   const likelyChannelId = (name?: string | null): boolean =>
@@ -221,15 +244,32 @@ export const SidePanel = ({
   const claimsCount = (analysis?.summary as any)?.clickbaitVerdict?.claims?.length ?? 0
   const gapsCount = analysis?.contentGaps?.unansweredQuestions?.length ?? 0
   const insightsCount = analysis?.topicClustersData?.clusters?.length ?? 0
-  const sentimentIsLocked = !!(analysis as any)?.sentiment?.tierRestriction
-  const insightsIsLocked = !!(analysis as any)?.viewerInsights?.tierRestriction
-  const gapsIsLocked = !!(analysis as any)?.contentGaps?.tierRestriction
-  const reportIsLocked = !!(analysis as any)?.reportInfo?.tierRestriction
+  const isFullyPublic = !!(analysis as any)?.isFullyPublic
 
-  const sentimentRequiredTier = (analysis as any)?.sentiment?.tierRestriction?.required_tier as "starter" | "pro" | undefined
-  const insightsRequiredTier = (analysis as any)?.viewerInsights?.tierRestriction?.required_tier as "starter" | "pro" | undefined
-  const gapsRequiredTier = (analysis as any)?.contentGaps?.tierRestriction?.required_tier as "starter" | "pro" | undefined
-  const reportRequiredTier = (analysis as any)?.reportInfo?.tierRestriction?.required_tier as "starter" | "pro" | undefined
+  const sentimentIsLocked = !isFullyPublic && !!(analysis as any)?.sentiment?.tierRestriction
+  const insightsIsLocked = !isFullyPublic && !!(analysis as any)?.viewerInsights?.tierRestriction
+  const gapsIsLocked = !isFullyPublic && !!(analysis as any)?.contentGaps?.tierRestriction
+  const reportIsLocked = !isFullyPublic && !!(analysis as any)?.reportInfo?.tierRestriction
+
+  const sentimentRequiredTier = sentimentIsLocked ? (analysis as any)?.sentiment?.tierRestriction?.required_tier as "starter" | "pro" | undefined : undefined
+  const insightsRequiredTier = insightsIsLocked ? (analysis as any)?.viewerInsights?.tierRestriction?.required_tier as "starter" | "pro" | undefined : undefined
+  const gapsRequiredTier = gapsIsLocked ? (analysis as any)?.contentGaps?.tierRestriction?.required_tier as "starter" | "pro" | undefined : undefined
+  const reportRequiredTier = reportIsLocked ? (analysis as any)?.reportInfo?.tierRestriction?.required_tier as "starter" | "pro" | undefined : undefined
+
+  // When the snapshot is fully public, strip all tier restrictions from the analysis
+  // before passing it to child components — mirrors the web portal canView(isFullyPublic) pattern.
+  const displayAnalysis = useMemo((): VideoAnalysis | null => {
+    if (!analysis || !isFullyPublic) return analysis
+    return {
+      ...analysis,
+      sentiment: analysis.sentiment ? { ...analysis.sentiment, tierRestriction: undefined } : analysis.sentiment,
+      contentGaps: analysis.contentGaps ? { ...analysis.contentGaps, tierRestriction: undefined } : analysis.contentGaps,
+      viewerInsights: (analysis.viewerInsights && typeof analysis.viewerInsights === 'object' && !Array.isArray(analysis.viewerInsights))
+        ? { ...(analysis.viewerInsights as any), tierRestriction: undefined }
+        : analysis.viewerInsights,
+      reportInfo: analysis.reportInfo ? { ...analysis.reportInfo, tierRestriction: undefined } : analysis.reportInfo,
+    }
+  }, [analysis, isFullyPublic])
 
   const tabs: { id: TabId; label: string; icon: React.ReactNode; count?: number; locked?: boolean; requiredTier?: "starter" | "pro" }[] = [
     { id: "overview",   label: "Overview",    icon: <LayoutGrid size={tabIconSize} /> },
@@ -661,7 +701,8 @@ export const SidePanel = ({
             overflowY: "auto",
             backgroundColor: C.ui.background,
           }}>
-          {isLoading ? (
+          {isLoading && !analysis ? (
+            // ── Full loading screen for fresh (first-time) analysis ──
             <div style={{ padding: "64px 24px", textAlign: "center" }}>
               <div style={{
                 width: "56px", height: "56px",
@@ -684,14 +725,73 @@ export const SidePanel = ({
               </p>
               <style>{`@keyframes cv-spin { to { transform: rotate(360deg); } }`}</style>
             </div>
-          ) : !analysis ? (
-            <div style={{ padding: "64px 24px", textAlign: "center" }}>
-              <p style={{ margin: 0, fontSize: "16px", fontWeight: "600", color: C.ui.text.secondary }}>
-                No analysis data available
-              </p>
-            </div>
           ) : (
-            <div style={{ maxWidth: "900px", margin: "0 auto" }}>
+            <>
+              {/* ── Inline refresh progress banner (force-refresh while panel is open) ── */}
+              {isLoading && analysis && (
+                <div style={{
+                  position: "sticky",
+                  top: 0,
+                  zIndex: 10,
+                  backgroundColor: themeMode === "dark" ? "#1e3a5f" : "#dbeafe",
+                  borderBottom: `1px solid ${themeMode === "dark" ? "#2563eb55" : "#93c5fd"}`,
+                  padding: "10px 20px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "12px",
+                }}>
+                  <div style={{
+                    width: "16px", height: "16px", flexShrink: 0,
+                    border: "2px solid rgba(37,99,235,0.3)",
+                    borderTopColor: "#2563eb",
+                    borderRadius: "50%",
+                    animation: "cv-spin 0.8s linear infinite",
+                  }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+                      <span style={{ fontSize: "12px", fontWeight: "600", color: themeMode === "dark" ? "#93c5fd" : "#1d4ed8" }}>
+                        {progressMessage || "Re-analyzing video..."}
+                      </span>
+                      {progressPercent != null && (
+                        <span style={{ fontSize: "12px", fontWeight: "700", color: "#2563eb" }}>
+                          {progressPercent}%
+                        </span>
+                      )}
+                    </div>
+                    <div style={{
+                      width: "100%", height: "4px", borderRadius: "2px",
+                      backgroundColor: themeMode === "dark" ? "rgba(37,99,235,0.2)" : "#bfdbfe",
+                      overflow: "hidden",
+                    }}>
+                      <div style={{
+                        height: "100%", borderRadius: "2px",
+                        backgroundColor: "#2563eb",
+                        width: progressPercent != null ? `${progressPercent}%` : "30%",
+                        transition: "width 0.4s ease",
+                        ...(progressPercent == null ? {
+                          animation: "cv-indeterminate 1.4s ease-in-out infinite",
+                        } : {}),
+                      }} />
+                    </div>
+                  </div>
+                  <style>{`
+                    @keyframes cv-spin { to { transform: rotate(360deg); } }
+                    @keyframes cv-indeterminate {
+                      0% { transform: translateX(-100%); width: 40%; }
+                      50% { transform: translateX(150%); width: 40%; }
+                      100% { transform: translateX(150%); width: 40%; }
+                    }
+                  `}</style>
+                </div>
+              )}
+              {!analysis ? (
+                <div style={{ padding: "64px 24px", textAlign: "center" }}>
+                  <p style={{ margin: 0, fontSize: "16px", fontWeight: "600", color: C.ui.text.secondary }}>
+                    No analysis data available
+                  </p>
+                </div>
+              ) : (
+                <div style={{ maxWidth: "900px", margin: "0 auto" }}>
               {activeTab === "overview" && <SummaryTab analysis={analysis} panelDock={dock} />}
               {activeTab === "claims" && (
                 <ClaimsTabNew analysis={analysis} panelDock={dock} />
@@ -720,28 +820,28 @@ export const SidePanel = ({
               )}
               {activeTab === "sentiment" && (
                 hasSentimentDataOrRestriction ? (
-                  <SentimentTabNew analysis={analysis} panelDock={dock} />
+                  <SentimentTabNew analysis={displayAnalysis!} panelDock={dock} />
                 ) : (
                   <LoadingPlaceholder label="Loading sentiment analysis..." colors={C} />
                 )
               )}
               {activeTab === "insights" && (
                 (analysis.topicClustersData || (analysis as any)?.viewerInsights?.tierRestriction) ? (
-                  <InsightsTabNew analysis={analysis} panelDock={dock} />
+                  <InsightsTabNew analysis={displayAnalysis!} panelDock={dock} />
                 ) : (
                   <LoadingPlaceholder label="Loading viewer insights..." colors={C} />
                 )
               )}
               {activeTab === "gaps" && (
                 hasContentGapsDataOrRestriction ? (
-                  <GapsTabNew analysis={analysis} panelDock={dock} />
+                  <GapsTabNew analysis={displayAnalysis!} panelDock={dock} />
                 ) : (
                   <LoadingPlaceholder label="Loading content gaps..." colors={C} />
                 )
               )}
               {activeTab === "report" && (
                 <ReportTab
-                  analysis={analysis}
+                  analysis={displayAnalysis!}
                   history={history}
                   onDownloadReport={onDownloadReport}
                   onReAnalyze={onReAnalyze}
@@ -749,7 +849,9 @@ export const SidePanel = ({
                   onLoadHistoryItem={onLoadHistoryItem}
                 />
               )}
-            </div>
+                </div>
+              )}
+            </>
           )}
         </div>
 

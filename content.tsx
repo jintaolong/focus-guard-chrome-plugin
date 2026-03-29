@@ -783,6 +783,71 @@ const ContentScript = () => {
         
         const relevancyData = coreResults[0].status === 'fulfilled' ? coreResults[0].value : null
         const summaryData = coreResults[1].status === 'fulfilled' ? coreResults[1].value : null
+        let isFullyPublicSnapshot = (summaryData as any)?.is_fully_public === true
+        let publicReportBundle: any = null
+        console.log("🔍 [prefetch] summary snapshot hints:", {
+          snapshot_id: (summaryData as any)?.snapshot_id,
+          is_fully_public: (summaryData as any)?.is_fully_public,
+          share_code: (summaryData as any)?.share_code
+        })
+
+        if (summaryData?.snapshot_id) {
+          try {
+            console.log(`🔍 [prefetch] Fetching snapshot metadata for snapshot_id ${summaryData.snapshot_id}...`)
+            const snapshotMetadata = await FocusGuardAPI.getSnapshotMetadata(summaryData.snapshot_id)
+            const metadata = (snapshotMetadata as any)?.snapshot_metadata || snapshotMetadata
+            isFullyPublicSnapshot = metadata?.is_fully_public === true
+            ;(summaryData as any).is_fully_public = isFullyPublicSnapshot
+            console.log("🔍 [prefetch] is_fully_public from metadata:", isFullyPublicSnapshot)
+          } catch (error) {
+            console.warn("❌ [prefetch] Failed to fetch snapshot metadata for is_fully_public status:", error)
+            try {
+              const shareCode = (summaryData as any)?.share_code
+              if (shareCode) {
+                console.log(`🔍 [prefetch] Trying public report fallback via share_code ${shareCode}...`)
+                const publicReport = await FocusGuardAPI.getPublicReportByShareToken(shareCode)
+                publicReportBundle = publicReport
+                const publicMeta = (publicReport as any)?.snapshot_metadata || publicReport
+                isFullyPublicSnapshot = publicMeta?.is_fully_public === true
+                ;(summaryData as any).is_fully_public = isFullyPublicSnapshot
+                console.log("🔍 [prefetch] is_fully_public from public report fallback:", isFullyPublicSnapshot)
+              }
+            } catch (fallbackError) {
+              console.warn("❌ [prefetch] Public report fallback failed:", fallbackError)
+            }
+          }
+        } else {
+          try {
+            console.log(`🔍 [prefetch] No snapshot_id in summary, fetching snapshots by video_id ${videoId}...`)
+            const snapshotList = await FocusGuardAPI.getSnapshotsByVideo(videoId)
+            const snapshots = (snapshotList as any)?.snapshots || []
+            const firstSnapshot = snapshots[0]
+            if (firstSnapshot) {
+              isFullyPublicSnapshot = firstSnapshot?.is_fully_public === true
+              ;(summaryData as any).snapshot_id = (summaryData as any)?.snapshot_id ?? firstSnapshot?.snapshot_id
+              ;(summaryData as any).is_fully_public = isFullyPublicSnapshot
+              console.log("🔍 [prefetch] is_fully_public from snapshots/by-video:", isFullyPublicSnapshot, "snapshot_id:", (summaryData as any)?.snapshot_id)
+            } else {
+              console.warn("⚠️ [prefetch] snapshots/by-video returned empty list")
+            }
+          } catch (error) {
+            console.warn("❌ [prefetch] Failed snapshots/by-video fallback for is_fully_public:", error)
+            try {
+              const shareCode = (summaryData as any)?.share_code
+              if (shareCode) {
+                console.log(`🔍 [prefetch] Trying public report fallback via share_code ${shareCode}...`)
+                const publicReport = await FocusGuardAPI.getPublicReportByShareToken(shareCode)
+                publicReportBundle = publicReport
+                const publicMeta = (publicReport as any)?.snapshot_metadata || publicReport
+                isFullyPublicSnapshot = publicMeta?.is_fully_public === true
+                ;(summaryData as any).is_fully_public = isFullyPublicSnapshot
+                console.log("🔍 [prefetch] is_fully_public from public report fallback:", isFullyPublicSnapshot)
+              }
+            } catch (fallbackError) {
+              console.warn("❌ [prefetch] Public report fallback failed:", fallbackError)
+            }
+          }
+        }
         
         if (!relevancyData) {
           throw new Error("Failed to fetch core relevancy data")
@@ -818,28 +883,28 @@ const ContentScript = () => {
 
         const initialTier = userTierInfo?.tier || 'free'
         const initialDashboardUrl = userTierInfo?.dashboardUrl || `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
-        const initialSentimentTierRestriction = initialTier === 'free' ? {
+        const initialSentimentTierRestriction = (!isFullyPublicSnapshot && initialTier === 'free') ? {
           code: 'TIER_RESTRICTION' as const,
           required_tier: 'starter' as const,
           current_tier: initialTier as 'pro' | 'free' | 'starter',
           message: 'Comment Sentiment analysis requires a Starter subscription.',
           upgrade_url: initialDashboardUrl
         } : null
-        const initialViewerInsightsTierRestriction = initialTier !== 'pro' ? {
+        const initialViewerInsightsTierRestriction = (!isFullyPublicSnapshot && initialTier !== 'pro') ? {
           code: 'TIER_RESTRICTION' as const,
           required_tier: 'pro' as const,
           current_tier: initialTier as 'pro' | 'free' | 'starter',
           message: 'Viewer Insights are available for Pro users only.',
           upgrade_url: initialDashboardUrl
         } : null
-        const initialContentGapsTierRestriction = initialTier !== 'pro' ? {
+        const initialContentGapsTierRestriction = (!isFullyPublicSnapshot && initialTier !== 'pro') ? {
           code: 'TIER_RESTRICTION' as const,
           required_tier: 'pro' as const,
           current_tier: initialTier as 'pro' | 'free' | 'starter',
           message: 'Content Gaps analysis is available for Pro users only.',
           upgrade_url: initialDashboardUrl
         } : null
-        const initialReportTierRestriction = initialTier !== 'pro' ? {
+        const initialReportTierRestriction = (!isFullyPublicSnapshot && initialTier !== 'pro') ? {
           code: 'TIER_RESTRICTION' as const,
           required_tier: 'pro' as const,
           current_tier: initialTier as 'pro' | 'free' | 'starter',
@@ -855,6 +920,7 @@ const ContentScript = () => {
           channelName: (cacheStatus as any).channel_name || null,
           snapshotShareCode: summaryData?.share_code ?? null,
           snapshotId: summaryData?.snapshot_id ?? null,
+          isFullyPublic: isFullyPublicSnapshot,
           summary: minimalSummary,
           trustScore: { score: verdictCertainty },
           clickbaitVerdict: { verdict: verdictRaw },
@@ -963,11 +1029,63 @@ const ContentScript = () => {
 
           console.log("Comment Verdict: ✅ Secondary data arrived! Processing...")
           const parsedSecondary = parseSecondaryResults(secondaryResults as PromiseSettledResult<any>[])
-          const sentimentData = parsedSecondary.sentimentData
+          let sentimentData = parsedSecondary.sentimentData
           const credibilityData = parsedSecondary.credibilityData
-          const topicClustersData = parsedSecondary.topicClustersData
-          const topicGapsData = parsedSecondary.topicGapsData
+          let topicClustersData = parsedSecondary.topicClustersData
+          let topicGapsData = parsedSecondary.topicGapsData
           const humanLikenessData = null
+
+          if (isFullyPublicSnapshot) {
+            if (!publicReportBundle && (summaryData as any)?.share_code) {
+              try {
+                publicReportBundle = await FocusGuardAPI.getPublicReportByShareToken((summaryData as any).share_code)
+                console.log("🔓 [prefetch] Loaded public report bundle during secondary hydration")
+              } catch (error) {
+                console.warn("❌ [prefetch] Failed loading public report bundle during secondary hydration:", error)
+              }
+            }
+
+            const reportBundle = publicReportBundle
+            const sentimentFromReport = reportBundle?.general_sentiment
+            const topicClusteringFromReport = reportBundle?.topic_clustering
+            const topicGapsFromReport = reportBundle?.topic_gaps
+
+            if (!sentimentData && sentimentFromReport) {
+              sentimentData = {
+                data: sentimentFromReport?.data || sentimentFromReport,
+                filtering_metadata: {
+                  total_input: sentimentFromReport?.total_comments_input,
+                  filtered_count: sentimentFromReport?.comments_after_filter
+                }
+              }
+              console.log("🔓 [prefetch] Hydrated sentiment from public report bundle")
+            }
+
+            if (!topicClustersData && topicClusteringFromReport) {
+              topicClustersData = {
+                topic_clusters: topicClusteringFromReport?.topic_clusters || topicClusteringFromReport?.clusters || [],
+                parent_themes: topicClusteringFromReport?.parent_themes || [],
+                hierarchy_map: topicClusteringFromReport?.hierarchy_map || {},
+                total_parent_themes: topicClusteringFromReport?.total_parent_themes || (topicClusteringFromReport?.parent_themes || []).length || 0,
+                method: topicClusteringFromReport?.method || "public_report"
+              }
+              if ((topicClustersData as any)?.topic_clusters?.length > 0) {
+                console.log("🔓 [prefetch] Hydrated topic clustering from public report bundle")
+              }
+            }
+
+            if (!topicGapsData && Array.isArray(topicGapsFromReport)) {
+              topicGapsData = {
+                topic_gaps: topicGapsFromReport,
+                filtering_metadata: {
+                  filtered_question_count: topicGapsFromReport.length
+                }
+              }
+              if (topicGapsFromReport.length > 0) {
+                console.log("🔓 [prefetch] Hydrated topic gaps from public report bundle")
+              }
+            }
+          }
 
           let sentimentTierRestriction: TierRestriction | null = parsedSecondary.sentimentTierRestriction
           let topicClustersTierRestriction: TierRestriction | null = parsedSecondary.topicClustersTierRestriction
@@ -1036,6 +1154,13 @@ const ContentScript = () => {
               upgrade_url: dashboardUrl
             }
           }
+
+          if (isFullyPublicSnapshot) {
+            console.log("🔓 [prefetch] Public snapshot detected, skipping tier restrictions")
+            sentimentTierRestriction = null
+            topicClustersTierRestriction = null
+            topicGapsTierRestriction = null
+          }
           
           console.log("Comment Verdict: 🔐 Final tier restrictions:", {
             sentiment: !!sentimentTierRestriction,
@@ -1049,16 +1174,16 @@ const ContentScript = () => {
             const positiveCount = typeof data.data.positive === 'number' ? data.data.positive : (data.data.positive?.count ?? 0)
             const neutralCount = typeof data.data.neutral === 'number' ? data.data.neutral : (data.data.neutral?.count ?? 0)
             const negativeCount = typeof data.data.negative === 'number' ? data.data.negative : (data.data.negative?.count ?? 0)
-            const totalComments = data.data.total_comments ?? (positiveCount + neutralCount + negativeCount)
+            const analyzedTotal = positiveCount + neutralCount + negativeCount
             const positiveComments = typeof data.data.positive === 'object' ? data.data.positive?.top_comments ?? [] : []
             const neutralComments = typeof data.data.neutral === 'object' ? data.data.neutral?.top_comments ?? [] : []
             const negativeComments = typeof data.data.negative === 'object' ? data.data.negative?.top_comments ?? [] : []
 
             return {
-              positive: totalComments > 0 ? (positiveCount / totalComments) * 100 : 0,
-              neutral: totalComments > 0 ? (neutralCount / totalComments) * 100 : 0,
-              negative: totalComments > 0 ? (negativeCount / totalComments) * 100 : 0,
-              totalCommentsAnalyzed: totalComments,
+              positive: positiveCount,
+              neutral: neutralCount,
+              negative: negativeCount,
+              totalCommentsAnalyzed: analyzedTotal,
               exampleComments: { positive: positiveComments, neutral: neutralComments, negative: negativeComments }
             }
           }
@@ -1148,7 +1273,9 @@ const ContentScript = () => {
             } : null
             
             // Only update fields that have new data
-            const reportTierRestriction = userTier !== 'pro' ? {
+            const reportTierRestriction = isFullyPublicSnapshot
+              ? null
+              : userTier !== 'pro' ? {
               code: 'TIER_RESTRICTION' as const,
               required_tier: 'pro' as const,
               current_tier: userTier as 'pro' | 'free' | 'starter',
@@ -1497,6 +1624,7 @@ const ContentScript = () => {
       let topicClustersTierRestriction: TierRestriction | null = null
       let topicGapsTierRestriction: TierRestriction | null = null
       let resultData = null // Store job result data for comment count tracking
+      let cd: any = {} // comprehensive_data extracted from job result (or result_data fallback)
       // Track whether channel-trust was already attempted and failed in the fallback
       // path so the "remaining data" block never issues a redundant retry that can
       // hang indefinitely on a slow/overloaded server (causing the spinner to freeze
@@ -1560,163 +1688,100 @@ const ContentScript = () => {
         const fetchStartTime = Date.now()
         resultData = jobResult.result_data
         
-        // Check if job result contains optimized data structure (new backend implementation)
-        const hasOptimizedData = resultData && 
-                                  resultData.summary && 
-                                  resultData.relevancy && 
-                                  resultData.sentiment &&
-                                  resultData.channel_credibility &&
-                                  resultData.topic_clusters &&
-                                  resultData.topic_gaps
+        // The backend wraps all analysis under result_data.comprehensive_data.
+        // Fall back to result_data itself for any older/alternative schema.
+        cd = resultData?.comprehensive_data ?? resultData ?? {}
         
-        if (hasOptimizedData) {
-          // NEW OPTIMIZED PATH: Extract all data from job result (no additional API calls needed)
-          console.log("✅ Using optimized job result data (all analysis included)")
-          
-          // Debug: Log the raw result_data structure
-          console.log("🔍 DEBUG result_data.sentiment:", resultData.sentiment)
-          console.log("🔍 DEBUG result_data.channel_credibility:", resultData.channel_credibility)
-          
-          // Transform job result data to match expected endpoint response formats
-          summaryData = {
-            status: 'SUCCESS',
-            summary_paragraph: resultData.summary.summary_paragraph,
-            video_id: resultData.video_id,
-            snapshot_id: resultData.snapshot_id,
-            share_code: resultData.comprehensive_data?.share_code ?? null,
-            cache_hit: resultData.cache_hit,
-            data_hash: '',
-            video_title: resultData.video_title,
-            credibility_score: resultData.channel_credibility.score,
-            sentiment_score: 0, // Will be calculated from sentiment data
-            persona: resultData.summary.persona,
-            key_takeaways: resultData.summary.key_takeaways,
-            confidence: null
+        // Extract summary from job result data, then read all other analysis
+        // endpoints from cache in parallel. The individual endpoints return their
+        // own response format (e.g. channel_trust returns the new 5-pillar
+        // metrics format) which the UI components rely on.  comprehensive_data
+        // stores a different (older) schema, so we intentionally avoid building
+        // the component data from it.
+        // NEVER call the sync summary_v2 endpoint with force_refresh: true here —
+        // that would trigger a blocking re-analysis on the API server which can
+        // crash it.  The async job has already computed everything; these calls
+        // just read the freshly-populated cache entries.
+        console.log("⏱️ Extracting summary from job result and reading cached endpoints...")
+
+        // Step 3a.1: Extract summary from job result (no sync endpoint call)
+        try {
+          if (cd.summary) {
+            summaryData = {
+              status: 'SUCCESS',
+              summary_paragraph: cd.summary.summary_paragraph,
+              video_id: cd.video_id ?? videoId,
+              snapshot_id: cd.snapshot_id,
+              share_code: cd.share_code ?? null,
+              cache_hit: cd.cache_hit,
+              data_hash: '',
+              video_title: cd.video_title,
+              credibility_score: cd.channel_credibility?.score,
+              sentiment_score: 0,
+              persona: cd.summary.persona,
+              key_takeaways: cd.summary.key_takeaways,
+              max_comments_requested: cd.max_comments_requested ?? null,
+              actual_comments_fetched: cd.actual_comments_fetched ?? null,
+              confidence: null,
+              is_fully_public: cd.is_fully_public ?? undefined
+            }
+            console.log("✅ Summary extracted from job result data")
+          } else {
+            console.warn("⚠️ No summary found in job result data — summary will be unavailable")
           }
-          
-          relevancyData = {
-            status: 'SUCCESS',
-            video_id: resultData.video_id,
-            video_title: resultData.video_title,
-            data: resultData.relevancy,
-            cache_hit: resultData.cache_hit,
-            note: null
-          }
-          
-          sentimentData = {
-            status: 'SUCCESS',
-            video_id: resultData.video_id,
-            video_title: resultData.video_title,
-            data: resultData.sentiment,
-            cache_hit: resultData.cache_hit,
-            note: null,
-            filtering_metadata: resultData.sentiment?.filtering_metadata
-          }
-          
-          console.log("🔍 DEBUG transformed sentimentData:", sentimentData)
-          
-          credibilityData = {
-            status: 'SUCCESS',
-            video_id: resultData.video_id,
-            video_title: resultData.video_title,
-            channel_id: resultData.channel_credibility.channel_id,
-            channel_name: resultData.channel_credibility.channel_name,
-            score: resultData.channel_credibility.score,
-            normalized_factors: resultData.channel_credibility.normalized_factors,
-            factual_factors: resultData.channel_credibility.factual_factors,
-            computed_at: resultData.channel_credibility.computed_at,
-            cache_hit: resultData.cache_hit
-          }
-          
-          topicClustersData = {
-            status: 'SUCCESS',
-            video_id: resultData.video_id,
-            video_title: resultData.video_title,
-            topic_clusters: resultData.topic_clusters.clusters,
-            processing_time: resultData.topic_clusters.processing_time,
-            cache_hit: resultData.cache_hit
-          }
-          
-          topicGapsData = {
-            status: 'SUCCESS',
-            video_id: resultData.video_id,
-            video_title: resultData.video_title,
-            topic_gaps: resultData.topic_gaps.gaps,
-            filtered_question_count: resultData.topic_gaps.filtered_question_count,
-            processing_time: resultData.topic_gaps.processing_time,
-            cache_hit: resultData.cache_hit,
-            filtering_metadata: resultData.topic_gaps?.filtering_metadata
-          }
-          
-          humanLikenessData = null // Not included in job result
-          
-          const optimizedDuration = ((Date.now() - fetchStartTime) / 1000).toFixed(1)
-          console.log(`✅ Optimized data extraction completed in ${optimizedDuration}s (saved ~18s!)`)
-          
-        } else {
-          // FALLBACK PATH: Old behavior for backward compatibility (job result doesn't have optimized data)
-          console.log("⚠️ Job result missing optimized data, falling back to individual endpoint fetches...")
-          console.log("⏱️ Starting to fetch analysis data (post-job)...")
-          
-          // Step 3a.1: Fetch summary first (required by backend for other endpoints)
-          console.log("⏱️ Fetching summary first (required by backend)...")
-          const summaryFetchStart = Date.now()
-          try {
-            summaryData = await FocusGuardAPI.analyzeSummaryV2({ video_id: videoId, force_refresh: forceRefresh })
-            const summaryDuration = ((Date.now() - summaryFetchStart) / 1000).toFixed(1)
-            console.log(`✅ Summary data fetched in ${summaryDuration}s`)
-          } catch (error) {
-            console.error("Failed to fetch summary:", error)
-          }
-          
-          // Step 3a.2: Fetch remaining endpoints in parallel (after summary exists)
-          console.log("⏱️ Fetching remaining analysis data in parallel...")
-          const parallelFetchStart = Date.now()
-          const results = await Promise.allSettled([
-            FocusGuardAPI.analyzeRelevancyV2(videoId, forceRefresh),
-            FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: forceRefresh }),
-            FocusGuardAPI.analyzeChannelTrust(videoId, forceRefresh),
-            FocusGuardAPI.analyzeTopicClusteringV2(videoId, forceRefresh),
-            FocusGuardAPI.analyzeTopicGapV2(videoId, forceRefresh)
-          ])
-          const parallelDuration = ((Date.now() - parallelFetchStart) / 1000).toFixed(1)
-          const totalFetchDuration = ((Date.now() - fetchStartTime) / 1000).toFixed(1)
-          console.log(`✅ Parallel endpoints fetched in ${parallelDuration}s (total post-job fetch: ${totalFetchDuration}s)`)
-          
-          // Extract results, logging any failures and capturing tier restrictions
-          relevancyData = results[0].status === 'fulfilled' ? results[0].value : null
-          sentimentData = results[1].status === 'fulfilled' ? results[1].value : null
-          credibilityData = results[2].status === 'fulfilled' ? results[2].value : null
-          topicClustersData = results[3].status === 'fulfilled' ? results[3].value : null
-          topicGapsData = results[4].status === 'fulfilled' ? results[4].value : null
-          humanLikenessData = null // Not fetched in general flow - load on-demand for advanced features
-          // Mark credibility as already attempted so the "remaining data" block
-          // below does not issue a second channel-trust call that could hang.
-          credibilityAttempted = true
-          
-          // Log any failures and extract tier restrictions
-          results.forEach((result, idx) => {
-            if (result.status === 'rejected') {
-              const endpoints = ['relevancy', 'sentiment', 'credibility', 'topicClusters', 'topicGaps']
-              console.error(`Failed to fetch ${endpoints[idx]}:`, result.reason)
-              
-              // Check if the error is a tier restriction
-              const error = result.reason
-              if (error && typeof error === 'object' && 'response' in error && error.response) {
-                const responseData = error.response
-                if (responseData.detail && responseData.detail.code === 'TIER_RESTRICTION') {
-                  console.log(`Tier restriction detected for ${endpoints[idx]}:`, responseData.detail)
-                  if (idx === 1) sentimentTierRestriction = responseData.detail
-                  if (idx === 3) topicClustersTierRestriction = responseData.detail
-                  if (idx === 4) topicGapsTierRestriction = responseData.detail
-                }
+        } catch (error) {
+          console.error("Failed to extract summary from job result:", error)
+        }
+
+        // Step 3a.2: Read remaining endpoints from cache in parallel.
+        // Use force_refresh: false — the job has already re-computed and stored the data;
+        // these calls just read the freshly-populated cache entries.
+        console.log("⏱️ Fetching remaining cached analysis data in parallel...")
+        const parallelFetchStart = Date.now()
+        const results = await Promise.allSettled([
+          FocusGuardAPI.analyzeRelevancyV2(videoId, false),
+          FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: false }),
+          FocusGuardAPI.analyzeChannelTrust(videoId, false),
+          FocusGuardAPI.analyzeTopicClusteringV2(videoId, false),
+          FocusGuardAPI.analyzeTopicGapV2(videoId, false)
+        ])
+        const parallelDuration = ((Date.now() - parallelFetchStart) / 1000).toFixed(1)
+        const totalFetchDuration = ((Date.now() - fetchStartTime) / 1000).toFixed(1)
+        console.log(`✅ Parallel endpoints fetched in ${parallelDuration}s (total post-job fetch: ${totalFetchDuration}s)`)
+        
+        // Extract results, logging any failures and capturing tier restrictions
+        relevancyData = results[0].status === 'fulfilled' ? results[0].value : null
+        sentimentData = results[1].status === 'fulfilled' ? results[1].value : null
+        credibilityData = results[2].status === 'fulfilled' ? results[2].value : null
+        topicClustersData = results[3].status === 'fulfilled' ? results[3].value : null
+        topicGapsData = results[4].status === 'fulfilled' ? results[4].value : null
+        humanLikenessData = null // Not fetched in general flow - load on-demand for advanced features
+        // Mark credibility as already attempted so the "remaining data" block
+        // below does not issue a second channel-trust call that could hang.
+        credibilityAttempted = true
+        
+        // Log any failures and extract tier restrictions
+        results.forEach((result, idx) => {
+          if (result.status === 'rejected') {
+            const endpoints = ['relevancy', 'sentiment', 'credibility', 'topicClusters', 'topicGaps']
+            console.error(`Failed to fetch ${endpoints[idx]}:`, result.reason)
+            
+            // Check if the error is a tier restriction
+            const error = result.reason
+            if (error && typeof error === 'object' && 'response' in error && error.response) {
+              const responseData = error.response
+              if (responseData.detail && responseData.detail.code === 'TIER_RESTRICTION') {
+                console.log(`Tier restriction detected for ${endpoints[idx]}:`, responseData.detail)
+                if (idx === 1) sentimentTierRestriction = responseData.detail
+                if (idx === 3) topicClustersTierRestriction = responseData.detail
+                if (idx === 4) topicGapsTierRestriction = responseData.detail
               }
             }
-          })
-          
-          if (!relevancyData) {
-            throw new Error("Failed to fetch relevancy data (required)")
           }
+        })
+        
+        if (!relevancyData) {
+          throw new Error("Failed to fetch relevancy data (required)")
         }
       } else {
         // Step 2b: Cached - directly get relevancy
@@ -1752,9 +1817,12 @@ const ContentScript = () => {
         
         // Step 1: Ensure summary is fetched/completed first
         if (!summaryData) {
-          console.log("Comment Verdict: Fetching summary first (required by backend)...")
+          console.log("Comment Verdict: Fetching summary from cache (job has already computed it)...")
           try {
-            summaryData = await FocusGuardAPI.analyzeSummaryV2({ video_id: videoId, force_refresh: forceRefresh })
+            // force_refresh: false — only read from cache; the async job has already
+            // done the computation. Passing true would trigger a blocking re-analysis
+            // on the API server which can crash it.
+            summaryData = await FocusGuardAPI.analyzeSummaryV2({ video_id: videoId, force_refresh: false })
             console.log("Comment Verdict: Summary data received")
           } catch (error) {
             console.error("Failed to fetch summary:", error)
@@ -1765,11 +1833,13 @@ const ContentScript = () => {
         // NOTE: channel-trust (credibility) is skipped when it was already attempted
         // in the fallback path and failed – retrying a 502/504 endpoint can stall
         // Promise.allSettled indefinitely on a slow server and block all results.
+        // Use force_refresh: false for all — the async job has already re-computed
+        // everything and populated the cache; these calls just read from it.
         const remainingResults = await Promise.allSettled([
-          sentimentData ? Promise.resolve(sentimentData) : FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: forceRefresh }),
-          (credibilityData || credibilityAttempted) ? Promise.resolve(credibilityData) : FocusGuardAPI.analyzeChannelTrust(videoId, forceRefresh),
-          topicClustersData ? Promise.resolve(topicClustersData) : FocusGuardAPI.analyzeTopicClusteringV2(videoId, forceRefresh),
-          topicGapsData ? Promise.resolve(topicGapsData) : FocusGuardAPI.analyzeTopicGapV2(videoId, forceRefresh)
+          sentimentData ? Promise.resolve(sentimentData) : FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: false }),
+          (credibilityData || credibilityAttempted) ? Promise.resolve(credibilityData) : FocusGuardAPI.analyzeChannelTrust(videoId, false),
+          topicClustersData ? Promise.resolve(topicClustersData) : FocusGuardAPI.analyzeTopicClusteringV2(videoId, false),
+          topicGapsData ? Promise.resolve(topicGapsData) : FocusGuardAPI.analyzeTopicGapV2(videoId, false)
         ])
         
         sentimentData = sentimentData || (remainingResults[0].status === 'fulfilled' ? remainingResults[0].value : null)
@@ -1911,7 +1981,7 @@ const ContentScript = () => {
         const positiveCount = typeof sentimentData.data.positive === 'number' ? sentimentData.data.positive : (sentimentData.data.positive?.count ?? 0)
         const neutralCount = typeof sentimentData.data.neutral === 'number' ? sentimentData.data.neutral : (sentimentData.data.neutral?.count ?? 0)
         const negativeCount = typeof sentimentData.data.negative === 'number' ? sentimentData.data.negative : (sentimentData.data.negative?.count ?? 0)
-        const totalComments = sentimentData.data.total_comments ?? (positiveCount + neutralCount + negativeCount)
+        const analyzedTotal = positiveCount + neutralCount + negativeCount
         
         // Extract top comments
         const positiveComments = typeof sentimentData.data.positive === 'object' ? sentimentData.data.positive?.top_comments ?? [] : []
@@ -1919,10 +1989,10 @@ const ContentScript = () => {
         const negativeComments = typeof sentimentData.data.negative === 'object' ? sentimentData.data.negative?.top_comments ?? [] : []
         
         return {
-          positive: totalComments > 0 ? (positiveCount / totalComments) * 100 : 0,
-          neutral: totalComments > 0 ? (neutralCount / totalComments) * 100 : 0,
-          negative: totalComments > 0 ? (negativeCount / totalComments) * 100 : 0,
-          totalCommentsAnalyzed: totalComments,
+          positive: positiveCount,
+          neutral: neutralCount,
+          negative: negativeCount,
+          totalCommentsAnalyzed: analyzedTotal,
           exampleComments: {
             positive: positiveComments,
             neutral: neutralComments,
@@ -2053,8 +2123,7 @@ const ContentScript = () => {
         // Priority 2: channel trust API response
         credibilityData?.channel_name ??
         // Priority 3: job result nested credibility block
-        (resultData as any)?.channel_credibility?.channel_name ??
-        (resultData as any)?.comprehensive_data?.channel_credibility?.channel_name ??
+        cd?.channel_credibility?.channel_name ??
         null
 
       const channelDisplayName =
@@ -2062,6 +2131,30 @@ const ContentScript = () => {
         (apiChannelName && !likelyChannelId(apiChannelName) ? apiChannelName : null) ||
         pageChannelName ||
         apiChannelName
+      
+      // Fetch snapshot metadata to get is_fully_public status
+      let isFullyPublicFromMetadata = false
+      console.log("🔍 METADATA FETCH BLOCK: summaryData exists?", !!summaryData, "snapshot_id:", summaryData?.snapshot_id)
+      if (summaryData?.snapshot_id) {
+        try {
+          console.log(`🔍 Fetching snapshot metadata for snapshot_id ${summaryData.snapshot_id}...`)
+          const snapshotMetadata = await FocusGuardAPI.getSnapshotMetadata(summaryData.snapshot_id)
+          console.log("🔍 Snapshot metadata response:", snapshotMetadata)
+          const metadata = snapshotMetadata?.snapshot_metadata || snapshotMetadata
+          console.log("🔍 Extracted metadata object:", metadata)
+          isFullyPublicFromMetadata = metadata?.is_fully_public === true
+          console.log("🔍 is_fully_public from metadata:", isFullyPublicFromMetadata)
+          if (summaryData) {
+            summaryData.is_fully_public = isFullyPublicFromMetadata
+            console.log("✅ Set summaryData.is_fully_public to:", summaryData.is_fully_public)
+          }
+        } catch (error) {
+          console.warn("❌ Failed to fetch snapshot metadata for is_fully_public status:", error)
+          // Not critical - continue without it
+        }
+      } else {
+        console.warn("⚠️ Cannot fetch snapshot metadata - summaryData or snapshot_id missing", { hasSummaryData: !!summaryData, snapshotId: summaryData?.snapshot_id })
+      }
       
       const videoAnalysisData = {
         // Video identification
@@ -2073,16 +2166,21 @@ const ContentScript = () => {
         // Share code for public report link
         // async-job path: result_data.comprehensive_data.share_code
         // direct summary / fallback path: summaryData.share_code
-        snapshotShareCode: (resultData as any)?.comprehensive_data?.share_code ?? summaryData?.share_code ?? null,
-        snapshotId: summaryData?.snapshot_id ?? (resultData as any)?.comprehensive_data?.snapshot_id ?? null,
+        snapshotShareCode: cd?.share_code ?? summaryData?.share_code ?? null,
+        snapshotId: summaryData?.snapshot_id ?? cd?.snapshot_id ?? null,
+        isFullyPublic: (() => {
+          const val = summaryData?.is_fully_public === true
+          console.log("📊 Setting videoAnalysisData.isFullyPublic to:", val, "from summaryData.is_fully_public:", summaryData?.is_fully_public)
+          return val
+        })(),
         // Legacy shape support
         summary: minimalSummary,
         trustScore: { score: verdictCertainty },
         clickbaitVerdict: { verdict: verdictRaw },
         executiveSummary: summaryData?.summary_paragraph ?? null,
         // Comment count tracking
-        maxCommentsRequested: (resultData as any)?.max_comments_requested ?? summaryData?.max_comments_requested ?? null,
-        actualCommentsFetched: (resultData as any)?.actual_comments_fetched ?? summaryData?.actual_comments_fetched ?? null,
+        maxCommentsRequested: cd?.max_comments_requested ?? summaryData?.max_comments_requested ?? null,
+        actualCommentsFetched: cd?.actual_comments_fetched ?? summaryData?.actual_comments_fetched ?? null,
         channelCredibility: credibilityData ? (() => {
           // Handle both new (trust_score + metrics) and old (score + normalized_factors) formats
           if ('trust_score' in credibilityData && 'metrics' in credibilityData) {
@@ -2209,8 +2307,12 @@ const ContentScript = () => {
       const totalDuration = ((Date.now() - analysisStartTime) / 1000).toFixed(1)
       console.log(`✅ Total analysis completed in ${totalDuration}s`)
 
-      // FR-101: Show pre-watch popover after analysis completes
-      setShowPreWatchPopover(true)
+      // FR-101: Show pre-watch popover after a fresh analysis.
+      // For force-refresh the side panel is already open — just let it re-render
+      // with the new videoAnalysis state; don't re-open the popover.
+      if (!forceRefresh) {
+        setShowPreWatchPopover(true)
+      }
     } catch (error) {
       console.error("Video analysis failed:", error)
 
