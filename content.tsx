@@ -783,6 +783,71 @@ const ContentScript = () => {
         
         const relevancyData = coreResults[0].status === 'fulfilled' ? coreResults[0].value : null
         const summaryData = coreResults[1].status === 'fulfilled' ? coreResults[1].value : null
+        let isFullyPublicSnapshot = (summaryData as any)?.is_fully_public === true
+        let publicReportBundle: any = null
+        console.log("🔍 [prefetch] summary snapshot hints:", {
+          snapshot_id: (summaryData as any)?.snapshot_id,
+          is_fully_public: (summaryData as any)?.is_fully_public,
+          share_code: (summaryData as any)?.share_code
+        })
+
+        if (summaryData?.snapshot_id) {
+          try {
+            console.log(`🔍 [prefetch] Fetching snapshot metadata for snapshot_id ${summaryData.snapshot_id}...`)
+            const snapshotMetadata = await FocusGuardAPI.getSnapshotMetadata(summaryData.snapshot_id)
+            const metadata = (snapshotMetadata as any)?.snapshot_metadata || snapshotMetadata
+            isFullyPublicSnapshot = metadata?.is_fully_public === true
+            ;(summaryData as any).is_fully_public = isFullyPublicSnapshot
+            console.log("🔍 [prefetch] is_fully_public from metadata:", isFullyPublicSnapshot)
+          } catch (error) {
+            console.warn("❌ [prefetch] Failed to fetch snapshot metadata for is_fully_public status:", error)
+            try {
+              const shareCode = (summaryData as any)?.share_code
+              if (shareCode) {
+                console.log(`🔍 [prefetch] Trying public report fallback via share_code ${shareCode}...`)
+                const publicReport = await FocusGuardAPI.getPublicReportByShareToken(shareCode)
+                publicReportBundle = publicReport
+                const publicMeta = (publicReport as any)?.snapshot_metadata || publicReport
+                isFullyPublicSnapshot = publicMeta?.is_fully_public === true
+                ;(summaryData as any).is_fully_public = isFullyPublicSnapshot
+                console.log("🔍 [prefetch] is_fully_public from public report fallback:", isFullyPublicSnapshot)
+              }
+            } catch (fallbackError) {
+              console.warn("❌ [prefetch] Public report fallback failed:", fallbackError)
+            }
+          }
+        } else {
+          try {
+            console.log(`🔍 [prefetch] No snapshot_id in summary, fetching snapshots by video_id ${videoId}...`)
+            const snapshotList = await FocusGuardAPI.getSnapshotsByVideo(videoId)
+            const snapshots = (snapshotList as any)?.snapshots || []
+            const firstSnapshot = snapshots[0]
+            if (firstSnapshot) {
+              isFullyPublicSnapshot = firstSnapshot?.is_fully_public === true
+              ;(summaryData as any).snapshot_id = (summaryData as any)?.snapshot_id ?? firstSnapshot?.snapshot_id
+              ;(summaryData as any).is_fully_public = isFullyPublicSnapshot
+              console.log("🔍 [prefetch] is_fully_public from snapshots/by-video:", isFullyPublicSnapshot, "snapshot_id:", (summaryData as any)?.snapshot_id)
+            } else {
+              console.warn("⚠️ [prefetch] snapshots/by-video returned empty list")
+            }
+          } catch (error) {
+            console.warn("❌ [prefetch] Failed snapshots/by-video fallback for is_fully_public:", error)
+            try {
+              const shareCode = (summaryData as any)?.share_code
+              if (shareCode) {
+                console.log(`🔍 [prefetch] Trying public report fallback via share_code ${shareCode}...`)
+                const publicReport = await FocusGuardAPI.getPublicReportByShareToken(shareCode)
+                publicReportBundle = publicReport
+                const publicMeta = (publicReport as any)?.snapshot_metadata || publicReport
+                isFullyPublicSnapshot = publicMeta?.is_fully_public === true
+                ;(summaryData as any).is_fully_public = isFullyPublicSnapshot
+                console.log("🔍 [prefetch] is_fully_public from public report fallback:", isFullyPublicSnapshot)
+              }
+            } catch (fallbackError) {
+              console.warn("❌ [prefetch] Public report fallback failed:", fallbackError)
+            }
+          }
+        }
         
         if (!relevancyData) {
           throw new Error("Failed to fetch core relevancy data")
@@ -818,28 +883,28 @@ const ContentScript = () => {
 
         const initialTier = userTierInfo?.tier || 'free'
         const initialDashboardUrl = userTierInfo?.dashboardUrl || `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
-        const initialSentimentTierRestriction = initialTier === 'free' ? {
+        const initialSentimentTierRestriction = (!isFullyPublicSnapshot && initialTier === 'free') ? {
           code: 'TIER_RESTRICTION' as const,
           required_tier: 'starter' as const,
           current_tier: initialTier as 'pro' | 'free' | 'starter',
           message: 'Comment Sentiment analysis requires a Starter subscription.',
           upgrade_url: initialDashboardUrl
         } : null
-        const initialViewerInsightsTierRestriction = initialTier !== 'pro' ? {
+        const initialViewerInsightsTierRestriction = (!isFullyPublicSnapshot && initialTier !== 'pro') ? {
           code: 'TIER_RESTRICTION' as const,
           required_tier: 'pro' as const,
           current_tier: initialTier as 'pro' | 'free' | 'starter',
           message: 'Viewer Insights are available for Pro users only.',
           upgrade_url: initialDashboardUrl
         } : null
-        const initialContentGapsTierRestriction = initialTier !== 'pro' ? {
+        const initialContentGapsTierRestriction = (!isFullyPublicSnapshot && initialTier !== 'pro') ? {
           code: 'TIER_RESTRICTION' as const,
           required_tier: 'pro' as const,
           current_tier: initialTier as 'pro' | 'free' | 'starter',
           message: 'Content Gaps analysis is available for Pro users only.',
           upgrade_url: initialDashboardUrl
         } : null
-        const initialReportTierRestriction = initialTier !== 'pro' ? {
+        const initialReportTierRestriction = (!isFullyPublicSnapshot && initialTier !== 'pro') ? {
           code: 'TIER_RESTRICTION' as const,
           required_tier: 'pro' as const,
           current_tier: initialTier as 'pro' | 'free' | 'starter',
@@ -855,6 +920,7 @@ const ContentScript = () => {
           channelName: (cacheStatus as any).channel_name || null,
           snapshotShareCode: summaryData?.share_code ?? null,
           snapshotId: summaryData?.snapshot_id ?? null,
+          isFullyPublic: isFullyPublicSnapshot,
           summary: minimalSummary,
           trustScore: { score: verdictCertainty },
           clickbaitVerdict: { verdict: verdictRaw },
@@ -963,11 +1029,63 @@ const ContentScript = () => {
 
           console.log("Comment Verdict: ✅ Secondary data arrived! Processing...")
           const parsedSecondary = parseSecondaryResults(secondaryResults as PromiseSettledResult<any>[])
-          const sentimentData = parsedSecondary.sentimentData
+          let sentimentData = parsedSecondary.sentimentData
           const credibilityData = parsedSecondary.credibilityData
-          const topicClustersData = parsedSecondary.topicClustersData
-          const topicGapsData = parsedSecondary.topicGapsData
+          let topicClustersData = parsedSecondary.topicClustersData
+          let topicGapsData = parsedSecondary.topicGapsData
           const humanLikenessData = null
+
+          if (isFullyPublicSnapshot) {
+            if (!publicReportBundle && (summaryData as any)?.share_code) {
+              try {
+                publicReportBundle = await FocusGuardAPI.getPublicReportByShareToken((summaryData as any).share_code)
+                console.log("🔓 [prefetch] Loaded public report bundle during secondary hydration")
+              } catch (error) {
+                console.warn("❌ [prefetch] Failed loading public report bundle during secondary hydration:", error)
+              }
+            }
+
+            const reportBundle = publicReportBundle
+            const sentimentFromReport = reportBundle?.general_sentiment
+            const topicClusteringFromReport = reportBundle?.topic_clustering
+            const topicGapsFromReport = reportBundle?.topic_gaps
+
+            if (!sentimentData && sentimentFromReport) {
+              sentimentData = {
+                data: sentimentFromReport?.data || sentimentFromReport,
+                filtering_metadata: {
+                  total_input: sentimentFromReport?.total_comments_input,
+                  filtered_count: sentimentFromReport?.comments_after_filter
+                }
+              }
+              console.log("🔓 [prefetch] Hydrated sentiment from public report bundle")
+            }
+
+            if (!topicClustersData && topicClusteringFromReport) {
+              topicClustersData = {
+                topic_clusters: topicClusteringFromReport?.topic_clusters || topicClusteringFromReport?.clusters || [],
+                parent_themes: topicClusteringFromReport?.parent_themes || [],
+                hierarchy_map: topicClusteringFromReport?.hierarchy_map || {},
+                total_parent_themes: topicClusteringFromReport?.total_parent_themes || (topicClusteringFromReport?.parent_themes || []).length || 0,
+                method: topicClusteringFromReport?.method || "public_report"
+              }
+              if ((topicClustersData as any)?.topic_clusters?.length > 0) {
+                console.log("🔓 [prefetch] Hydrated topic clustering from public report bundle")
+              }
+            }
+
+            if (!topicGapsData && Array.isArray(topicGapsFromReport)) {
+              topicGapsData = {
+                topic_gaps: topicGapsFromReport,
+                filtering_metadata: {
+                  filtered_question_count: topicGapsFromReport.length
+                }
+              }
+              if (topicGapsFromReport.length > 0) {
+                console.log("🔓 [prefetch] Hydrated topic gaps from public report bundle")
+              }
+            }
+          }
 
           let sentimentTierRestriction: TierRestriction | null = parsedSecondary.sentimentTierRestriction
           let topicClustersTierRestriction: TierRestriction | null = parsedSecondary.topicClustersTierRestriction
@@ -1035,6 +1153,13 @@ const ContentScript = () => {
               message: 'Content Gaps analysis is available for Pro users only.',
               upgrade_url: dashboardUrl
             }
+          }
+
+          if (isFullyPublicSnapshot) {
+            console.log("🔓 [prefetch] Public snapshot detected, skipping tier restrictions")
+            sentimentTierRestriction = null
+            topicClustersTierRestriction = null
+            topicGapsTierRestriction = null
           }
           
           console.log("Comment Verdict: 🔐 Final tier restrictions:", {
@@ -1148,7 +1273,9 @@ const ContentScript = () => {
             } : null
             
             // Only update fields that have new data
-            const reportTierRestriction = userTier !== 'pro' ? {
+            const reportTierRestriction = isFullyPublicSnapshot
+              ? null
+              : userTier !== 'pro' ? {
               code: 'TIER_RESTRICTION' as const,
               required_tier: 'pro' as const,
               current_tier: userTier as 'pro' | 'free' | 'starter',
@@ -2007,18 +2134,26 @@ const ContentScript = () => {
       
       // Fetch snapshot metadata to get is_fully_public status
       let isFullyPublicFromMetadata = false
+      console.log("🔍 METADATA FETCH BLOCK: summaryData exists?", !!summaryData, "snapshot_id:", summaryData?.snapshot_id)
       if (summaryData?.snapshot_id) {
         try {
+          console.log(`🔍 Fetching snapshot metadata for snapshot_id ${summaryData.snapshot_id}...`)
           const snapshotMetadata = await FocusGuardAPI.getSnapshotMetadata(summaryData.snapshot_id)
+          console.log("🔍 Snapshot metadata response:", snapshotMetadata)
           const metadata = snapshotMetadata?.snapshot_metadata || snapshotMetadata
+          console.log("🔍 Extracted metadata object:", metadata)
           isFullyPublicFromMetadata = metadata?.is_fully_public === true
+          console.log("🔍 is_fully_public from metadata:", isFullyPublicFromMetadata)
           if (summaryData) {
             summaryData.is_fully_public = isFullyPublicFromMetadata
+            console.log("✅ Set summaryData.is_fully_public to:", summaryData.is_fully_public)
           }
         } catch (error) {
-          console.warn("Failed to fetch snapshot metadata for is_fully_public status:", error)
+          console.warn("❌ Failed to fetch snapshot metadata for is_fully_public status:", error)
           // Not critical - continue without it
         }
+      } else {
+        console.warn("⚠️ Cannot fetch snapshot metadata - summaryData or snapshot_id missing", { hasSummaryData: !!summaryData, snapshotId: summaryData?.snapshot_id })
       }
       
       const videoAnalysisData = {
@@ -2033,7 +2168,11 @@ const ContentScript = () => {
         // direct summary / fallback path: summaryData.share_code
         snapshotShareCode: cd?.share_code ?? summaryData?.share_code ?? null,
         snapshotId: summaryData?.snapshot_id ?? cd?.snapshot_id ?? null,
-        isFullyPublic: summaryData?.is_fully_public === true,
+        isFullyPublic: (() => {
+          const val = summaryData?.is_fully_public === true
+          console.log("📊 Setting videoAnalysisData.isFullyPublic to:", val, "from summaryData.is_fully_public:", summaryData?.is_fully_public)
+          return val
+        })(),
         // Legacy shape support
         summary: minimalSummary,
         trustScore: { score: verdictCertainty },
