@@ -24,6 +24,11 @@ export const SentimentTabNew = ({ analysis }: SentimentTabNewProps) => {
   const isDark = mode === "dark"
   const sentimentData = (analysis as any)?.sentiment
   const tierRestriction = sentimentData?.tierRestriction
+  console.log("🎯 SentimentTabNew: received analysis -", { 
+    hasSentimentData: !!sentimentData,
+    tierRestriction,
+    distribution: !!sentimentData?.distribution 
+  })
 
   if (!sentimentData?.distribution) {
     return (

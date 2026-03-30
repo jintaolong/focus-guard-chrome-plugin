@@ -45,6 +45,11 @@ export const InsightsTabNew = ({ analysis }: InsightsTabNewProps) => {
   const topicData = analysis.topicClustersData
   const viewerInsights = (analysis as any)?.viewerInsights
   const tierRestriction = viewerInsights?.tierRestriction
+  console.log("🎯 InsightsTabNew: received analysis -", { 
+    hasTopicData: !!topicData,
+    tierRestriction,
+    clusters: topicData?.clusters?.length || 0 
+  })
 
   const allClusters = topicData?.clusters || []
   const parentThemes = topicData?.parent_themes || []

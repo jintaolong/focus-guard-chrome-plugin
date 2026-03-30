@@ -51,6 +51,11 @@ export const GapsTabNew = ({ analysis }: GapsTabNewProps) => {
   const isDark = mode === "dark"
   const contentGaps = analysis.contentGaps
   const tierRestriction = contentGaps?.tierRestriction
+  console.log("🎯 GapsTabNew: received analysis -", { 
+    hasContentGaps: !!contentGaps,
+    tierRestriction,
+    questions: contentGaps?.unansweredQuestions?.length || 0 
+  })
   const questions = contentGaps?.unansweredQuestions || []
 
   const [selectedGapIdx, setSelectedGapIdx] = useState<number | null>(null)

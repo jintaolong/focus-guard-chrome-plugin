@@ -41,6 +41,10 @@ export const ReportTab = ({
 
   // Check for tier restriction (Report is Pro-only)
   const reportTierRestriction = (analysis as any)?.reportInfo?.tierRestriction
+  console.log("🎯 ReportTab: received analysis -", { 
+    hasReportInfo: !!(analysis as any)?.reportInfo,
+    reportTierRestriction,
+  })
   
   const content = (
     <div>

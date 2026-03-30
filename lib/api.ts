@@ -355,6 +355,20 @@ export class FocusGuardAPI {
     return this.fetchWithAuth<any>(`/videos/snapshots/${snapshotId}`)
   }
 
+  /**
+   * Get snapshots for a video to resolve latest snapshot metadata when summary omits snapshot_id
+   */
+  static async getSnapshotsByVideo(videoId: string): Promise<any> {
+    return this.fetchWithAuth<any>(`/videos/snapshots/by-video/${videoId}`)
+  }
+
+  /**
+   * Get public report bundle by share token (no auth header required)
+   */
+  static async getPublicReportByShareToken(shareToken: string): Promise<any> {
+    return this.fetchAPI<any>(`/reports/${shareToken}`)
+  }
+
   // ============================================================================
   // Async Job APIs (for first-time heavy analysis)
   // ============================================================================

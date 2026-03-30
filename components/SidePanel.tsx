@@ -84,18 +84,20 @@ export const SidePanel = ({
     try { localStorage.setItem("cv-panel-layout", panelLayout) } catch {}
   }, [panelLayout])
 
+  const isFullyPublic = !!(analysis as any)?.isFullyPublic
   const sentimentData = (analysis as any)?.sentiment
   const viewerInsightsData = (analysis as any)?.viewerInsights
   const hasSentimentDataOrRestriction = Boolean(
-    sentimentData?.distribution || sentimentData?.tierRestriction
+    isFullyPublic || sentimentData?.distribution || sentimentData?.tierRestriction
   )
   const hasViewerInsightsDataOrRestriction = Boolean(
+    isFullyPublic ||
     (viewerInsightsData && !Array.isArray(viewerInsightsData) && viewerInsightsData.sentimentBreakdown) ||
       viewerInsightsData?.tierRestriction
   )
   const contentGapsData = (analysis as any)?.contentGaps
   const hasContentGapsDataOrRestriction = Boolean(
-    contentGapsData?.unansweredQuestions || contentGapsData?.tierRestriction
+    isFullyPublic || contentGapsData?.unansweredQuestions || contentGapsData?.tierRestriction
   )
 
   // ── Report URL builder ──────────────────────────────────────────────────────
@@ -244,12 +246,13 @@ export const SidePanel = ({
   const claimsCount = (analysis?.summary as any)?.clickbaitVerdict?.claims?.length ?? 0
   const gapsCount = analysis?.contentGaps?.unansweredQuestions?.length ?? 0
   const insightsCount = analysis?.topicClustersData?.clusters?.length ?? 0
-  const isFullyPublic = !!(analysis as any)?.isFullyPublic
+  console.log("🎯 SidePanel: analysis.isFullyPublic =", (analysis as any)?.isFullyPublic, "→ isFullyPublic =", isFullyPublic)
 
   const sentimentIsLocked = !isFullyPublic && !!(analysis as any)?.sentiment?.tierRestriction
   const insightsIsLocked = !isFullyPublic && !!(analysis as any)?.viewerInsights?.tierRestriction
   const gapsIsLocked = !isFullyPublic && !!(analysis as any)?.contentGaps?.tierRestriction
   const reportIsLocked = !isFullyPublic && !!(analysis as any)?.reportInfo?.tierRestriction
+  console.log("🎯 Lock status:", { sentimentIsLocked, insightsIsLocked, gapsIsLocked, reportIsLocked })
 
   const sentimentRequiredTier = sentimentIsLocked ? (analysis as any)?.sentiment?.tierRestriction?.required_tier as "starter" | "pro" | undefined : undefined
   const insightsRequiredTier = insightsIsLocked ? (analysis as any)?.viewerInsights?.tierRestriction?.required_tier as "starter" | "pro" | undefined : undefined
@@ -259,8 +262,11 @@ export const SidePanel = ({
   // When the snapshot is fully public, strip all tier restrictions from the analysis
   // before passing it to child components — mirrors the web portal canView(isFullyPublic) pattern.
   const displayAnalysis = useMemo((): VideoAnalysis | null => {
-    if (!analysis || !isFullyPublic) return analysis
-    return {
+    if (!analysis || !isFullyPublic) {
+      console.log("🎯 displayAnalysis: returning original analysis (isFullyPublic=false)")
+      return analysis
+    }
+    const stripped = {
       ...analysis,
       sentiment: analysis.sentiment ? { ...analysis.sentiment, tierRestriction: undefined } : analysis.sentiment,
       contentGaps: analysis.contentGaps ? { ...analysis.contentGaps, tierRestriction: undefined } : analysis.contentGaps,
@@ -269,6 +275,13 @@ export const SidePanel = ({
         : analysis.viewerInsights,
       reportInfo: analysis.reportInfo ? { ...analysis.reportInfo, tierRestriction: undefined } : analysis.reportInfo,
     }
+    console.log("🎯 displayAnalysis: stripped restrictions -", { 
+      sentimentHasRestriction: !!stripped.sentiment?.tierRestriction,
+      insightsHasRestriction: !!(stripped.viewerInsights as any)?.tierRestriction,
+      gapsHasRestriction: !!stripped.contentGaps?.tierRestriction,
+      reportHasRestriction: !!stripped.reportInfo?.tierRestriction,
+    })
+    return stripped
   }, [analysis, isFullyPublic])
 
   const tabs: { id: TabId; label: string; icon: React.ReactNode; count?: number; locked?: boolean; requiredTier?: "starter" | "pro" }[] = [
@@ -826,7 +839,7 @@ export const SidePanel = ({
                 )
               )}
               {activeTab === "insights" && (
-                (analysis.topicClustersData || (analysis as any)?.viewerInsights?.tierRestriction) ? (
+                hasViewerInsightsDataOrRestriction ? (
                   <InsightsTabNew analysis={displayAnalysis!} panelDock={dock} />
                 ) : (
                   <LoadingPlaceholder label="Loading viewer insights..." colors={C} />
