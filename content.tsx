@@ -766,29 +766,62 @@ const ContentScript = () => {
         return
       }
 
-      // Cached - fetch relevancy and additional data for quick display
+      // FAST PATH: Use the verdict already embedded in the cache-status response to
+      // update the toggle button instantly — no extra network round-trip needed.
+      // The full relevancy/summary fetch below still runs in the background to
+      // populate the side panel with complete data.
+      const snapVerdict = (cacheStatus.analysis_snapshot?.relevancy_verdict || "").toUpperCase() || null
+      if (snapVerdict) {
+        // Keep the toggle in analyzing mode until core relevancy data arrives,
+        // so users don't see a placeholder verdict/confidence badge.
+        console.log("Comment Verdict: Cached snapshot verdict found; keeping toggle in analyzing state until core results load:", snapVerdict)
+      }
+
+      // Cached - fetch all cached analyses from the READ-ONLY bundle endpoint.
+      // GET /analyses/{videoId} NEVER triggers computation — safe to call on every
+      // page load.  Returns 404 when not yet analysed (handled below as a throw).
       try {
         console.log("Comment Verdict: Fetching analysis data for cached video...")
         
-        // OPTIMIZATION: Fetch core data first (relevancy + summary) for fast UI update
-        // Then fetch secondary data in background without blocking
-        console.log("Comment Verdict: ⚡ Fetching core data (relevancy + summary)...")
+        console.log("Comment Verdict: ⚡ Fetching cached analyses bundle (single call, no job trigger)...")
         const coreStartTime = Date.now()
-        const coreResults = await Promise.allSettled([
-          FocusGuardAPI.analyzeRelevancyV2(videoId, false),
-          FocusGuardAPI.analyzeSummaryV2({ video_id: videoId, force_refresh: false })
-        ])
+        const bundleData = await FocusGuardAPI.getCachedAnalysesBundle(videoId)
         const coreDuration = ((Date.now() - coreStartTime) / 1000).toFixed(2)
-        console.log(`Comment Verdict: ✅ Core data fetched in ${coreDuration}s - IMMEDIATELY SHOWING RESULTS`)
-        
-        const relevancyData = coreResults[0].status === 'fulfilled' ? coreResults[0].value : null
-        const summaryData = coreResults[1].status === 'fulfilled' ? coreResults[1].value : null
-        let isFullyPublicSnapshot = (summaryData as any)?.is_fully_public === true
+        console.log(`Comment Verdict: ✅ Bundle fetched in ${coreDuration}s - IMMEDIATELY SHOWING RESULTS`)
+
+        // Build compatibility shims so all downstream code remains unchanged.
+        // Bundle relevancy → shape expected by relevancyData?.data.*
+        const relevancyData = bundleData?.relevancy ? {
+          status: "SUCCESS",
+          data: {
+            verdict: bundleData.relevancy.verdict,
+            confidence_score: bundleData.relevancy.confidence_score,
+            claims: bundleData.relevancy.claims || [],
+            video_title: bundleData.video_title,
+            one_line_summary: bundleData.relevancy.one_line_summary,
+          }
+        } : null
+
+        // Bundle summary + top-level fields → shape expected by summaryData?.* and (summaryData as any)?.*
+        const summaryData: any = bundleData ? {
+          snapshot_id: bundleData.snapshot_id ?? null,
+          share_code: bundleData.share_code ?? null,
+          is_fully_public: false,            // resolved async below via getSnapshotMetadata
+          summary_paragraph: bundleData.summary?.summary_paragraph ?? null,
+          video_title: bundleData.video_title ?? null,
+          key_takeaways: bundleData.summary?.key_takeaways ?? [],
+          max_comments_requested: null,      // not stored in bundle
+          actual_comments_fetched: null,     // not stored in bundle
+          one_line_summary: bundleData.relevancy?.one_line_summary ?? null,
+          clickbaitVerdict: { claims: bundleData.relevancy?.claims ?? [] }
+        } : null
+
+        let isFullyPublicSnapshot = false
         let publicReportBundle: any = null
-        console.log("🔍 [prefetch] summary snapshot hints:", {
-          snapshot_id: (summaryData as any)?.snapshot_id,
-          is_fully_public: (summaryData as any)?.is_fully_public,
-          share_code: (summaryData as any)?.share_code
+        console.log("🔍 [prefetch] bundle snapshot hints:", {
+          snapshot_id: summaryData?.snapshot_id,
+          is_fully_public: summaryData?.is_fully_public,
+          share_code: summaryData?.share_code
         })
 
         if (summaryData?.snapshot_id) {
@@ -850,11 +883,17 @@ const ContentScript = () => {
         }
         
         if (!relevancyData) {
-          throw new Error("Failed to fetch core relevancy data")
+          // Snapshot exists but relevancy sub-analysis hasn't been run yet.
+          // Fall back to the snapshot-level verdict stored in the cache-status
+          // response, or use UNKNOWN so the toggle still appears.
+          const fallbackVerdict = (cacheStatus.analysis_snapshot?.relevancy_verdict || "UNKNOWN").toUpperCase()
+          console.log("Comment Verdict: ⚠️ No cached relevancy in bundle — using snapshot-level verdict:", fallbackVerdict)
         }
         
         // Process core data immediately for fast UI response
-        const verdictRaw = (relevancyData?.data.verdict || "UNKNOWN").toUpperCase()
+        // Fall back to snapshot-level verdict from cache-status when bundle has no relevancy
+        const snapshotFallbackVerdict = (cacheStatus.analysis_snapshot?.relevancy_verdict || "UNKNOWN").toUpperCase()
+        const verdictRaw = (relevancyData?.data.verdict || snapshotFallbackVerdict).toUpperCase()
         const confidenceRaw = typeof relevancyData?.data.confidence_score === "number" ? relevancyData.data.confidence_score : 0
         const confidenceNorm = normalizeConfidence(confidenceRaw)
         const confidencePercent = Math.round(confidenceNorm * 100)
@@ -948,7 +987,8 @@ const ContentScript = () => {
             availableFormats: ["PDF", "TXT"],
             analysisDate: new Date().toISOString(),
             tierRestriction: initialReportTierRestriction
-          }
+          },
+          isHydratingSecondary: true,
         } as any)
 
         setAnalysisStatus({
@@ -961,19 +1001,29 @@ const ContentScript = () => {
         setIsCheckingCache(false)
         console.log("Comment Verdict: ✅ SPINNER OFF - Core analysis displayed in ~${coreDuration}s")
 
-        // NOW fetch secondary data WITHOUT blocking the spinner
-        console.log("Comment Verdict: ⚡ Fetching secondary data in background (non-blocking)...")
+        // Secondary data is already in the bundle — resolve synchronously so downstream
+        // processing remains unchanged (parseSecondaryResults and the .then handler run
+        // as they did before, just with no extra network round-trips).
+        // The bundle sentiment / trust / clustering / gaps shapes are fully compatible
+        // with what each consumer expects.
+        // Fall back to individual API endpoints when the bundle is missing a field —
+        // this happens when snapshot.sentiment_analysis_id or video_data.channel_id is
+        // not set even though the underlying records exist in the DB (common for
+        // videos that were analyzed before the linkage columns were backfilled).
+        console.log("Comment Verdict: ⚡ Resolving secondary data from bundle (fallback to endpoints when missing)...")
         const secondaryPromise = Promise.allSettled([
+          // Always call analyzeSentimentV2 — same reason as channel trust: bundle uses
+          // CachedSentiment.data which is the raw stored sentiment_data dict and may have
+          // a different shape or be empty. The direct endpoint always returns a properly
+          // typed SentimentResponseV2 from cache (no extra computation triggered).
           FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: false }),
+          // Always call analyzeChannelTrust — bundle trust.metrics is raw YouTube API data
+          // (subscriber_count, view_count…), which has no .score/.normalized_value fields so
+          // buildChannelCredibility produces empty factors.  The direct endpoint returns
+          // ChannelTrustResponse.metrics as a proper per-metric breakdown with .score.
           FocusGuardAPI.analyzeChannelTrust(videoId, false),
-          FocusGuardAPI.analyzeTopicClusteringV2(videoId, false).catch(err => {
-            console.warn("Topic clustering failed (non-blocking):", err)
-            return null
-          }),
-          FocusGuardAPI.analyzeTopicGapV2(videoId, false).catch(err => {
-            console.warn("Topic gaps failed (non-blocking):", err)
-            return null
-          })
+          Promise.resolve(bundleData?.clustering ?? null),
+          Promise.resolve(bundleData?.gaps ?? null)
         ])
 
         // Process secondary data in background WITHOUT blocking the spinner
@@ -1208,13 +1258,27 @@ const ContentScript = () => {
           const buildChannelCredibility = (data: any) => {
             if (!data) return undefined
             if ('trust_score' in data && 'metrics' in data) {
+              // Two possible sources for structured per-metric scores:
+              //   ChannelTrustResponse  → data.metrics has { audience_reach, creator_authority, … }
+              //                           each with { score, normalized_value }
+              //   CachedTrust (bundle) → data.metrics = raw YouTube API object (no .score)
+              //                          data.metric_details has the structured breakdown
+              // Pick whichever field actually contains .score-shaped entries.
+              const hasStructuredMetrics = data.metrics && typeof data.metrics === 'object' &&
+                Object.values(data.metrics).some((v: any) => v && typeof v === 'object' && v.score != null)
+              const hasStructuredDetails = data.metric_details && typeof data.metric_details === 'object' &&
+                Object.values(data.metric_details).some((v: any) => v && typeof v === 'object' && v.score != null)
+              const metricsSource = hasStructuredMetrics ? data.metrics : hasStructuredDetails ? data.metric_details : {}
+              const factors = Object.entries(metricsSource)
+                .filter(([, m]: [string, any]) => m && typeof m === 'object' && m.score != null)
+                .map(([name, metricData]: [string, any]) => ({
+                  name,
+                  weight: metricData.normalized_value ?? 0,
+                  value: String(metricData.score)
+                }))
               return {
                 score: data.trust_score,
-                factors: Object.entries(data.metrics).map(([name, metricData]: [string, any]) => ({
-                  name,
-                  weight: metricData.normalized_value,
-                  value: metricData.score.toString()
-                })),
+                factors,
                 metrics: data.metrics,
                 trust_score: data.trust_score,
                 raw_metrics: data.raw_metrics,
@@ -1290,11 +1354,12 @@ const ContentScript = () => {
 
             if (!hasNewSentiment && !hasNewCredibility && !hasNewTopicClusters && !hasNewContentGaps && !hasSentimentRestrictionUpdate && !hasViewerRestrictionUpdate && !hasContentGapsRestrictionUpdate && !hasReportRestrictionUpdate) {
               console.log("Comment Verdict: ⏭️ Skipping secondary data update - no new data or restriction updates")
-              return prev
+              return { ...prev, isHydratingSecondary: false }
             }
 
             const updatedAnalysis: any = {
               ...prev,
+              isHydratingSecondary: false,
               // Update channelName from credibility API response if not already set
               channelName: prev.channelName || (credibilityData as any)?.channel_name || prev.channelName,
               // Only update channelCredibility if we have new data
@@ -1379,15 +1444,32 @@ const ContentScript = () => {
           })
         }).catch(err => {
           console.warn("Comment Verdict: Secondary data processing error:", err)
+          setVideoAnalysis(prev => {
+            if (!prev || prev.videoId !== videoId) return prev
+            return {
+              ...prev,
+              isHydratingSecondary: false,
+            }
+          })
         })
 
       } catch (err) {
-        console.warn("Comment Verdict: failed to fetch relevancy on landing:", (err as any)?.message || String(err))
-        // Don't reset state if we're currently polling a job - only reset if no active job
-        if (!currentJobId) {
+        // If the bundle endpoint returned 404 (no snapshot) even though cacheStatus.cached
+        // was true, treat it as "not yet analyzed" and leave the toggle in idle state.
+        const is404 = (err as any)?.status === 404 || String((err as any)?.message || err).includes("404") || String((err as any)?.detail || "").includes("No analysis found")
+        if (is404) {
+          console.log("Comment Verdict: Bundle 404 — snapshot not yet available despite cached=true, setting idle")
           setAnalysisState("idle")
           setAnalysisStatus(null)
           setVideoAnalysis(null)
+        } else {
+          console.warn("Comment Verdict: failed to fetch bundle on landing:", (err as any)?.message || String(err))
+          // Don't reset state if we're currently polling a job
+          if (!currentJobId) {
+            setAnalysisState("idle")
+            setAnalysisStatus(null)
+            setVideoAnalysis(null)
+          }
         }
         setIsCheckingCache(false)
       }
@@ -1945,14 +2027,24 @@ const ContentScript = () => {
         channelCredibility: credibilityData ? (() => {
           // Handle both new (trust_score + metrics) and old (score + normalized_factors) formats
           if ('trust_score' in credibilityData && 'metrics' in credibilityData) {
-            // NEW format: ChannelTrustResponse
+            // NEW format: ChannelTrustResponse — data.metrics has structured MetricBreakdown
+            // entries with .score + .normalized_value. data.metric_details (if present) is
+            // metadata (timestamp, api_calls, …) — NOT the per-metric scores.
+            const hasStructuredMetrics = credibilityData.metrics && typeof credibilityData.metrics === 'object' &&
+              Object.values(credibilityData.metrics).some((v: any) => v && typeof v === 'object' && v.score != null)
+            const hasStructuredDetails = credibilityData.metric_details && typeof credibilityData.metric_details === 'object' &&
+              Object.values(credibilityData.metric_details).some((v: any) => v && typeof v === 'object' && v.score != null)
+            const metricsSource = hasStructuredMetrics ? credibilityData.metrics : hasStructuredDetails ? credibilityData.metric_details : {}
+            const factors = Object.entries(metricsSource)
+              .filter(([, m]: [string, any]) => m && typeof m === 'object' && m.score != null)
+              .map(([name, metricData]: [string, any]) => ({
+                name,
+                weight: metricData.normalized_value ?? 0,
+                value: String(metricData.score)
+              }))
             return {
               score: credibilityData.trust_score,
-              factors: Object.entries(credibilityData.metrics).map(([name, metricData]: [string, any]) => ({
-                name,
-                weight: metricData.normalized_value,
-                value: metricData.score.toString()
-              })),
+              factors,
               // Include full new format data
               metrics: credibilityData.metrics,
               trust_score: credibilityData.trust_score,
@@ -2184,15 +2276,19 @@ const ContentScript = () => {
         channelCredibility: credibilityData ? (() => {
           // Handle both new (trust_score + metrics) and old (score + normalized_factors) formats
           if ('trust_score' in credibilityData && 'metrics' in credibilityData) {
-            // NEW format: ChannelTrustResponse
+            // NEW format: ChannelTrustResponse (from /channel-trust endpoint)
+            // metric_details has .score + .normalized_value; raw_metrics does not.
+            const metricEntries = Object.entries(credibilityData.metric_details ?? credibilityData.metrics ?? {})
+            const factors = metricEntries
+              .filter(([, m]: [string, any]) => m && typeof m === 'object' && m.score != null)
+              .map(([name, metricData]: [string, any]) => ({
+                name,
+                weight: metricData.normalized_value ?? 0,
+                value: String(metricData.score)
+              }))
             return {
               score: credibilityData.trust_score,
-              factors: Object.entries(credibilityData.metrics).map(([name, metricData]: [string, any]) => ({
-                name,
-                weight: metricData.normalized_value,
-                value: metricData.score.toString()
-              })),
-              // Include full new format data
+              factors,
               metrics: credibilityData.metrics,
               trust_score: credibilityData.trust_score,
               raw_metrics: credibilityData.raw_metrics,
@@ -2653,6 +2749,139 @@ const ContentScript = () => {
           progressPercent={progressPercent}
           progressMessage={progressMessage}
           panelDock={panelDock}
+          userTier={userTierInfo?.tier}
+          onLoadSnapshot={(snapshotData) => {
+            // Map ShareableReportBundle fields to VideoAnalysis shape
+            if (!snapshotData) return
+            const meta = snapshotData.snapshot_metadata
+            const gs = snapshotData.general_sentiment
+            const tc = snapshotData.topic_clustering
+            const tg = snapshotData.topic_gaps
+            const ct = snapshotData.channel_trust
+            const rel = snapshotData.relevancy
+
+            // Map general_sentiment → sentiment
+            // SentimentContextData may have counts at different paths; try several
+            let mappedSentiment: any = undefined
+            if (gs) {
+              const sd = gs?.data || gs
+              // Try common field structures
+              const extractCount = (field: any): number => {
+                if (typeof field === "number" && isFinite(field)) return Math.round(field)
+                if (field && typeof field === "object") {
+                  if (typeof field.count === "number") return field.count
+                  if (typeof field.total === "number") return field.total
+                }
+                return 0
+              }
+              const pos = extractCount(sd.positive) || extractCount(gs.positive_label_count) || extractCount(gs.positive_count)
+              const neg = extractCount(sd.negative) || extractCount(gs.negative_label_count) || extractCount(gs.negative_count)
+              const neu = extractCount(sd.neutral) || extractCount(gs.neutral_label_count) || extractCount(gs.neutral_count)
+              // Only update sentiment if we have valid non-zero data
+              // (if all zero, keep the existing sentiment from the normal analysis)
+              if (pos + neu + neg > 0) {
+                mappedSentiment = {
+                  overall: pos > neg ? "positive" : neg > pos ? "negative" : "neutral",
+                  distribution: {
+                    positive: pos, neutral: neu, negative: neg,
+                    totalCommentsAnalyzed: pos + neu + neg,
+                    exampleComments: {
+                      positive: (typeof sd.positive === "object" && sd.positive?.top_comments) ? sd.positive.top_comments : [],
+                      neutral: (typeof sd.neutral === "object" && sd.neutral?.top_comments) ? sd.neutral.top_comments : [],
+                      negative: (typeof sd.negative === "object" && sd.negative?.top_comments) ? sd.negative.top_comments : [],
+                    }
+                  },
+                  filteringMetadata: gs.filtering_metadata ?? undefined,
+                }
+              }
+            }
+
+            // Map topic_clustering → topicClustersData
+            let mappedTopicClustersData: any = undefined
+            if (tc) {
+              mappedTopicClustersData = {
+                clusters: tc.topic_clusters || tc.clusters || [],
+                parent_themes: tc.parent_themes || [],
+                hierarchy_map: tc.hierarchy_map || {},
+                total_parent_themes: tc.total_parent_themes || (tc.parent_themes || []).length || 0,
+                method: tc.method || "public_report",
+                processing_time: tc.processing_time,
+              }
+            }
+
+            // Map topic_gaps[] → contentGaps
+            let mappedContentGaps: any = undefined
+            if (Array.isArray(tg)) {
+              mappedContentGaps = {
+                botPercentage: 0,
+                gapCoverageScore: Math.max(0, 100 - (tg.length * 10)),
+                botDetectionEnabled: true,
+                unansweredQuestions: tg.map((gap: any, idx: number) => {
+                  const supportingComments = mapGapSupportingComments(gap, idx)
+                  return { id: `gap-${idx}`, statement: gap.question_statement, type: "issue" as const, commentCount: supportingComments.length, supportingComments, isExpanded: false }
+                }),
+              }
+            }
+
+            // Map channel_trust → channelCredibility
+            let mappedChannelCredibility: any = undefined
+            if (ct && "trust_score" in ct && "metrics" in ct) {
+              mappedChannelCredibility = {
+                score: (ct as any).trust_score,
+                factors: Object.entries((ct as any).metrics).map(([n, m]: [string, any]) => ({ name: n, weight: m.normalized_value, value: m.score?.toString() })),
+                metrics: (ct as any).metrics,
+                trust_score: (ct as any).trust_score,
+                raw_metrics: (ct as any).raw_metrics,
+                metric_details: (ct as any).metric_details,
+              }
+            }
+
+            // Map relevancy → verdict fields
+            let verdictRaw = "UNKNOWN", verdictCertainty = 0, confidencePercent = 0, relClaims: any[] = []
+            if (rel) {
+              const rd = (rel as any).data || rel
+              verdictRaw = ((rd.verdict || "UNKNOWN") as string).toUpperCase()
+              const confRaw = typeof rd.confidence_score === "number" ? rd.confidence_score : 0
+              const confNorm = confRaw > 1.5 ? confRaw / 100 : Math.max(0, confRaw)
+              verdictCertainty = Math.round(confNorm * 10 * 10) / 10
+              confidencePercent = Math.round(confNorm * 100)
+              // Backend sends field as `claims_data` (RelevancyData schema); fall back to `claims` for
+              // the analyses-cache bundle shape (CachedRelevancy schema) which uses `claims`.
+              relClaims = rd.claims_data || rd.claims || []
+            }
+
+            setVideoAnalysis(prev => {
+              if (!prev) return prev
+              return {
+                ...prev,
+                ...(meta?.video_title ? { videoTitle: meta.video_title } : {}),
+                ...(meta?.channel_name ? { channelName: meta.channel_name } : {}),
+                snapshotId: meta?.snapshot_id ?? prev.snapshotId,
+                snapshotShareCode: meta?.share_token ?? prev.snapshotShareCode,
+                isFullyPublic: meta?.is_fully_public ?? prev.isFullyPublic,
+                maxCommentsRequested: meta?.max_comments_requested ?? prev.maxCommentsRequested,
+                actualCommentsFetched: meta?.actual_comments_fetched ?? prev.actualCommentsFetched,
+                ...(mappedSentiment ? { sentiment: mappedSentiment } : {}),
+                ...(mappedTopicClustersData ? { topicClustersData: mappedTopicClustersData } : {}),
+                ...(mappedContentGaps ? { contentGaps: mappedContentGaps } : {}),
+                ...(mappedChannelCredibility ? { channelCredibility: mappedChannelCredibility } : {}),
+                ...(rel ? {
+                  trustScore: { score: verdictCertainty },
+                  clickbaitVerdict: { verdict: verdictRaw },
+                  summary: {
+                    ...prev.summary,
+                    trustScore: verdictCertainty,
+                    clickbaitVerdict: {
+                      ...(prev.summary?.clickbaitVerdict ?? {}),
+                      label: verdictRaw,
+                      confidence: confidencePercent,
+                      claims: relClaims,
+                    },
+                  },
+                } : {}),
+              } as any
+            })
+          }}
         />
 
         {/* Community Verdict Teaser for Free Users */}

@@ -315,6 +315,8 @@ export interface VideoAnalysis {
    *  All tier gates (BlurredContent / locked tabs) are bypassed, mirroring
    *  the web portal's isFullyPublic behaviour. */
   isFullyPublic?: boolean
+  // True while only core cached data is shown and secondary tabs are still hydrating.
+  isHydratingSecondary?: boolean
 
   analyzedAt?: string
   isStale?: boolean

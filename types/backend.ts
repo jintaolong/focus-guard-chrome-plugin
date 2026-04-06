@@ -407,6 +407,13 @@ export interface CacheStatusResponse {
   last_fetched_at: string | null
   has_running_jobs: boolean // Boolean indicating if there are any pending/running jobs
   running_jobs: RunningJobInfo[] // Array of job details
+  // Included when cached=true: snapshot of pre-computed analysis results
+  analysis_snapshot?: {
+    relevancy_verdict: string | null
+    credibility_score: number | null
+    bot_adjusted_score: number | null
+    total_comments_analyzed: number | null
+  } | null
 }
 
 export interface ReportMetadata {

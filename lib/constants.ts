@@ -62,6 +62,33 @@ export const CONTENT_SCRIPT_MATCHES = {
   ]
 }
 
+// Chat feature constants
+export const CHAT_PORT_NAME = "CHAT_STREAM" as const
+export const CHAT_MAX_TURNS_PER_SESSION = 20
+export const CHAT_STREAM_TIMEOUT_MS = 90_000
+export const CHAT_INPUT_MAX_LENGTH = 4000
+
+export const CHAT_ERROR_MESSAGES: Record<string, string> = {
+  session_not_found: "This session has expired. Please run a new analysis.",
+  turn_limit_exceeded: "You've reached the maximum number of turns for this session.",
+  insufficient_credits: "You don't have enough credits.",
+  chat_requires_pro_subscription: "Chat is available for PRO subscribers only.",
+  meme_requires_pro_subscription: "Meme generation is available for PRO subscribers only.",
+  band1_daily_limit_reached: "You've reached the daily limit for premium model usage.",
+  unknown_model: "The selected model is not available.",
+  upstream_unavailable: "This model provider is currently unavailable. Please try a different model or retry later.",
+  network_error: "Could not reach the server.",
+  stream_read_error: "Stream interrupted.",
+  connection_lost: "Connection to the extension was interrupted. Please try again.",
+}
+
+export const RETRYABLE_ERROR_CODES = new Set([
+  "network_error",
+  "stream_read_error",
+  "upstream_unavailable",
+  "connection_lost",
+])
+
 // Custom events dispatched by portal
 export const CUSTOM_EVENTS = {
   // Extension -> Portal events

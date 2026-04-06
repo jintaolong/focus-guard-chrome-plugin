@@ -283,6 +283,15 @@ export class FocusGuardAPI {
   }
 
   /**
+   * Get all cached analyses for a video in one call (READ-ONLY, zero computation).
+   * Uses GET /analyses/{video_id} — returns 404 if video has never been analyzed.
+   * Safe to call without risk of triggering analysis jobs.
+   */
+  static async getCachedAnalysesBundle(videoId: string): Promise<any> {
+    return this.fetchWithAuth<any>(`/analyses/${videoId}`)
+  }
+
+  /**
    * Get human likeness (bot detection) analysis (V2 - cached-first)
    */
   static async analyzeHumanLikenessV2(videoId: string, forceRefresh = false): Promise<HumanLikenessResponseV2> {
@@ -353,6 +362,20 @@ export class FocusGuardAPI {
    */
   static async getSnapshotMetadata(snapshotId: number): Promise<any> {
     return this.fetchWithAuth<any>(`/videos/snapshots/${snapshotId}`)
+  }
+
+  /**
+   * Get snapshots for a video to resolve latest snapshot metadata when summary omits snapshot_id
+   */
+  static async getSnapshotsByVideo(videoId: string): Promise<any> {
+    return this.fetchWithAuth<any>(`/videos/snapshots/by-video/${videoId}`)
+  }
+
+  /**
+   * Get public report bundle by share token (no auth header required)
+   */
+  static async getPublicReportByShareToken(shareToken: string): Promise<any> {
+    return this.fetchAPI<any>(`/reports/${shareToken}`)
   }
 
   // ============================================================================

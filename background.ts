@@ -4,6 +4,9 @@
 
 import { initConsole } from "~lib/console-manager"
 import { ConfigService } from "~lib/config"
+import { extractSSEEvents } from "~lib/sse-parser"
+import { CHAT_PORT_NAME, CHAT_ERROR_MESSAGES, CHAT_STREAM_TIMEOUT_MS } from "~lib/constants"
+import type { ChatPortMessage } from "~types/chat"
 
 initConsole()
 
@@ -338,6 +341,177 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true
   }
   
+  // Handle session creation for chat feature
+  if (request.type === 'CREATE_CHAT_SESSION') {
+    ;(async () => {
+      try {
+        const { video_id, video_metadata, comments, report, snapshot_id } = request.payload
+
+        const payload: any = {
+          video_id,
+          video_metadata: video_metadata || {},
+          comments: Array.isArray(comments) ? comments : [],
+          report: report || {},
+        }
+        if (snapshot_id != null) payload.snapshot_id = snapshot_id
+
+        const result = await makeAPIRequest('/chat/sessions', {
+          method: 'POST',
+          headers: request.payload.authHeaders || {},
+          body: JSON.stringify(payload),
+        })
+
+        if (result.success && result.data?.session_id) {
+          sendResponse({
+            success: true,
+            session_id: result.data.session_id,
+            max_turns: result.data.max_turns,
+          })
+          return
+        }
+
+        // Check for specific error codes
+        const detail = result.error?.detail ?? result.error
+        const code = typeof detail === 'string' ? detail
+          : typeof detail === 'object' && detail?.detail ? detail.detail
+          : 'session_creation_failed'
+        const errorMessage = typeof result.error === 'string' ? result.error : JSON.stringify(result.error || 'session_creation_failed')
+        sendResponse({ success: false, code, message: errorMessage })
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Could not reach server.'
+        sendResponse({ success: false, code: 'network_error', message: errorMessage })
+      }
+    })()
+    return true
+  }
+
+  // Fetch persisted chat history for a session
+  if (request.type === 'FETCH_CHAT_HISTORY') {
+    ;(async () => {
+      try {
+        const result = await makeAPIRequest(`/chat/sessions/${request.payload.session_id}/history`, {
+          method: 'GET',
+          headers: request.payload.authHeaders || {},
+        })
+        if (result.success) {
+          sendResponse({ success: true, data: result.data })
+        } else {
+          sendResponse({ success: false, error: result.error })
+        }
+      } catch (err) {
+        sendResponse({ success: false, error: 'network_error' })
+      }
+    })()
+    return true
+  }
+
+  // Generate meme via chat session
+  if (request.type === 'GENERATE_MEME') {
+    ;(async () => {
+      try {
+        const result = await makeAPIRequest('/generate/meme', {
+          method: 'POST',
+          headers: request.payload.authHeaders || {},
+          body: JSON.stringify({
+            session_id: request.payload.session_id,
+            original_prompt: request.payload.original_prompt,
+            style_hint: request.payload.style_hint || null,
+          }),
+        })
+        if (result.success) {
+          sendResponse({ success: true, data: result.data })
+        } else {
+          const detail = result.error?.detail ?? result.error
+          const code = typeof detail === 'string' ? detail : 'meme_generation_failed'
+          sendResponse({ success: false, code, error: result.error })
+        }
+      } catch (err) {
+        sendResponse({ success: false, code: 'network_error', error: 'Could not reach server.' })
+      }
+    })()
+    return true
+  }
+
+  // Fetch report snapshot listing for a video
+  if (request.type === 'FETCH_SNAPSHOTS_BY_VIDEO') {
+    ;(async () => {
+      try {
+        const result = await makeAPIRequest(`/reports/history/${request.payload.video_id}`, {
+          method: 'GET',
+          headers: request.payload.authHeaders || {},
+        })
+        if (result.success) {
+          sendResponse({ success: true, data: result.data })
+        } else {
+          sendResponse({ success: false, error: result.error })
+        }
+      } catch (err) {
+        sendResponse({ success: false, error: 'network_error' })
+      }
+    })()
+    return true
+  }
+
+  // Fetch full shareable report by share_token (public endpoint, no auth needed)
+  if (request.type === 'FETCH_REPORT_BY_SHARE_TOKEN') {
+    ;(async () => {
+      try {
+        const result = await makeAPIRequest(`/reports/${request.payload.share_token}`, {
+          method: 'GET',
+          headers: {},
+        })
+        if (result.success) {
+          sendResponse({ success: true, data: result.data })
+        } else {
+          sendResponse({ success: false, error: result.error })
+        }
+      } catch (err) {
+        sendResponse({ success: false, error: 'network_error' })
+      }
+    })()
+    return true
+  }
+
+  // Fetch full snapshot content by ID
+  if (request.type === 'FETCH_SNAPSHOT_BY_ID') {
+    ;(async () => {
+      try {
+        const result = await makeAPIRequest(`/videos/snapshots/${request.payload.snapshot_id}`, {
+          method: 'GET',
+          headers: request.payload.authHeaders || {},
+        })
+        if (result.success) {
+          sendResponse({ success: true, data: result.data })
+        } else {
+          sendResponse({ success: false, error: result.error })
+        }
+      } catch (err) {
+        sendResponse({ success: false, error: 'network_error' })
+      }
+    })()
+    return true
+  }
+
+  // Delete a snapshot (owner only)
+  if (request.type === 'DELETE_SNAPSHOT') {
+    ;(async () => {
+      try {
+        const result = await makeAPIRequest(`/videos/snapshots/${request.payload.snapshot_id}`, {
+          method: 'DELETE',
+          headers: request.payload.authHeaders || {},
+        })
+        if (result.success) {
+          sendResponse({ success: true, data: result.data })
+        } else {
+          sendResponse({ success: false, error: result.error })
+        }
+      } catch (err) {
+        sendResponse({ success: false, error: 'network_error' })
+      }
+    })()
+    return true
+  }
+
   // Legacy getData support
   if (request.action === "getData") {
     chrome.storage.sync.get(["data"], (result) => {
@@ -580,6 +754,185 @@ async function refreshTokenIfNeeded() {
     console.error("Background: Error in token refresh:", error)
   } finally {
     isRefreshing = false
+  }
+}
+
+// ============================================================================
+// Chat Streaming via Port Connection
+// ============================================================================
+
+chrome.runtime.onConnect.addListener((port: chrome.runtime.Port) => {
+  if (port.name !== CHAT_PORT_NAME) return
+
+  port.onMessage.addListener(async (msg: ChatPortMessage) => {
+    if (msg.type !== "CHAT_REQUEST") return
+    await streamChatRequest(port, msg.payload)
+  })
+})
+
+/**
+ * Parse non-2xx HTTP responses into a structured error payload.
+ */
+async function parseChatErrorResponse(
+  response: Response
+): Promise<{ code: string; message: string }> {
+  const status = response.status
+  try {
+    const body = await response.json()
+    const detail = body?.detail ?? "unknown_error"
+    // Backend wraps nested objects as { detail: "code", ... } OR flat string
+    const code = typeof detail === "string" ? detail : (detail?.detail ?? detail?.code ?? "unknown_error")
+    return {
+      code,
+      message: CHAT_ERROR_MESSAGES[code] ?? `Request failed (${status})`,
+    }
+  } catch {
+    return {
+      code: "parse_error",
+      message: `Request failed (${status})`,
+    }
+  }
+}
+
+/**
+ * Handle a single chat turn: fetch SSE stream, parse tokens, forward via Port.
+ */
+async function streamChatRequest(
+  port: chrome.runtime.Port,
+  payload: { session_id: string; message: string; history: Array<{ role: string; content: string }>; model_id?: string }
+): Promise<void> {
+  const { session_id, message, history, model_id } = payload
+
+  // AbortController lets us cancel the fetch when the port disconnects
+  const abortController = new AbortController()
+  let portDisconnected = false
+
+  port.onDisconnect.addListener(() => {
+    portDisconnected = true
+    abortController.abort()
+  })
+
+  // Get auth token for the request
+  let authHeaders: Record<string, string> = {}
+  try {
+    const result = await chrome.storage.sync.get(['focus_guard_access_token'])
+    if (result.focus_guard_access_token) {
+      authHeaders = { Authorization: `Bearer ${result.focus_guard_access_token}` }
+    }
+  } catch {
+    // proceed without auth if storage read fails
+  }
+
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE_URL}/chat/${session_id}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders,
+      },
+      body: JSON.stringify({ message, history, ...(model_id ? { model_id } : {}) }),
+      signal: abortController.signal,
+    })
+  } catch (err) {
+    if (portDisconnected) return
+    port.postMessage({
+      type: "CHAT_ERROR",
+      code: "network_error",
+      message: "Could not reach the server.",
+    })
+    try { port.disconnect() } catch {}
+    return
+  }
+
+  if (!response.ok) {
+    if (portDisconnected) return
+    const errorPayload = await parseChatErrorResponse(response)
+    port.postMessage({ type: "CHAT_ERROR", ...errorPayload })
+    try { port.disconnect() } catch {}
+    return
+  }
+
+  // SSE stream reading
+  const reader = response.body!.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ""
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const events = extractSSEEvents(buffer)
+      buffer = events.remainder
+
+      for (const event of events.parsed) {
+        if (portDisconnected) return
+
+        if (event.type === "error") {
+          try {
+            const errData = JSON.parse(event.data)
+            port.postMessage({
+              type: "CHAT_ERROR",
+              code: errData.code || "stream_error",
+              message: errData.message || "Stream error",
+            })
+          } catch {
+            port.postMessage({
+              type: "CHAT_ERROR",
+              code: "stream_error",
+              message: "Stream error",
+            })
+          }
+          try { port.disconnect() } catch {}
+          return
+        }
+
+        // Citation metadata emitted by the backend before [DONE]
+        if (event.type === "citations") {
+          try {
+            const citations = JSON.parse(event.data)
+            port.postMessage({ type: "CHAT_CITATIONS", citations })
+          } catch {
+            // Malformed citations payload — ignore, don't abort the stream
+          }
+          continue
+        }
+
+        if (event.data === "[DONE]") {
+          port.postMessage({ type: "CHAT_DONE" })
+          try { port.disconnect() } catch {}
+          return
+        }
+
+        // Regular token — backend now JSON-encodes each token (e.g. " main" → JSON " main")
+        // so we parse to restore leading spaces and literal newlines
+        let token: string
+        try {
+          token = JSON.parse(event.data)
+        } catch {
+          token = event.data
+        }
+        port.postMessage({ type: "CHAT_TOKEN", token })
+      }
+    }
+
+    // Stream ended without [DONE] — treat as completion
+    if (!portDisconnected) {
+      port.postMessage({ type: "CHAT_DONE" })
+      try { port.disconnect() } catch {}
+    }
+  } catch (err) {
+    if (portDisconnected) return
+    port.postMessage({
+      type: "CHAT_ERROR",
+      code: "stream_read_error",
+      message: "Stream interrupted.",
+    })
+    try { port.disconnect() } catch {}
+  } finally {
+    reader.releaseLock()
   }
 }
 

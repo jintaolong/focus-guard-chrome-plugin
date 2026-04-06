@@ -4,7 +4,7 @@
 import { useState, useEffect, useMemo, createContext, useContext } from "react"
 import type { VideoAnalysis, AnalysisHistoryItem } from "~types/analysis"
 import { COLORS, DARK_COLORS, type ThemeMode } from "~lib/colors"
-import { LayoutGrid, Search, ShieldCheck, SmilePlus, MessageSquare, AlertTriangle, FileText, ExternalLink, Share2, RefreshCw, Moon, Sun, PanelLeft, PanelRight, Columns2, X, Users, Copy, Check } from "lucide-react"
+import { LayoutGrid, Search, ShieldCheck, SmilePlus, MessageSquare, AlertTriangle, FileText, ExternalLink, Share2, RefreshCw, Moon, Sun, PanelLeft, PanelRight, Columns2, X, Users, Copy, Check, MessageCircle } from "lucide-react"
 import { SummaryTab } from "./sidepanel/SummaryTab"
 import { KeyInsightsTab } from "./sidepanel/KeyInsightsTab"
 import { CommentSentimentTab } from "./sidepanel/CommentSentimentTab"
@@ -15,6 +15,7 @@ import { SentimentTabNew } from "./sidepanel/SentimentTabNew"
 import { InsightsTabNew } from "./sidepanel/InsightsTabNew"
 import { GapsTabNew } from "./sidepanel/GapsTabNew"
 import { ChannelCredibilitySubTab } from "./sidepanel/ChannelCredibilitySubTab"
+import { ChatPanel } from "./sidepanel/ChatPanel"
 
 // ── Theme Context ─────────────────────────────────────────────────────────────
 export const ThemeContext = createContext<{ mode: ThemeMode; colors: typeof COLORS }>({
@@ -23,7 +24,7 @@ export const ThemeContext = createContext<{ mode: ThemeMode; colors: typeof COLO
 })
 export const useTheme = () => useContext(ThemeContext)
 
-type TabId = "overview" | "claims" | "trust" | "sentiment" | "insights" | "gaps" | "report"
+type TabId = "overview" | "claims" | "trust" | "sentiment" | "insights" | "gaps" | "report" | "chat"
 type PanelLayout = "center" | "left" | "right"
 
 interface SidePanelProps {
@@ -42,6 +43,8 @@ interface SidePanelProps {
   onLoadHistoryItem?: (item: AnalysisHistoryItem) => void
   progressPercent?: number | null
   progressMessage?: string | null
+  userTier?: string
+  onLoadSnapshot?: (snapshotData: any) => void
 }
 
 export const SidePanel = ({
@@ -59,7 +62,9 @@ export const SidePanel = ({
   onForceRefresh,
   onLoadHistoryItem,
   progressPercent,
-  progressMessage
+  progressMessage,
+  userTier,
+  onLoadSnapshot
 }: SidePanelProps) => {
   const dock = panelDock ?? position
   const [activeTab, setActiveTab] = useState<TabId>("overview")
@@ -84,18 +89,20 @@ export const SidePanel = ({
     try { localStorage.setItem("cv-panel-layout", panelLayout) } catch {}
   }, [panelLayout])
 
+  const isFullyPublic = !!(analysis as any)?.isFullyPublic
   const sentimentData = (analysis as any)?.sentiment
   const viewerInsightsData = (analysis as any)?.viewerInsights
   const hasSentimentDataOrRestriction = Boolean(
-    sentimentData?.distribution || sentimentData?.tierRestriction
+    isFullyPublic || sentimentData?.distribution || sentimentData?.tierRestriction
   )
   const hasViewerInsightsDataOrRestriction = Boolean(
+    isFullyPublic ||
     (viewerInsightsData && !Array.isArray(viewerInsightsData) && viewerInsightsData.sentimentBreakdown) ||
       viewerInsightsData?.tierRestriction
   )
   const contentGapsData = (analysis as any)?.contentGaps
   const hasContentGapsDataOrRestriction = Boolean(
-    contentGapsData?.unansweredQuestions || contentGapsData?.tierRestriction
+    isFullyPublic || contentGapsData?.unansweredQuestions || contentGapsData?.tierRestriction
   )
 
   // ── Report URL builder ──────────────────────────────────────────────────────
@@ -244,12 +251,20 @@ export const SidePanel = ({
   const claimsCount = (analysis?.summary as any)?.clickbaitVerdict?.claims?.length ?? 0
   const gapsCount = analysis?.contentGaps?.unansweredQuestions?.length ?? 0
   const insightsCount = analysis?.topicClustersData?.clusters?.length ?? 0
-  const isFullyPublic = !!(analysis as any)?.isFullyPublic
+  const isHydratingSecondary = Boolean((analysis as any)?.isHydratingSecondary)
+  const hasTrustData = Boolean(
+    (analysis?.summary as any)?.channelTrust ||
+    (analysis?.summary as any)?.channelCredibility ||
+    analysis?.channelTrust ||
+    analysis?.channelCredibility
+  )
+  console.log("🎯 SidePanel: analysis.isFullyPublic =", (analysis as any)?.isFullyPublic, "→ isFullyPublic =", isFullyPublic)
 
   const sentimentIsLocked = !isFullyPublic && !!(analysis as any)?.sentiment?.tierRestriction
   const insightsIsLocked = !isFullyPublic && !!(analysis as any)?.viewerInsights?.tierRestriction
   const gapsIsLocked = !isFullyPublic && !!(analysis as any)?.contentGaps?.tierRestriction
   const reportIsLocked = !isFullyPublic && !!(analysis as any)?.reportInfo?.tierRestriction
+  console.log("🎯 Lock status:", { sentimentIsLocked, insightsIsLocked, gapsIsLocked, reportIsLocked })
 
   const sentimentRequiredTier = sentimentIsLocked ? (analysis as any)?.sentiment?.tierRestriction?.required_tier as "starter" | "pro" | undefined : undefined
   const insightsRequiredTier = insightsIsLocked ? (analysis as any)?.viewerInsights?.tierRestriction?.required_tier as "starter" | "pro" | undefined : undefined
@@ -259,8 +274,11 @@ export const SidePanel = ({
   // When the snapshot is fully public, strip all tier restrictions from the analysis
   // before passing it to child components — mirrors the web portal canView(isFullyPublic) pattern.
   const displayAnalysis = useMemo((): VideoAnalysis | null => {
-    if (!analysis || !isFullyPublic) return analysis
-    return {
+    if (!analysis || !isFullyPublic) {
+      console.log("🎯 displayAnalysis: returning original analysis (isFullyPublic=false)")
+      return analysis
+    }
+    const stripped = {
       ...analysis,
       sentiment: analysis.sentiment ? { ...analysis.sentiment, tierRestriction: undefined } : analysis.sentiment,
       contentGaps: analysis.contentGaps ? { ...analysis.contentGaps, tierRestriction: undefined } : analysis.contentGaps,
@@ -269,6 +287,13 @@ export const SidePanel = ({
         : analysis.viewerInsights,
       reportInfo: analysis.reportInfo ? { ...analysis.reportInfo, tierRestriction: undefined } : analysis.reportInfo,
     }
+    console.log("🎯 displayAnalysis: stripped restrictions -", { 
+      sentimentHasRestriction: !!stripped.sentiment?.tierRestriction,
+      insightsHasRestriction: !!(stripped.viewerInsights as any)?.tierRestriction,
+      gapsHasRestriction: !!stripped.contentGaps?.tierRestriction,
+      reportHasRestriction: !!stripped.reportInfo?.tierRestriction,
+    })
+    return stripped
   }, [analysis, isFullyPublic])
 
   const tabs: { id: TabId; label: string; icon: React.ReactNode; count?: number; locked?: boolean; requiredTier?: "starter" | "pro" }[] = [
@@ -278,7 +303,8 @@ export const SidePanel = ({
     { id: "sentiment",  label: "Sentiment",   icon: <SmilePlus size={tabIconSize} />, locked: sentimentIsLocked, requiredTier: sentimentRequiredTier },
     { id: "insights",   label: "Insights",    icon: <MessageSquare size={tabIconSize} />, count: insightsCount || undefined, locked: insightsIsLocked, requiredTier: insightsRequiredTier },
     { id: "gaps",       label: "Gaps",        icon: <AlertTriangle size={tabIconSize} />, count: gapsCount || undefined, locked: gapsIsLocked, requiredTier: gapsRequiredTier },
-    { id: "report",     label: "Report",      icon: <FileText size={tabIconSize} />, locked: reportIsLocked, requiredTier: reportRequiredTier }
+    { id: "report",     label: "Report",      icon: <FileText size={tabIconSize} />, locked: reportIsLocked, requiredTier: reportRequiredTier },
+    { id: "chat",       label: "Chat",        icon: <MessageCircle size={tabIconSize} />, locked: userTier !== undefined && userTier !== "pro", requiredTier: userTier !== undefined && userTier !== "pro" ? "pro" : undefined }
   ]
 
   if (!isOpen) return null
@@ -794,17 +820,24 @@ export const SidePanel = ({
                 <div style={{ maxWidth: "900px", margin: "0 auto" }}>
               {activeTab === "overview" && <SummaryTab analysis={analysis} panelDock={dock} />}
               {activeTab === "claims" && (
-                <ClaimsTabNew analysis={analysis} panelDock={dock} />
+                isHydratingSecondary && claimsCount === 0 ? (
+                  <LoadingPlaceholder label="Loading claims analysis..." colors={C} />
+                ) : (
+                  <ClaimsTabNew analysis={analysis} panelDock={dock} />
+                )
               )}
               {activeTab === "trust" && (
                 (() => {
                   const summary = analysis.summary || {} as any
                   const channelTrust = summary.channelTrust || analysis.channelTrust
-                  const channelCredibility = summary.channelCredibility || analysis.channelCredibility || {}
+                  const channelCredibility = summary.channelCredibility || analysis.channelCredibility || null
                   const hasNewFormat = channelTrust && channelTrust.metrics
                   const displayData = hasNewFormat ? channelTrust : channelCredibility
-                  const trustScore = hasNewFormat ? channelTrust.trust_score : (summary.trustScore ?? analysis.trustScore?.score ?? channelCredibility.score ?? 0)
-                  const trustFactors = hasNewFormat ? [] : (channelCredibility.factors || [])
+                  const trustScore = hasNewFormat ? channelTrust.trust_score : (channelCredibility?.score !== undefined ? channelCredibility.score : (summary.trustScore ?? analysis.trustScore?.score ?? 0))
+                  const trustFactors = hasNewFormat ? [] : (channelCredibility?.factors || [])
+                  if (isHydratingSecondary && !hasTrustData) {
+                    return <LoadingPlaceholder label="Loading trust analysis..." colors={C} />
+                  }
                   return displayData ? (
                     <div style={{ padding: "24px" }}>
                       <ChannelCredibilitySubTab
@@ -821,22 +854,28 @@ export const SidePanel = ({
               {activeTab === "sentiment" && (
                 hasSentimentDataOrRestriction ? (
                   <SentimentTabNew analysis={displayAnalysis!} panelDock={dock} />
-                ) : (
+                ) : isHydratingSecondary ? (
                   <LoadingPlaceholder label="Loading sentiment analysis..." colors={C} />
+                ) : (
+                  <LoadingPlaceholder label="Sentiment analysis not yet available" colors={C} />
                 )
               )}
               {activeTab === "insights" && (
-                (analysis.topicClustersData || (analysis as any)?.viewerInsights?.tierRestriction) ? (
+                hasViewerInsightsDataOrRestriction ? (
                   <InsightsTabNew analysis={displayAnalysis!} panelDock={dock} />
-                ) : (
+                ) : isHydratingSecondary ? (
                   <LoadingPlaceholder label="Loading viewer insights..." colors={C} />
+                ) : (
+                  <LoadingPlaceholder label="Viewer insights not yet available" colors={C} />
                 )
               )}
               {activeTab === "gaps" && (
                 hasContentGapsDataOrRestriction ? (
                   <GapsTabNew analysis={displayAnalysis!} panelDock={dock} />
-                ) : (
+                ) : isHydratingSecondary ? (
                   <LoadingPlaceholder label="Loading content gaps..." colors={C} />
+                ) : (
+                  <LoadingPlaceholder label="Content gaps not yet available" colors={C} />
                 )
               )}
               {activeTab === "report" && (
@@ -847,7 +886,18 @@ export const SidePanel = ({
                   onReAnalyze={onReAnalyze}
                   onDownloadHistoryReport={onDownloadHistoryReport}
                   onLoadHistoryItem={onLoadHistoryItem}
+                  onLoadSnapshot={onLoadSnapshot}
                 />
+              )}
+              {activeTab === "chat" && (
+                <div style={{ height: "calc(100vh - 320px)", minHeight: "300px" }}>
+                  <ChatPanel
+                    videoId={analysis?.videoId ?? null}
+                    analysis={analysis ?? null}
+                    userTier={userTier}
+                    sessionScopeId={analysis?.snapshotShareCode ?? (analysis?.snapshotId != null ? String(analysis.snapshotId) : null)}
+                  />
+                </div>
               )}
                 </div>
               )}
