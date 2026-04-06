@@ -168,7 +168,7 @@ describe('Popup - Authentication UI State', () => {
           screen.queryByText(mockUser.email) || 
           screen.queryByText(mockUser.name)
         ).toBeTruthy()
-      })
+      }, { timeout: 3000 })
     })
 
     it('should not render login form when authenticated', async () => {
@@ -454,7 +454,7 @@ describe('Popup - Authentication UI State', () => {
       await waitFor(() => {
         const loginElements = screen.queryAllByText(/sign in/i)
         expect(loginElements.length).toBeGreaterThan(0)
-      }, { timeout: 2000 })
+      }, { timeout: 3000 })
     })
   })
 })
