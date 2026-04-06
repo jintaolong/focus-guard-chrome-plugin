@@ -56,13 +56,14 @@ export const SentimentTabNew = ({ analysis }: SentimentTabNewProps) => {
   let negativePct = Math.floor(rawNeg)
   let mixedPct = Math.floor(rawMix)
   const pctRemainder = 100 - positivePct - neutralPct - negativePct - mixedPct
+  // Guard: pctRemainder can exceed pctFracs.length when all counts are 0 (e.g. from snapshot data)
   const pctFracs = [
     { key: 'pos', frac: rawPos - positivePct },
     { key: 'neu', frac: rawNeu - neutralPct },
     { key: 'neg', frac: rawNeg - negativePct },
     { key: 'mix', frac: rawMix - mixedPct },
   ].sort((a, b) => b.frac - a.frac)
-  for (let i = 0; i < pctRemainder; i++) {
+  for (let i = 0; i < pctRemainder && i < pctFracs.length; i++) {
     const k = pctFracs[i].key
     if (k === 'pos') positivePct++
     else if (k === 'neu') neutralPct++

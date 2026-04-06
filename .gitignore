@@ -11,7 +11,8 @@ node_modules/
 # web portal for dev reference
 .gitmodules
 /web-portal
+/focus-core
 
 
 # doc
-API_ENDPOINTS_IO_REFERENCE.md
+#API_ENDPOINTS_IO_REFERENCE.md

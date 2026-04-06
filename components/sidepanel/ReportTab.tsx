@@ -1,11 +1,12 @@
 // FR-102 Tab 4: Report & Account
 // Report Download + Analysis History
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import type { VideoAnalysis, AnalysisHistoryItem } from "~types/analysis"
 import { COLORS, getTrustScoreColor } from "~lib/colors"
 import { BlurredContent } from "~components/UpgradePrompt"
 import { useTheme } from "~components/SidePanel"
+import { AuthService } from "~lib/auth"
 
 interface ReportTabProps {
   analysis: VideoAnalysis
@@ -14,6 +15,7 @@ interface ReportTabProps {
   onReAnalyze?: (videoId: string) => void
   onDownloadHistoryReport?: (videoId: string) => void
   onLoadHistoryItem?: (item: AnalysisHistoryItem) => void
+  onLoadSnapshot?: (snapshotData: any) => void
 }
 
 export const ReportTab = ({
@@ -22,12 +24,90 @@ export const ReportTab = ({
   onDownloadReport,
   onReAnalyze,
   onDownloadHistoryReport,
-  onLoadHistoryItem
+  onLoadHistoryItem,
+  onLoadSnapshot
 }: ReportTabProps) => {
   const [selectedFormat, setSelectedFormat] = useState<"PDF" | "TXT">("PDF")
   const [isDownloading, setIsDownloading] = useState(false)
   const { colors: C, mode } = useTheme()
   const isDark = mode === "dark"
+
+  // Snapshot history state
+  const [snapshots, setSnapshots] = useState<any[]>([])
+  const [isLoadingSnapshots, setIsLoadingSnapshots] = useState(false)
+  const [loadingSnapshotId, setLoadingSnapshotId] = useState<number | null>(null)
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<number | null>(null)
+  const [isDeletingId, setIsDeletingId] = useState<number | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+
+  // Fetch snapshots for this video
+  useEffect(() => {
+    const videoId = (analysis as any)?.videoId
+    if (!videoId) return
+
+    let cancelled = false
+    const fetchSnapshots = async () => {
+      setIsLoadingSnapshots(true)
+      try {
+        const accessToken = await AuthService.ensureValidToken()
+        const resp = await chrome.runtime.sendMessage({
+          type: "FETCH_SNAPSHOTS_BY_VIDEO",
+          payload: {
+            video_id: videoId,
+            authHeaders: { Authorization: `Bearer ${accessToken}` },
+          },
+        })
+        if (!cancelled && resp?.success && resp.data?.snapshots) {
+          setSnapshots(resp.data.snapshots)
+        }
+      } catch {}
+      if (!cancelled) setIsLoadingSnapshots(false)
+    }
+    fetchSnapshots()
+    return () => { cancelled = true }
+  }, [(analysis as any)?.videoId])
+
+  const handleSnapshotClick = useCallback(async (shareToken: string, snapshotId: number) => {
+    setLoadingSnapshotId(snapshotId)
+    try {
+      const resp = await chrome.runtime.sendMessage({
+        type: "FETCH_REPORT_BY_SHARE_TOKEN",
+        payload: { share_token: shareToken },
+      })
+      if (resp?.success && resp.data) {
+        onLoadSnapshot?.(resp.data)
+      }
+    } catch {}
+    setLoadingSnapshotId(null)
+  }, [onLoadSnapshot])
+
+  const handleDeleteSnapshot = useCallback(async (snapshotId: number) => {
+    setIsDeletingId(snapshotId)
+    setDeleteError(null)
+    try {
+      const accessToken = await AuthService.ensureValidToken()
+      const resp = await chrome.runtime.sendMessage({
+        type: "DELETE_SNAPSHOT",
+        payload: {
+          snapshot_id: snapshotId,
+          authHeaders: { Authorization: `Bearer ${accessToken}` },
+        },
+      })
+      if (resp?.success) {
+        setSnapshots(prev => prev.filter(s => s.snapshot_id !== snapshotId))
+      } else {
+        setDeleteError(
+          resp?.error === "forbidden" || resp?.error?.includes?.("403")
+            ? "Not authorized to delete this snapshot."
+            : "Failed to delete snapshot. Please try again."
+        )
+      }
+    } catch {
+      setDeleteError("Failed to delete snapshot. Please try again.")
+    }
+    setIsDeletingId(null)
+    setConfirmingDeleteId(null)
+  }, [])
 
   const handleDownload = async () => {
     if (!onDownloadReport) return
@@ -41,6 +121,7 @@ export const ReportTab = ({
 
   // Check for tier restriction (Report is Pro-only)
   const reportTierRestriction = (analysis as any)?.reportInfo?.tierRestriction
+  const currentSnapshotId = Number((analysis as any)?.snapshotId)
   console.log("🎯 ReportTab: received analysis -", { 
     hasReportInfo: !!(analysis as any)?.reportInfo,
     reportTierRestriction,
@@ -169,8 +250,8 @@ export const ReportTab = ({
         </p>
       </div>
 
-      {/* Analysis History */}
-      <div>
+      {/* Report Snapshots from Backend */}
+      <div style={{ marginBottom: "32px" }}>
         <h3
           style={{
             margin: "0 0 12px 0",
@@ -178,154 +259,176 @@ export const ReportTab = ({
             fontWeight: "700",
             color: C.ui.text.primary
           }}>
-          Recent Analysis History
+          Report History
         </h3>
 
-        {history.length === 0 ? (
-          <div
-            style={{
-              padding: "20px",
-              textAlign: "center",
-              backgroundColor: C.ui.surface,
-              border: `1px solid ${C.ui.border}`,
-              borderRadius: "8px"
-            }}>
-            <p
-              style={{
-                margin: 0,
-                fontSize: "12px",
-                color: C.ui.text.secondary
-              }}>
-              No analysis history yet
-            </p>
+        {isLoadingSnapshots ? (
+          <div style={{
+            padding: "20px", textAlign: "center",
+            backgroundColor: C.ui.surface, border: `1px solid ${C.ui.border}`, borderRadius: "8px",
+          }}>
+            <div style={{
+              width: "20px", height: "20px", margin: "0 auto 8px",
+              border: `2px solid ${C.ui.border}`, borderTopColor: C.neutral.primary,
+              borderRadius: "50%", animation: "spin 1s linear infinite",
+            }} />
+            <p style={{ margin: 0, fontSize: "12px", color: C.ui.text.secondary }}>Loading snapshots...</p>
+          </div>
+        ) : snapshots.length === 0 ? (
+          <div style={{
+            padding: "16px", textAlign: "center",
+            backgroundColor: C.ui.surface, border: `1px solid ${C.ui.border}`, borderRadius: "8px",
+          }}>
+            <p style={{ margin: 0, fontSize: "12px", color: C.ui.text.secondary }}>No report snapshots available</p>
           </div>
         ) : (
-          <div
-            style={{
-              maxHeight: "400px",
-              overflowY: "auto",
-              display: "flex",
-              flexDirection: "column",
-              gap: "12px"
-            }}>
-            {history.map((item) => {
-              const trustColor = getTrustScoreColor(item.trustScore)
+          <>
+          <div style={{
+            maxHeight: "300px", overflowY: "auto",
+            display: "flex", flexDirection: "column", gap: "8px",
+          }}>
+            {snapshots.map((snap: any) => {
+              const isLoading = loadingSnapshotId === snap.snapshot_id
+              const isSelected = Number.isFinite(currentSnapshotId) && currentSnapshotId === snap.snapshot_id
+              const isDeleting = isDeletingId === snap.snapshot_id
+              const isConfirmingDelete = confirmingDeleteId === snap.snapshot_id
+              const snapDate = snap.created_at
+                ? new Date(snap.created_at).toLocaleString(undefined, {
+                    year: "numeric", month: "short", day: "numeric",
+                    hour: "2-digit", minute: "2-digit",
+                  })
+                : "Unknown"
+              const commentCount = snap.actual_comments_fetched ?? snap.comment_count
               return (
                 <div
-                  key={item.videoId}
-                  onClick={() => onLoadHistoryItem?.(item)}
+                  key={snap.snapshot_id}
+                  onClick={() => !isLoading && !isConfirmingDelete && snap.share_token && handleSnapshotClick(snap.share_token, snap.snapshot_id)}
                   style={{
-                    display: "flex",
-                    gap: "10px",
+                    display: "flex", alignItems: "center", gap: "10px",
                     padding: "10px",
-                    backgroundColor: C.ui.background,
-                    border: `1px solid ${C.ui.border}`,
+                    backgroundColor: isSelected ? C.neutral.light : C.ui.background,
+                    border: `1.5px solid ${isSelected ? C.neutral.primary : C.ui.border}`,
                     borderRadius: "8px",
-                    transition: "box-shadow 0.2s",
-                    cursor: onLoadHistoryItem ? "pointer" : "default",
+                    cursor: isLoading ? "wait" : "pointer",
+                    opacity: isLoading || isDeleting ? 0.6 : 1,
+                    transition: "box-shadow 0.2s, border-color 0.2s, background-color 0.2s",
+                    boxShadow: isSelected ? "0 0 0 2px rgba(59,130,246,0.15)" : "none",
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.1)"
+                    e.currentTarget.style.boxShadow = isSelected
+                      ? "0 0 0 2px rgba(59,130,246,0.18), 0 4px 12px rgba(0,0,0,0.08)"
+                      : "0 4px 12px rgba(0,0,0,0.1)"
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.boxShadow = "none"
+                    e.currentTarget.style.boxShadow = isSelected
+                      ? "0 0 0 2px rgba(59,130,246,0.15)"
+                      : "none"
                   }}>
-                  {/* Thumbnail */}
-                  <img
-                    src={item.videoThumbnail}
-                    alt={item.videoTitle}
-                    style={{
-                      width: "80px",
-                      height: "45px",
-                      borderRadius: "4px",
-                      objectFit: "cover",
-                      flexShrink: 0
-                    }}
-                  />
-
-                  {/* Info */}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <p
-                      style={{
-                        margin: "0 0 4px 0",
-                        fontSize: "12px",
-                        fontWeight: "600",
-                        color: C.ui.text.primary,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap"
-                      }}>
-                      {item.videoTitle}
-                    </p>
-
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                        marginBottom: "6px"
-                      }}>
-                      <div
-                        style={{
-                          padding: "2px 8px",
-                          backgroundColor: C[trustColor].light,
-                          border: `1px solid ${C[trustColor].primary}`,
-                          borderRadius: "4px",
-                          fontSize: "11px",
-                          fontWeight: "700",
-                          color: C[trustColor].text
-                        }}>
-                        {item.trustScore.toFixed(1)}
-                      </div>
-                      <span
-                        style={{
-                          fontSize: "10px",
-                          color: C.ui.text.secondary
-                        }}>
-                        {new Date(item.analyzedAt).toLocaleDateString()}
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "3px" }}>
+                      <span style={{ fontSize: "12px", fontWeight: "600", color: C.ui.text.primary }}>
+                        {snapDate}
                       </span>
-                    </div>
-
-                    {/* Actions */}
-                    <div style={{ display: "flex", gap: "8px" }}>
-                      {onReAnalyze && (
-                        <button
-                          onClick={() => onReAnalyze(item.videoId)}
-                          style={{
-                            padding: "3px 8px",
-                            fontSize: "10px",
-                            fontWeight: "600",
-                            color: C.neutral.primary,
-                            backgroundColor: "transparent",
-                            border: `1px solid ${C.neutral.primary}`,
-                            borderRadius: "4px",
-                            cursor: "pointer"
-                          }}>
-                          Re-analyze
-                        </button>
+                      {isSelected && (
+                        <span style={{
+                          fontSize: "10px",
+                          fontWeight: "700",
+                          color: "white",
+                          backgroundColor: C.neutral.primary,
+                          borderRadius: "999px",
+                          padding: "2px 8px",
+                        }}>
+                          Current
+                        </span>
                       )}
-                      {onDownloadHistoryReport && item.reportUrl && (
-                        <button
-                          onClick={() => onDownloadHistoryReport(item.videoId)}
-                          style={{
-                            padding: "3px 8px",
-                            fontSize: "10px",
-                            fontWeight: "600",
-                            color: C.neutral.primary,
-                            backgroundColor: "transparent",
-                            border: `1px solid ${C.neutral.primary}`,
-                            borderRadius: "4px",
-                            cursor: "pointer"
-                          }}>
-                          Download
-                        </button>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      {commentCount != null && (
+                        <span style={{
+                          fontSize: "10px", fontWeight: "600",
+                          color: C.neutral.primary,
+                        }}>
+                          {commentCount} comments
+                        </span>
+                      )}
+                      {snap.query_context && (
+                        <span style={{
+                          fontSize: "10px", padding: "1px 6px",
+                          backgroundColor: C.ui.surface, borderRadius: "4px",
+                          color: C.ui.text.secondary, border: `1px solid ${C.ui.border}`,
+                        }}>
+                          {snap.query_context}
+                        </span>
                       )}
                     </div>
                   </div>
+                  {isDeleting ? (
+                    <div style={{
+                      width: "16px", height: "16px",
+                      border: `2px solid ${C.ui.border}`, borderTopColor: "#ef4444",
+                      borderRadius: "50%", animation: "spin 1s linear infinite", flexShrink: 0,
+                    }} />
+                  ) : isConfirmingDelete ? (
+                    <div
+                      style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}
+                      onClick={(e) => e.stopPropagation()}>
+                      <span style={{ fontSize: "11px", color: C.ui.text.secondary, whiteSpace: "nowrap" }}>Delete?</span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDeleteSnapshot(snap.snapshot_id) }}
+                        style={{
+                          fontSize: "11px", fontWeight: "600",
+                          padding: "2px 8px", border: "none", borderRadius: "4px",
+                          backgroundColor: "#ef4444", color: "white", cursor: "pointer",
+                        }}>
+                        Yes
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setConfirmingDeleteId(null) }}
+                        style={{
+                          fontSize: "11px", fontWeight: "600",
+                          padding: "2px 8px", border: `1px solid ${C.ui.border}`, borderRadius: "4px",
+                          backgroundColor: C.ui.background, color: C.ui.text.secondary, cursor: "pointer",
+                        }}>
+                        No
+                      </button>
+                    </div>
+                  ) : isLoading ? (
+                    <div style={{
+                      width: "16px", height: "16px",
+                      border: `2px solid ${C.ui.border}`, borderTopColor: C.neutral.primary,
+                      borderRadius: "50%", animation: "spin 1s linear infinite", flexShrink: 0,
+                    }} />
+                  ) : (
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
+                      <button
+                        title="Delete snapshot"
+                        onClick={(e) => { e.stopPropagation(); setConfirmingDeleteId(snap.snapshot_id); setDeleteError(null) }}
+                        style={{
+                          background: "none", border: "none", padding: "2px 4px",
+                          cursor: "pointer", fontSize: "13px", color: C.ui.text.tertiary,
+                          borderRadius: "4px", lineHeight: 1,
+                          opacity: 0.6,
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; e.currentTarget.style.color = "#ef4444" }}
+                        onMouseLeave={(e) => { e.currentTarget.style.opacity = "0.6"; e.currentTarget.style.color = C.ui.text.tertiary }}>
+                        🗑
+                      </button>
+                      <span style={{ fontSize: "10px", color: C.ui.text.tertiary }}>→</span>
+                    </div>
+                  )}
                 </div>
               )
             })}
           </div>
+          {deleteError && (
+            <p style={{
+              margin: "8px 0 0 0", fontSize: "11px",
+              color: "#ef4444", textAlign: "center",
+            }}>
+              {deleteError}
+            </p>
+          )}
+          </>
         )}
       </div>
 
