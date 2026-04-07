@@ -4,6 +4,7 @@
 import { useState } from "react"
 import type { CommentObject } from "~types/analysis"
 import { COLORS } from "~lib/colors"
+import { renderBoldMarkup } from "~lib/renderBoldText"
 
 interface CommentDisplayProps {
   comment: string | CommentObject | any
@@ -520,7 +521,7 @@ export const CommentDisplay = ({
           whiteSpace: "pre-wrap",
           wordBreak: "break-word"
         }}>
-        {displayText}
+        {renderBoldMarkup(displayText)}
       </div>
 
       {/* Show more/less button */}
