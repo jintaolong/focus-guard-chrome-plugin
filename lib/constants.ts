@@ -70,12 +70,15 @@ export const CHAT_INPUT_MAX_LENGTH = 4000
 
 export const CHAT_ERROR_MESSAGES: Record<string, string> = {
   session_not_found: "This session has expired. Please run a new analysis.",
-  turn_limit_exceeded: "You've reached the maximum number of turns for this session.",
-  insufficient_credits: "You don't have enough credits.",
+  turn_limit_exceeded: "This session has reached its maximum number of messages. Start a new session to continue.",
+  insufficient_credits: "This request requires more credits than your current balance.",
   chat_requires_pro_subscription: "Chat is available for PRO subscribers only.",
   meme_requires_pro_subscription: "Meme generation is available for PRO subscribers only.",
-  band1_daily_limit_reached: "You've reached the daily limit for premium model usage.",
+  band1_daily_limit_reached: "You've reached your daily advanced-model limit. Switch to GPT-OSS 120B or Llama 4 Maverick, or wait until reset at midnight UTC.",
   unknown_model: "The selected model is not available.",
+  prompt_construction_failed: "The model failed to build a valid meme prompt. Please retry or switch models.",
+  image_generation_unavailable: "Image providers are temporarily unavailable. Please retry in a moment.",
+  generation_timeout: "Meme generation timed out. Please retry.",
   upstream_unavailable: "This model provider is currently unavailable. Please try a different model or retry later.",
   network_error: "Could not reach the server.",
   stream_read_error: "Stream interrupted.",

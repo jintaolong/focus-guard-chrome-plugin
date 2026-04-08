@@ -71,12 +71,18 @@ export interface ChatCitationsMessage {
   citations: Record<string, { comment_id: string; author: string; text: string; like_count: number; is_reply: boolean }>
 }
 
+export interface ChatThinkingMessage {
+  type: "CHAT_THINKING"
+  chunks: string[]
+}
+
 export type ChatPortMessage =
   | ChatRequestMessage
   | ChatTokenMessage
   | ChatDoneMessage
   | ChatErrorMessage
   | ChatCitationsMessage
+  | ChatThinkingMessage
 
 // Session creation response
 export interface ChatSessionResponse {

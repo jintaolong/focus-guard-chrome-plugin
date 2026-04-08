@@ -145,6 +145,7 @@ export const ChatPanel = ({ videoId, analysis, userTier, sessionScopeId }: ChatP
   const [showCreditConfirm, setShowCreditConfirm] = useState(false)
   const [pendingMessage, setPendingMessage] = useState<string | null>(null)
   const [isFirstTurn, setIsFirstTurn] = useState(true)
+  const [thinkingChunks, setThinkingChunks] = useState<string[]>([])
 
   // Citations from the most recent assistant response
   type CitationItem = ChatCitationsMessage["citations"][string]
@@ -448,7 +449,7 @@ export const ChatPanel = ({ videoId, analysis, userTier, sessionScopeId }: ChatP
       } else {
         setError({
           code: response?.code || "meme_generation_failed",
-          message: response?.error?.detail || response?.error || "Meme generation failed.",
+          message: response?.message || response?.errorPayload?.message || response?.error || "Meme generation failed.",
           retryable: false,
         })
       }
@@ -473,6 +474,7 @@ export const ChatPanel = ({ videoId, analysis, userTier, sessionScopeId }: ChatP
     lastUserMessageRef.current = message
     setIsStreaming(true)
     setStreamingContent("")
+    setThinkingChunks([])
     streamCompletedRef.current = false
     // Clear previous citations; any new citations will arrive before [DONE]
     setLastCitations(null)
@@ -511,6 +513,14 @@ export const ChatPanel = ({ videoId, analysis, userTier, sessionScopeId }: ChatP
         case "CHAT_CITATIONS":
           pendingCitationsRef.current = (msg as ChatCitationsMessage).citations
           break
+
+        case "CHAT_THINKING": {
+          const chunks = Array.isArray((msg as any).chunks) ? (msg as any).chunks : []
+          if (chunks.length > 0) {
+            setThinkingChunks(chunks)
+          }
+          break
+        }
 
         case "CHAT_ERROR": {
           streamCompletedRef.current = true
@@ -1131,6 +1141,24 @@ export const ChatPanel = ({ videoId, analysis, userTier, sessionScopeId }: ChatP
             }}>
             <X size={12} />
           </button>
+        </div>
+      )}
+
+      {thinkingChunks.length > 0 && (
+        <div style={{
+          margin: "0 12px",
+          padding: "8px 10px",
+          borderRadius: "8px",
+          backgroundColor: colors.ui.surface,
+          color: colors.ui.text.secondary,
+          fontSize: "11px",
+          lineHeight: "1.5",
+          border: `1px dashed ${colors.ui.border}`,
+        }}>
+          <div style={{ fontWeight: 600, marginBottom: "4px", color: colors.ui.text.primary }}>Model thinking</div>
+          {thinkingChunks.map((chunk, idx) => (
+            <div key={`thinking-${idx}`} style={{ marginBottom: idx === thinkingChunks.length - 1 ? 0 : "4px" }}>{chunk}</div>
+          ))}
         </div>
       )}
 

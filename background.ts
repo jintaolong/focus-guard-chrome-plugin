@@ -27,6 +27,31 @@ let tokenRefreshAlarm: NodeJS.Timeout | null = null
 let lastTokenRefreshTime = 0
 let isRefreshing = false
 
+type NormalizedApiError = {
+  code: string
+  message: string
+  status: number
+  detail?: any
+}
+
+function normalizeApiError(status: number, body: any, fallbackMessage?: string): NormalizedApiError {
+  const rawDetail = body?.detail ?? body ?? fallbackMessage ?? "unknown_error"
+  const code = typeof rawDetail === "string"
+    ? rawDetail
+    : (rawDetail?.code ?? rawDetail?.detail ?? body?.code ?? "unknown_error")
+  const message =
+    (typeof rawDetail === "object" && rawDetail?.message)
+      ? rawDetail.message
+      : (body?.message || CHAT_ERROR_MESSAGES[code] || (typeof rawDetail === "string" ? rawDetail : `Request failed (${status})`))
+
+  return {
+    code,
+    message,
+    status,
+    detail: rawDetail,
+  }
+}
+
 // Initialize configuration on startup
 ConfigService.getConfig().then(config => {
   API_BASE_URL = config.api_url
@@ -96,6 +121,7 @@ async function makeAPIRequest(endpoint: string, options: any = {}) {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ detail: response.statusText }))
+      const normalized = normalizeApiError(response.status, error, response.statusText)
       
       // Check for tier restriction error (403 with TIER_RESTRICTION code)
       if (response.status === 403) {
@@ -144,7 +170,12 @@ async function makeAPIRequest(endpoint: string, options: any = {}) {
         }
       }
       
-      return { success: false, error: errorDetail || response.statusText, status: response.status }
+      return {
+        success: false,
+        error: normalized.message,
+        errorPayload: normalized,
+        status: response.status,
+      }
     }
 
     // Check content type to handle different response formats
@@ -179,9 +210,26 @@ async function makeAPIRequest(endpoint: string, options: any = {}) {
     const errorMessage = error instanceof Error ? error.message : String(error)
     if (error instanceof Error && error.name === 'AbortError') {
       console.warn(`Background: Request timed out (${timeoutMs / 1000}s):`, url)
-      return { success: false, error: `Request timed out after ${timeoutMs / 1000} seconds`, status: 408 }
+      return {
+        success: false,
+        error: `Request timed out after ${timeoutMs / 1000} seconds`,
+        errorPayload: {
+          code: "request_timeout",
+          message: `Request timed out after ${timeoutMs / 1000} seconds`,
+          status: 408,
+        },
+        status: 408,
+      }
     }
-    return { success: false, error: errorMessage }
+    return {
+      success: false,
+      error: errorMessage,
+      errorPayload: {
+        code: "network_error",
+        message: errorMessage,
+        status: 0,
+      },
+    }
   }
 }
 
@@ -380,11 +428,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }
 
         // Check for specific error codes
-        const detail = result.error?.detail ?? result.error
-        const code = typeof detail === 'string' ? detail
-          : typeof detail === 'object' && detail?.detail ? detail.detail
-          : 'session_creation_failed'
-        const errorMessage = typeof result.error === 'string' ? result.error : JSON.stringify(result.error || 'session_creation_failed')
+        const errorPayload = result.errorPayload
+        const code = errorPayload?.code || 'session_creation_failed'
+        const errorMessage = errorPayload?.message || result.error || 'Session creation failed.'
         sendResponse({ success: false, code, message: errorMessage })
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Could not reach server.'
@@ -425,14 +471,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             session_id: request.payload.session_id,
             original_prompt: request.payload.original_prompt,
             style_hint: request.payload.style_hint || null,
+            template_id: request.payload.template_id || null,
+            template_params: request.payload.template_params || null,
+            chaos_style: request.payload.chaos_style || null,
           }),
         })
         if (result.success) {
           sendResponse({ success: true, data: result.data })
         } else {
-          const detail = result.error?.detail ?? result.error
-          const code = typeof detail === 'string' ? detail : 'meme_generation_failed'
-          sendResponse({ success: false, code, error: result.error })
+          const payload = result.errorPayload
+          const code = payload?.code || 'meme_generation_failed'
+          const message = payload?.message || result.error || 'Meme generation failed.'
+          sendResponse({ success: false, code, message, error: result.error, errorPayload: payload })
         }
       } catch (err) {
         sendResponse({ success: false, code: 'network_error', error: 'Could not reach server.' })
@@ -788,12 +838,10 @@ async function parseChatErrorResponse(
   const status = response.status
   try {
     const body = await response.json()
-    const detail = body?.detail ?? "unknown_error"
-    // Backend wraps nested objects as { detail: "code", ... } OR flat string
-    const code = typeof detail === "string" ? detail : (detail?.detail ?? detail?.code ?? "unknown_error")
+    const normalized = normalizeApiError(status, body)
     return {
-      code,
-      message: CHAT_ERROR_MESSAGES[code] ?? `Request failed (${status})`,
+      code: normalized.code,
+      message: normalized.message,
     }
   } catch {
     return {
@@ -896,6 +944,19 @@ async function streamChatRequest(
           }
           try { port.disconnect() } catch {}
           return
+        }
+
+        if (event.type === "thinking") {
+          try {
+            const payload = JSON.parse(event.data)
+            const chunks = Array.isArray(payload?.chunks) ? payload.chunks : []
+            if (chunks.length > 0) {
+              port.postMessage({ type: "CHAT_THINKING", chunks })
+            }
+          } catch {
+            // Ignore malformed thinking payloads
+          }
+          continue
         }
 
         // Citation metadata emitted by the backend before [DONE]
