@@ -66,11 +66,20 @@ async function makeAPIRequest(endpoint: string, options: any = {}) {
   const url = endpoint.startsWith('http') ? endpoint : `${API_BASE_URL}${endpoint}`
   console.log("Background: Making API request to", url)
   
-  // Hard timeout: if the server does not respond within 30 s we abort the
-  // fetch and return a synthetic failure so chrome.runtime.sendMessage never
-  // hangs indefinitely and blocks the content-script Promise chain.
+  // Hard timeout: if the server does not respond within the allotted time we
+  // abort the fetch and return a synthetic failure so chrome.runtime.sendMessage
+  // never hangs indefinitely and blocks the content-script Promise chain.
+  // Chat and meme use larger windows because advanced LLM models (e.g. Gemini 3
+  // Pro) and the 2-stage meme pipeline can legitimately take 60-90 s.
+  const urlPath = typeof url === 'string' ? url : endpoint
+  let timeoutMs = 30000
+  if (urlPath.includes('/chat/') || urlPath.includes('/chat?')) {
+    timeoutMs = 120000  // 2 min — slow models like Gemini 3 Pro
+  } else if (urlPath.includes('/generate/meme') || urlPath.includes('generate/meme')) {
+    timeoutMs = 150000  // 2.5 min — 2-stage LLM + image generation pipeline
+  }
   const timeoutController = new AbortController()
-  const timeoutId = setTimeout(() => timeoutController.abort(), 30000)
+  const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs)
   
   try {
     const response = await fetch(url, {
@@ -169,8 +178,8 @@ async function makeAPIRequest(endpoint: string, options: any = {}) {
     console.error("Background: Fetch error", error)
     const errorMessage = error instanceof Error ? error.message : String(error)
     if (error instanceof Error && error.name === 'AbortError') {
-      console.warn("Background: Request timed out (30 s):", url)
-      return { success: false, error: 'Request timed out after 30 seconds', status: 408 }
+      console.warn(`Background: Request timed out (${timeoutMs / 1000}s):`, url)
+      return { success: false, error: `Request timed out after ${timeoutMs / 1000} seconds`, status: 408 }
     }
     return { success: false, error: errorMessage }
   }
