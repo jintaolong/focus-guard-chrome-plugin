@@ -141,6 +141,8 @@ export const ChatPanel = ({ videoId, analysis, userTier, sessionScopeId }: ChatP
   const modelStorageLoadedRef = useRef(false)
   const [isMemeMode, setIsMemeMode] = useState(false)
   const [isGeneratingMeme, setIsGeneratingMeme] = useState(false)
+  const [memeStyleHint, setMemeStyleHint] = useState<string | null>(null)
+  const [memeTemplateId, setMemeTemplateId] = useState<string | null>(null)
   const [showModelSelector, setShowModelSelector] = useState(false)
   const [showCreditConfirm, setShowCreditConfirm] = useState(false)
   const [pendingMessage, setPendingMessage] = useState<string | null>(null)
@@ -426,7 +428,7 @@ export const ChatPanel = ({ videoId, analysis, userTier, sessionScopeId }: ChatP
   }, [])
 
   // ── Generate meme ─────────────────────────────────────────────────────────
-  const generateMeme = useCallback(async (prompt: string) => {
+  const generateMeme = useCallback(async (prompt: string, styleHint: string | null, templateId: string | null) => {
     if (!sessionId) return
     setIsGeneratingMeme(true)
     setError(null)
@@ -440,6 +442,8 @@ export const ChatPanel = ({ videoId, analysis, userTier, sessionScopeId }: ChatP
         payload: {
           session_id: sessionId,
           original_prompt: prompt,
+          style_hint: styleHint || null,
+          template_id: templateId || null,
           authHeaders: { Authorization: `Bearer ${accessToken}` },
         },
       })
@@ -465,7 +469,7 @@ export const ChatPanel = ({ videoId, analysis, userTier, sessionScopeId }: ChatP
     if (!message || !sessionId || isStreaming || turnCount >= maxTurns) return
     if (message.length > CHAT_INPUT_MAX_LENGTH) return
 
-    if (isMemeMode) { generateMeme(message); return }
+    if (isMemeMode) { generateMeme(message, memeStyleHint, memeTemplateId); return }
 
     const priorHistory = [...history]
     setHistory(prev => [...prev, { role: "user" as const, content: message }])
@@ -556,7 +560,7 @@ export const ChatPanel = ({ videoId, analysis, userTier, sessionScopeId }: ChatP
       type: "CHAT_REQUEST",
       payload: { session_id: sessionId, message, history: priorHistory, model_id: selectedModelId },
     })
-  }, [sessionId, isStreaming, turnCount, maxTurns, history, selectedModelId, isMemeMode, generateMeme])
+  }, [sessionId, isStreaming, turnCount, maxTurns, history, selectedModelId, isMemeMode, memeStyleHint, memeTemplateId, generateMeme])
 
   // ── Submit with credit confirmation gate ──────────────────────────────────
   const submitMessage = useCallback((text?: string) => {
@@ -1193,6 +1197,54 @@ export const ChatPanel = ({ videoId, analysis, userTier, sessionScopeId }: ChatP
             </span>
           )}
         </div>
+
+        {/* Meme style + template selectors */}
+        {isMemeMode && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+            {/* Style chips */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", alignItems: "center" }}>
+              <span style={{ fontSize: "9px", color: colors.ui.text.tertiary, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", marginRight: "2px" }}>Style</span>
+              {(["photo-realistic", "illustration", "cartoon", "meme-template", "minimalist"] as const).map(style => (
+                <button
+                  key={style}
+                  onClick={() => setMemeStyleHint(memeStyleHint === style ? null : style)}
+                  style={{
+                    padding: "2px 7px", borderRadius: "12px", fontSize: "10px",
+                    border: `1px solid ${memeStyleHint === style ? "#7c3aed" : colors.ui.border}`,
+                    backgroundColor: memeStyleHint === style ? "#ede9fe" : "transparent",
+                    color: memeStyleHint === style ? "#7c3aed" : colors.ui.text.secondary,
+                    cursor: "pointer", fontWeight: memeStyleHint === style ? 600 : 400,
+                  }}>
+                  {style}
+                </button>
+              ))}
+            </div>
+            {/* Template chips */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", alignItems: "center" }}>
+              <span style={{ fontSize: "9px", color: colors.ui.text.tertiary, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", marginRight: "2px" }}>Template</span>
+              {([
+                { id: "versus",   label: "Versus" },
+                { id: "sequence", label: "Sequence" },
+                { id: "hero",     label: "Hero" },
+                { id: "chaos",    label: "Chaos" },
+                { id: "reaction", label: "Reaction" },
+              ] as const).map(({ id, label }) => (
+                <button
+                  key={id}
+                  onClick={() => setMemeTemplateId(memeTemplateId === id ? null : id)}
+                  style={{
+                    padding: "2px 7px", borderRadius: "12px", fontSize: "10px",
+                    border: `1px solid ${memeTemplateId === id ? "#7c3aed" : colors.ui.border}`,
+                    backgroundColor: memeTemplateId === id ? "#ede9fe" : "transparent",
+                    color: memeTemplateId === id ? "#7c3aed" : colors.ui.text.secondary,
+                    cursor: "pointer", fontWeight: memeTemplateId === id ? 600 : 400,
+                  }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Text input + send */}
         <div style={{ display: "flex", alignItems: "flex-end", gap: "8px" }}>
