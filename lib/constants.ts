@@ -69,7 +69,7 @@ export const CHAT_STREAM_TIMEOUT_MS = 90_000
 export const CHAT_INPUT_MAX_LENGTH = 4000
 
 export const CHAT_ERROR_MESSAGES: Record<string, string> = {
-  session_not_found: "This session has expired. Please run a new analysis.",
+  session_not_found: "This chat session could not be resumed (it may be stale or cleared). A new session can be started automatically.",
   turn_limit_exceeded: "This session has reached its maximum number of messages. Start a new session to continue.",
   insufficient_credits: "This request requires more credits than your current balance.",
   chat_requires_pro_subscription: "Chat is available for PRO subscribers only.",

@@ -4,7 +4,7 @@
 // Supports: model selection, meme generation, credit confirmation, session persistence.
 
 import { useState, useEffect, useRef, useCallback, memo } from "react"
-import { Send, AlertCircle, X, RefreshCw, MessageCircle, Image, ChevronDown } from "lucide-react"
+import { Send, AlertCircle, X, RefreshCw, MessageCircle, Image, ChevronDown, RotateCcw, Clock, ChevronLeft } from "lucide-react"
 import { useTheme } from "~components/SidePanel"
 import { CHAT_PORT_NAME, CHAT_MAX_TURNS_PER_SESSION, CHAT_INPUT_MAX_LENGTH, RETRYABLE_ERROR_CODES } from "~lib/constants"
 import { AuthService } from "~lib/auth"
@@ -148,6 +148,23 @@ export const ChatPanel = ({ videoId, analysis, userTier, sessionScopeId }: ChatP
   const [pendingMessage, setPendingMessage] = useState<string | null>(null)
   const [isFirstTurn, setIsFirstTurn] = useState(true)
   const [thinkingChunks, setThinkingChunks] = useState<string[]>([])
+
+  // Session auto-recovery: when a session_not_found chat error is received, we
+  // save the failed message here and auto-retry once the new session is live.
+  const [pendingReconnectMessage, setPendingReconnectMessage] = useState<string | null>(null)
+  const [isReconnecting, setIsReconnecting] = useState(false)
+
+  // New Chat confirmation dialog
+  const [showNewChatConfirm, setShowNewChatConfirm] = useState(false)
+
+  // Chat history overlay
+  type SessionSummaryItem = { session_id: string; video_id: string; turn_count: number; created_at: string; first_message: string | null }
+  const [showHistoryOverlay, setShowHistoryOverlay] = useState(false)
+  const [historyItems, setHistoryItems] = useState<SessionSummaryItem[]>([])
+  const [historyLoadError, setHistoryLoadError] = useState<string | null>(null)
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyViewMessages, setHistoryViewMessages] = useState<{ role: string; content: string; created_at: string }[] | null>(null)
+  const [historyViewSessionId, setHistoryViewSessionId] = useState<string | null>(null)
 
   // Citations from the most recent assistant response
   type CitationItem = ChatCitationsMessage["citations"][string]
@@ -408,6 +425,13 @@ export const ChatPanel = ({ videoId, analysis, userTier, sessionScopeId }: ChatP
     setIsMemeMode(false)
     setShowCreditConfirm(false)
     setPendingMessage(null)
+    setPendingReconnectMessage(null)
+    setIsReconnecting(false)
+    setShowNewChatConfirm(false)
+    setShowHistoryOverlay(false)
+    setHistoryItems([])
+    setHistoryViewMessages(null)
+    setHistoryViewSessionId(null)
   }, [chatContextKey])
 
   // ── Auto-scroll ───────────────────────────────────────────────────────────
@@ -451,6 +475,14 @@ export const ChatPanel = ({ videoId, analysis, userTier, sessionScopeId }: ChatP
         const meme: MemeResponse = response.data
         setHistory(prev => [...prev, { role: "assistant" as const, content: `[MEME]\n${JSON.stringify(meme)}` }])
       } else {
+        // Remove the optimistic user message that was added before the request.
+        // Leaving it dangling causes the next chat turn to inherit the meme intent
+        // and the LLM responds with meme content instead of the actual prompt.
+        setHistory(prev =>
+          prev.length > 0 && prev[prev.length - 1].role === "user"
+            ? prev.slice(0, -1)
+            : prev
+        )
         setError({
           code: response?.code || "meme_generation_failed",
           message: response?.message || response?.errorPayload?.message || response?.error || "Meme generation failed.",
@@ -458,6 +490,12 @@ export const ChatPanel = ({ videoId, analysis, userTier, sessionScopeId }: ChatP
         })
       }
     } catch {
+      // Also clean up the optimistic user message on network errors.
+      setHistory(prev =>
+        prev.length > 0 && prev[prev.length - 1].role === "user"
+          ? prev.slice(0, -1)
+          : prev
+      )
       setError({ code: "network_error", message: "Could not reach the server.", retryable: true })
     } finally {
       setIsGeneratingMeme(false)
@@ -531,6 +569,31 @@ export const ChatPanel = ({ videoId, analysis, userTier, sessionScopeId }: ChatP
           setIsStreaming(false)
           setStreamingContent("")
           const errMsg = msg as ChatPortMessage & { code: string; message: string }
+
+          if (errMsg.code === "session_not_found") {
+            // Session IDs can go stale after cache eviction/restart.
+            // Instead of showing a manual error, auto-recover:
+            //   1. Remove the optimistic user message
+            //   2. Save it to pendingReconnectMessage so it auto-retries once session is live
+            //   3. Silently re-create the session
+            setHistory(prev => {
+              if (prev.length > 0 && prev[prev.length - 1].role === "user") {
+                return prev.slice(0, -1)
+              }
+              return prev
+            })
+            setPendingReconnectMessage(lastUserMessageRef.current)
+            setIsReconnecting(true)
+            setSessionId(null)
+            try {
+              const storageKey = `cv_chat_session_${videoId}_${effectiveSessionScopeId}`
+              chrome.storage.local.remove(storageKey)
+            } catch {}
+            try { port.disconnect() } catch {}
+            portRef.current = null
+            break
+          }
+
           setError({
             code: errMsg.code,
             message: errMsg.message,
@@ -560,7 +623,17 @@ export const ChatPanel = ({ videoId, analysis, userTier, sessionScopeId }: ChatP
       type: "CHAT_REQUEST",
       payload: { session_id: sessionId, message, history: priorHistory, model_id: selectedModelId },
     })
-  }, [sessionId, isStreaming, turnCount, maxTurns, history, selectedModelId, isMemeMode, memeStyleHint, memeTemplateId, generateMeme])
+  }, [sessionId, isStreaming, turnCount, maxTurns, history, selectedModelId, isMemeMode, memeStyleHint, memeTemplateId, generateMeme, videoId, effectiveSessionScopeId])
+
+  // Auto-retry pending message after session reconnect — placed after doSubmitMessage
+  useEffect(() => {
+    if (sessionId && pendingReconnectMessage && !isCreatingSession && !isStreaming) {
+      const msg = pendingReconnectMessage
+      setPendingReconnectMessage(null)
+      setIsReconnecting(false)
+      doSubmitMessage(msg)
+    }
+  }, [sessionId, pendingReconnectMessage, isCreatingSession, isStreaming, doSubmitMessage])
 
   // ── Submit with credit confirmation gate ──────────────────────────────────
   const submitMessage = useCallback((text?: string) => {
@@ -612,6 +685,71 @@ export const ChatPanel = ({ videoId, analysis, userTier, sessionScopeId }: ChatP
       return prev
     })
     setError(null)
+  }, [])
+
+  // ── Restart session ───────────────────────────────────────────────────────
+  const restartSession = useCallback(() => {
+    try {
+      const storageKey = `cv_chat_session_${videoId}_${effectiveSessionScopeId}`
+      chrome.storage.local.remove(storageKey)
+    } catch {}
+    setSessionId(null)
+    setHistory([])
+    setTurnCount(0)
+    setError(null)
+    setIsFirstTurn(true)
+    setIsMemeMode(false)
+    setShowCreditConfirm(false)
+    setPendingMessage(null)
+    setPendingReconnectMessage(null)
+    setIsReconnecting(false)
+    setShowNewChatConfirm(false)
+  }, [videoId, effectiveSessionScopeId])
+
+  // ── Load session history list ─────────────────────────────────────────────
+  const loadHistoryList = useCallback(async () => {
+    if (!videoId) return
+    setHistoryLoading(true)
+    setHistoryLoadError(null)
+    try {
+      const accessToken = await AuthService.ensureValidToken()
+      const resp = await chrome.runtime.sendMessage({
+        type: "LIST_CHAT_SESSIONS",
+        payload: {
+          video_id: videoId,
+          authHeaders: { Authorization: `Bearer ${accessToken}` },
+        },
+      })
+      if (resp?.success && resp.data?.sessions) {
+        setHistoryItems(resp.data.sessions)
+      } else {
+        setHistoryLoadError("Could not load session history.")
+      }
+    } catch {
+      setHistoryLoadError("Could not reach the server.")
+    } finally {
+      setHistoryLoading(false)
+    }
+  }, [videoId])
+
+  // ── Load a single session's messages for history view ────────────────────
+  const loadHistorySession = useCallback(async (sid: string) => {
+    try {
+      const accessToken = await AuthService.ensureValidToken()
+      const resp = await chrome.runtime.sendMessage({
+        type: "FETCH_CHAT_HISTORY",
+        payload: {
+          session_id: sid,
+          authHeaders: { Authorization: `Bearer ${accessToken}` },
+        },
+      })
+      if (resp?.success && resp.data?.messages) {
+        setHistoryViewMessages(resp.data.messages)
+        setHistoryViewSessionId(sid)
+      }
+    } catch {
+      setHistoryViewMessages([])
+    }
   }, [])
 
   // ── Handle Enter key ─────────────────────────────────────────────────────
@@ -731,9 +869,9 @@ export const ChatPanel = ({ videoId, analysis, userTier, sessionScopeId }: ChatP
     return null
   }
 
-  const canSend = !isStreaming && !isGeneratingMeme && turnCount < maxTurns && inputValue.trim().length > 0 && inputValue.trim().length <= CHAT_INPUT_MAX_LENGTH
+  const canSend = !isStreaming && !isGeneratingMeme && !isReconnecting && turnCount < maxTurns && inputValue.trim().length > 0 && inputValue.trim().length <= CHAT_INPUT_MAX_LENGTH
   const isLimitReached = turnCount >= maxTurns
-  const isBusy = isStreaming || isGeneratingMeme
+  const isBusy = isStreaming || isGeneratingMeme || isReconnecting
 
   return (
     <div style={{
@@ -741,6 +879,7 @@ export const ChatPanel = ({ videoId, analysis, userTier, sessionScopeId }: ChatP
       flexDirection: "column",
       height: "100%",
       overflow: "hidden",
+      position: "relative",
     }}>
       {/* ── Header ────────────────────────────────────────────────────────── */}
       <div style={{
@@ -757,6 +896,44 @@ export const ChatPanel = ({ videoId, analysis, userTier, sessionScopeId }: ChatP
           <span style={{ fontSize: "12px", fontWeight: "700", color: colors.ui.text.primary }}>
             AI Chat
           </span>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+          {/* History button */}
+          <button
+            title="Chat history"
+            onClick={() => {
+              setShowHistoryOverlay(true)
+              setHistoryViewMessages(null)
+              setHistoryViewSessionId(null)
+              loadHistoryList()
+            }}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "center",
+              width: "24px", height: "24px", borderRadius: "5px",
+              border: `1px solid ${colors.ui.border}`, backgroundColor: "transparent",
+              color: colors.ui.text.secondary, cursor: "pointer",
+            }}>
+            <Clock size={12} />
+          </button>
+          {/* Restart session button */}
+          <button
+            title="Start new chat session"
+            onClick={() => {
+              if (turnCount > 0 || history.length > 0) {
+                setShowNewChatConfirm(true)
+              } else {
+                restartSession()
+              }
+            }}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "center",
+              width: "24px", height: "24px", borderRadius: "5px",
+              border: `1px solid ${colors.ui.border}`, backgroundColor: "transparent",
+              color: colors.ui.text.secondary, cursor: "pointer",
+            }}>
+            <RotateCcw size={12} />
+          </button>
         </div>
 
         {/* Model selector */}
@@ -824,6 +1001,153 @@ export const ChatPanel = ({ videoId, analysis, userTier, sessionScopeId }: ChatP
           {turnCount}/{maxTurns}
         </span>
       </div>
+
+      {/* ── New Chat confirmation dialog ──────────────────────────────────── */}
+      {showNewChatConfirm && (
+        <div style={{
+          margin: "8px 12px", padding: "12px",
+          borderRadius: "8px", border: `1px solid ${colors.ui.border}`,
+          backgroundColor: colors.ui.surface,
+        }}>
+          <p style={{ margin: "0 0 6px", fontSize: "13px", fontWeight: "600", color: colors.ui.text.primary }}>
+            Start a new chat session?
+          </p>
+          <p style={{ margin: "0 0 12px", fontSize: "12px", color: colors.ui.text.secondary }}>
+            Your current conversation will end. You can view it later in chat history.
+          </p>
+          <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+            <button
+              onClick={() => setShowNewChatConfirm(false)}
+              style={{
+                padding: "5px 14px", borderRadius: "6px",
+                border: `1px solid ${colors.ui.border}`, backgroundColor: "transparent",
+                color: colors.ui.text.secondary, fontSize: "12px", cursor: "pointer",
+              }}>
+              Cancel
+            </button>
+            <button
+              onClick={restartSession}
+              style={{
+                padding: "5px 14px", borderRadius: "6px", border: "none",
+                backgroundColor: "#2563eb", color: "white",
+                fontSize: "12px", fontWeight: "600", cursor: "pointer",
+              }}>
+              New Chat
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── History overlay ───────────────────────────────────────────────── */}
+      {showHistoryOverlay && (
+        <div style={{
+          position: "absolute", inset: 0,
+          backgroundColor: colors.ui.background,
+          display: "flex", flexDirection: "column",
+          zIndex: 50,
+        }}>
+          {/* History header */}
+          <div style={{
+            padding: "8px 12px",
+            borderBottom: `1px solid ${colors.ui.border}`,
+            display: "flex", alignItems: "center", gap: "8px",
+            flexShrink: 0,
+          }}>
+            {historyViewMessages !== null ? (
+              <button
+                onClick={() => { setHistoryViewMessages(null); setHistoryViewSessionId(null) }}
+                style={{
+                  display: "flex", alignItems: "center", background: "none",
+                  border: "none", cursor: "pointer", color: colors.ui.text.secondary, padding: "2px",
+                }}>
+                <ChevronLeft size={16} />
+              </button>
+            ) : null}
+            <span style={{ fontSize: "12px", fontWeight: "700", color: colors.ui.text.primary, flex: 1 }}>
+              {historyViewMessages !== null ? "Session messages" : "Chat history"}
+            </span>
+            <button
+              onClick={() => { setShowHistoryOverlay(false); setHistoryViewMessages(null); setHistoryViewSessionId(null) }}
+              style={{ background: "none", border: "none", cursor: "pointer", color: colors.ui.text.secondary, display: "flex", padding: "2px" }}>
+              <X size={14} />
+            </button>
+          </div>
+          {/* History body */}
+          <div style={{ flex: 1, overflowY: "auto", padding: "8px 12px" }}>
+            {historyViewMessages !== null ? (
+              // Messages view for a selected session
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                {historyViewMessages.length === 0 && (
+                  <p style={{ fontSize: "12px", color: colors.ui.text.secondary, textAlign: "center", marginTop: "24px" }}>
+                    No messages in this session.
+                  </p>
+                )}
+                {historyViewMessages.map((m, i) => (
+                  <div key={i} style={{
+                    padding: "8px 12px",
+                    borderRadius: m.role === "user" ? "12px 12px 4px 12px" : "12px 12px 12px 4px",
+                    backgroundColor: m.role === "user" ? "#2563eb" : colors.ui.surface,
+                    color: m.role === "user" ? "white" : colors.ui.text.primary,
+                    fontSize: "12px", lineHeight: "1.55",
+                    maxWidth: "85%",
+                    alignSelf: m.role === "user" ? "flex-end" : "flex-start",
+                    whiteSpace: "pre-wrap", wordBreak: "break-word",
+                  }}>
+                    {m.content.startsWith("[MEME]\n") ? "🎨 [Meme]" : m.content}
+                  </div>
+                ))}
+              </div>
+            ) : historyLoading ? (
+              <div style={{ textAlign: "center", padding: "24px", color: colors.ui.text.secondary, fontSize: "12px" }}>
+                Loading...
+              </div>
+            ) : historyLoadError ? (
+              <div style={{ textAlign: "center", padding: "24px", color: colors.low.primary, fontSize: "12px" }}>
+                {historyLoadError}
+              </div>
+            ) : historyItems.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "24px", color: colors.ui.text.secondary, fontSize: "12px" }}>
+                No previous sessions for this video.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                {historyItems.map(item => (
+                  <button
+                    key={item.session_id}
+                    onClick={() => loadHistorySession(item.session_id)}
+                    style={{
+                      width: "100%", textAlign: "left", padding: "10px 12px",
+                      borderRadius: "8px", border: `1px solid ${colors.ui.border}`,
+                      backgroundColor: "transparent", cursor: "pointer",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = colors.ui.hover }}
+                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+                      <span style={{ fontSize: "11px", fontWeight: "600", color: colors.ui.text.primary }}>
+                        {new Date(item.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                      </span>
+                      <span style={{ fontSize: "10px", color: colors.ui.text.tertiary }}>
+                        {item.turn_count} turn{item.turn_count !== 1 ? "s" : ""}
+                        {item.session_id === sessionId ? " • active" : ""}
+                      </span>
+                    </div>
+                    {item.first_message && (
+                      <p style={{
+                        margin: 0, fontSize: "11px", color: colors.ui.text.secondary,
+                        overflow: "hidden", display: "-webkit-box",
+                        WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+                        wordBreak: "break-word",
+                      }}>
+                        {item.first_message}
+                      </p>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── Credit confirmation dialog ────────────────────────────────────── */}
       {showCreditConfirm && (
@@ -1074,6 +1398,30 @@ export const ChatPanel = ({ videoId, analysis, userTier, sessionScopeId }: ChatP
           </div>
         )}
       </div>
+
+      {/* ── Reconnecting indicator ────────────────────────────────────────── */}
+      {isReconnecting && (
+        <div style={{
+          margin: "0 12px",
+          padding: "8px 12px",
+          borderRadius: "8px",
+          backgroundColor: colors.ui.surface,
+          color: colors.ui.text.secondary,
+          fontSize: "12px",
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          flexShrink: 0,
+        }}>
+          <div style={{
+            width: "12px", height: "12px",
+            border: `2px solid ${colors.ui.border}`, borderTopColor: "#2563eb",
+            borderRadius: "50%", animation: "cv-spin 1s linear infinite",
+            flexShrink: 0,
+          }} />
+          <span>Reconnecting session…</span>
+        </div>
+      )}
 
       {/* ── Error banner ──────────────────────────────────────────────────── */}
       {error && (

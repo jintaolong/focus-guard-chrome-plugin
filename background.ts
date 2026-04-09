@@ -491,6 +491,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true
   }
 
+  // List all chat sessions for a video (newest first)
+  if (request.type === 'LIST_CHAT_SESSIONS') {
+    ;(async () => {
+      try {
+        const result = await makeAPIRequest(`/chat/sessions/by-video/${request.payload.video_id}`, {
+          method: 'GET',
+          headers: request.payload.authHeaders || {},
+        })
+        if (result.success) {
+          sendResponse({ success: true, data: result.data })
+        } else {
+          sendResponse({ success: false, error: result.error })
+        }
+      } catch (err) {
+        sendResponse({ success: false, error: 'network_error' })
+      }
+    })()
+    return true
+  }
+
   // Fetch report snapshot listing for a video
   if (request.type === 'FETCH_SNAPSHOTS_BY_VIDEO') {
     ;(async () => {
