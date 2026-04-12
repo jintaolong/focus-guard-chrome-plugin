@@ -171,6 +171,23 @@ export const ChatPanel = ({ videoId, analysis, userTier, sessionScopeId }: ChatP
   const [lastCitations, setLastCitations] = useState<Record<string, CitationItem> | null>(null)
   const pendingCitationsRef = useRef<Record<string, CitationItem> | null>(null)
 
+  const isSessionNotFoundError = useCallback((payload: any) => {
+    const code = typeof payload?.code === "string" ? payload.code : ""
+    if (code === "session_not_found") return true
+
+    const messageCandidates = [payload?.error, payload?.message]
+      .filter((v): v is string => typeof v === "string")
+      .join(" ")
+      .toLowerCase()
+
+    return (
+      messageCandidates.includes("session_not_found") ||
+      messageCandidates.includes("could not be resumed") ||
+      messageCandidates.includes("stale") ||
+      messageCandidates.includes("expired")
+    )
+  }, [])
+
   // Refs for closure-safe access
   const streamingContentRef = useRef("")
   const streamCompletedRef = useRef(false)
@@ -247,11 +264,7 @@ export const ChatPanel = ({ videoId, analysis, userTier, sessionScopeId }: ChatP
             },
           })
 
-          const isStale = !historyResp?.success ||
-            (typeof historyResp?.error === 'string' && (
-              historyResp.error.includes("not_found") ||
-              historyResp.error.includes("session_not_found")
-            ))
+          const isStale = !historyResp?.success && isSessionNotFoundError(historyResp)
 
           if (isStale) {
             // Clear stale session from storage — fall through to create a new one
@@ -402,7 +415,21 @@ export const ChatPanel = ({ videoId, analysis, userTier, sessionScopeId }: ChatP
     } finally {
       setIsCreatingSession(false)
     }
-  }, [videoId, isCreatingSession, analysis, effectiveSessionScopeId])
+  }, [videoId, isCreatingSession, analysis, effectiveSessionScopeId, isSessionNotFoundError])
+
+  const startSessionRecovery = useCallback((messageToReplay?: string | null) => {
+    const replay = typeof messageToReplay === "string" ? messageToReplay.trim() : ""
+    if (replay) {
+      setPendingReconnectMessage(replay)
+    }
+    setIsReconnecting(true)
+    setSessionId(null)
+    setError(null)
+    try {
+      const storageKey = `cv_chat_session_${videoId}_${effectiveSessionScopeId}`
+      chrome.storage.local.remove(storageKey)
+    } catch {}
+  }, [videoId, effectiveSessionScopeId])
 
   // Auto-create session when videoId is available and no session exists
   useEffect(() => {
@@ -570,7 +597,7 @@ export const ChatPanel = ({ videoId, analysis, userTier, sessionScopeId }: ChatP
           setStreamingContent("")
           const errMsg = msg as ChatPortMessage & { code: string; message: string }
 
-          if (errMsg.code === "session_not_found") {
+          if (isSessionNotFoundError(errMsg)) {
             // Session IDs can go stale after cache eviction/restart.
             // Instead of showing a manual error, auto-recover:
             //   1. Remove the optimistic user message
@@ -582,13 +609,7 @@ export const ChatPanel = ({ videoId, analysis, userTier, sessionScopeId }: ChatP
               }
               return prev
             })
-            setPendingReconnectMessage(lastUserMessageRef.current)
-            setIsReconnecting(true)
-            setSessionId(null)
-            try {
-              const storageKey = `cv_chat_session_${videoId}_${effectiveSessionScopeId}`
-              chrome.storage.local.remove(storageKey)
-            } catch {}
+            startSessionRecovery(lastUserMessageRef.current)
             try { port.disconnect() } catch {}
             portRef.current = null
             break
@@ -623,7 +644,7 @@ export const ChatPanel = ({ videoId, analysis, userTier, sessionScopeId }: ChatP
       type: "CHAT_REQUEST",
       payload: { session_id: sessionId, message, history: priorHistory, model_id: selectedModelId },
     })
-  }, [sessionId, isStreaming, turnCount, maxTurns, history, selectedModelId, isMemeMode, memeStyleHint, memeTemplateId, generateMeme, videoId, effectiveSessionScopeId])
+  }, [sessionId, isStreaming, turnCount, maxTurns, history, selectedModelId, isMemeMode, memeStyleHint, memeTemplateId, generateMeme, isSessionNotFoundError, startSessionRecovery])
 
   // Auto-retry pending message after session reconnect — placed after doSubmitMessage
   useEffect(() => {
@@ -634,6 +655,12 @@ export const ChatPanel = ({ videoId, analysis, userTier, sessionScopeId }: ChatP
       doSubmitMessage(msg)
     }
   }, [sessionId, pendingReconnectMessage, isCreatingSession, isStreaming, doSubmitMessage])
+
+  useEffect(() => {
+    if (sessionId && isReconnecting && !pendingReconnectMessage) {
+      setIsReconnecting(false)
+    }
+  }, [sessionId, isReconnecting, pendingReconnectMessage])
 
   // ── Submit with credit confirmation gate ──────────────────────────────────
   const submitMessage = useCallback((text?: string) => {
@@ -1478,6 +1505,26 @@ export const ChatPanel = ({ videoId, analysis, userTier, sessionScopeId }: ChatP
               }}>
               <RefreshCw size={10} />
               Retry
+            </button>
+          )}
+          {error.code === "session_not_found" && (
+            <button
+              onClick={() => startSessionRecovery(lastUserMessageRef.current)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+                padding: "3px 8px",
+                borderRadius: "4px",
+                border: "none",
+                backgroundColor: "rgba(0,0,0,0.1)",
+                color: "inherit",
+                fontSize: "11px",
+                fontWeight: "600",
+                cursor: "pointer",
+                flexShrink: 0,
+              }}>
+              Resume chat
             </button>
           )}
           <button

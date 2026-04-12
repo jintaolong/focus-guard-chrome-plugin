@@ -451,7 +451,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         if (result.success) {
           sendResponse({ success: true, data: result.data })
         } else {
-          sendResponse({ success: false, error: result.error })
+          sendResponse({
+            success: false,
+            error: result.error,
+            code: result.errorPayload?.code,
+            message: result.errorPayload?.message,
+            errorPayload: result.errorPayload,
+          })
         }
       } catch (err) {
         sendResponse({ success: false, error: 'network_error' })
@@ -502,7 +508,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         if (result.success) {
           sendResponse({ success: true, data: result.data })
         } else {
-          sendResponse({ success: false, error: result.error })
+          sendResponse({
+            success: false,
+            error: result.error,
+            code: result.errorPayload?.code,
+            message: result.errorPayload?.message,
+            errorPayload: result.errorPayload,
+          })
         }
       } catch (err) {
         sendResponse({ success: false, error: 'network_error' })
