@@ -5,6 +5,7 @@ import { useState } from "react"
 import type { VideoAnalysis } from "~types/analysis"
 import { BlurredContent } from "~components/UpgradePrompt"
 import { useTheme } from "~components/SidePanel"
+import { renderBoldMarkup } from "~lib/renderBoldText"
 
 // Helpers to handle both backend field naming conventions
 const getClaimText = (claim: any): string => claim?.claim_text || claim?.claim || ""
@@ -51,7 +52,7 @@ export const ClaimsTabNew = ({ analysis }: ClaimsTabNewProps) => {
     <div style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "16px" }}>
       {oneLineSummary && (
         <div style={{ backgroundColor: isDark ? C.neutral.light : "#EFF6FF", border: `1px solid ${isDark ? C.ui.border : "#BFDBFE"}`, borderRadius: "12px", padding: "12px 16px" }}>
-          <p style={{ margin: 0, fontSize: "13px", color: isDark ? C.neutral.text : "#1E40AF", fontWeight: "500" }}>{oneLineSummary}</p>
+          <p style={{ margin: 0, fontSize: "13px", color: isDark ? C.neutral.text : "#1E40AF", fontWeight: "500" }}>{renderBoldMarkup(oneLineSummary)}</p>
         </div>
       )}
 
@@ -103,7 +104,7 @@ export const ClaimsTabNew = ({ analysis }: ClaimsTabNewProps) => {
               <p style={{ margin: 0, fontWeight: "700", fontSize: "13px", color: C.ui.text.primary, lineHeight: "1.4",
                 overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical",
               }}>
-                {getClaimText(claim)}
+                {renderBoldMarkup(getClaimText(claim))}
               </p>
               <div style={{ display: "flex", gap: "12px", marginTop: "8px" }}>
                 {evidenceFor.length > 0 && (
@@ -148,7 +149,7 @@ export const ClaimsTabNew = ({ analysis }: ClaimsTabNewProps) => {
                             {c.likes > 0 && <span style={{ color: C.ui.text.tertiary, fontSize: "11px" }}>👍 {c.likes}</span>}
                           </div>
                           <p style={{ margin: 0, fontSize: "11px", color: C.ui.text.secondary, fontStyle: "italic", lineHeight: "1.5" }}>
-                            &ldquo;{c.text}&rdquo;
+                            &ldquo;{renderBoldMarkup(c.text)}&rdquo;
                           </p>
                         </div>
                       )) : (
@@ -172,7 +173,7 @@ export const ClaimsTabNew = ({ analysis }: ClaimsTabNewProps) => {
                             {c.likes > 0 && <span style={{ color: C.ui.text.tertiary, fontSize: "11px" }}>👍 {c.likes}</span>}
                           </div>
                           <p style={{ margin: 0, fontSize: "11px", color: C.ui.text.secondary, fontStyle: "italic", lineHeight: "1.5" }}>
-                            &ldquo;{c.text}&rdquo;
+                            &ldquo;{renderBoldMarkup(c.text)}&rdquo;
                           </p>
                         </div>
                       )) : (
@@ -192,7 +193,7 @@ export const ClaimsTabNew = ({ analysis }: ClaimsTabNewProps) => {
                     <span style={{ fontSize: "11px", fontWeight: "700", color: isDark ? "#fbbf24" : "#92400E", textTransform: "uppercase" }}>Warnings</span>
                     <ul style={{ margin: "4px 0 0", padding: 0, listStyle: "none" }}>
                       {dangerWarnings.map((w: string, wi: number) => (
-                        <li key={wi} style={{ fontSize: "11px", color: isDark ? "#fcd34d" : "#78350F", marginTop: "4px" }}>&bull; {w}</li>
+                        <li key={wi} style={{ fontSize: "11px", color: isDark ? "#fcd34d" : "#78350F", marginTop: "4px" }}>&bull; {renderBoldMarkup(w)}</li>
                       ))}
                     </ul>
                   </div>

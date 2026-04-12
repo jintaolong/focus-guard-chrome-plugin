@@ -93,6 +93,9 @@ export interface SubscriptionUsage {
   daily_searches_used: number
   searches_remaining: number // -1 for unlimited
   can_search: boolean
+  band1_daily_limit?: number
+  band1_daily_used?: number
+  band1_daily_remaining?: number
 }
 
 export interface CheckoutResponse {

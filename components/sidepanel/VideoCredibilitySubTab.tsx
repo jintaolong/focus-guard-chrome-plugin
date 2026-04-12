@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { COLORS, getClickbaitVerdictColor, getClickbaitColorPart } from "~lib/colors"
 import { CommentDisplay } from "~components/CommentDisplay"
+import { renderBoldMarkup } from "~lib/renderBoldText"
 
 // Helper to determine claim field names (backend might use claim or claim_text)
 const getClaimText = (claim: any): string => claim?.claim_text || claim?.claim || ""
@@ -248,7 +249,7 @@ export const VideoCredibilitySubTab = ({
               marginBottom: "16px",
               fontStyle: "italic"
             }}>
-            {summary.clickbaitVerdict.onLineSummary}
+            {renderBoldMarkup(summary.clickbaitVerdict.onLineSummary)}
           </div>
         )}
 
@@ -389,7 +390,7 @@ export const VideoCredibilitySubTab = ({
                               color: COLORS.ui.textPrimary,
                               marginBottom: "4px"
                             }}>
-                            {claimText}
+                            {renderBoldMarkup(claimText)}
                           </div>
                           <div
                             style={{

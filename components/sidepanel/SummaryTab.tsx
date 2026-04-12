@@ -5,6 +5,7 @@ import { useState } from "react"
 import type { VideoAnalysis } from "~types/analysis"
 import { getClickbaitVerdictColor } from "~lib/colors"
 import { useTheme } from "~components/SidePanel"
+import { renderBoldMarkup } from "~lib/renderBoldText"
 
 interface SummaryTabProps {
   analysis?: VideoAnalysis | null
@@ -70,7 +71,7 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
         </div>
         <div style={{ padding: "20px" }}>
           <p style={{ margin: 0, fontSize: "14px", lineHeight: "1.7", color: C.ui.text.primary, fontWeight: "500" }}>
-            {displayText}
+            {renderBoldMarkup(displayText)}
           </p>
           {isLong && (
             <button onClick={() => setIsExpanded(!isExpanded)} style={{
@@ -104,7 +105,7 @@ export const SummaryTab = ({ analysis }: SummaryTabProps) => {
                     marginTop: "6px", width: "6px", height: "6px", borderRadius: "50%", flexShrink: 0,
                     backgroundColor: execBorder,
                   }} />
-                  <span style={{ fontSize: "13px", fontWeight: "600", color: C.ui.text.primary, lineHeight: "1.5" }}>{item}</span>
+                  <span style={{ fontSize: "13px", fontWeight: "600", color: C.ui.text.primary, lineHeight: "1.5" }}>{renderBoldMarkup(item)}</span>
                 </li>
               ))}
             </ul>
