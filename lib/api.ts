@@ -33,7 +33,11 @@ import type {
   RunningJobInfo,
   JobType,
   JobStatus,
-  FreeQueueStatus
+  FreeQueueStatus,
+  FreeAnalysisRequest,
+  FreeAnalysisResponse,
+  LocalVerdictResult,
+  LocalSentimentResult
 } from "~types/backend"
 
 let API_BASE_URL = process.env.PLASMO_PUBLIC_API_URL || "https://api.commentverdict.com/api/v1"
@@ -104,6 +108,154 @@ export class FocusGuardAPI {
     return this.fetchAPI<T>(endpoint, {
       ...options,
       headers
+    })
+  }
+
+  /**
+   * Fetch with optional auth — uses Bearer token if authenticated, otherwise
+   * falls back to X-Device-Fingerprint header for guest access.
+   */
+  private static async fetchWithOptionalAuth<T>(
+    endpoint: string,
+    options?: RequestInit
+  ): Promise<T> {
+    const isAuth = await AuthService.isAuthenticated()
+    if (isAuth) {
+      return this.fetchWithAuth<T>(endpoint, options)
+    }
+
+    // Guest path: generate device fingerprint
+    const fingerprint = await this.getDeviceFingerprint()
+    const headers: Record<string, string> = {
+      'X-Device-Fingerprint': fingerprint,
+      ...(options?.headers as Record<string, string> || {})
+    }
+
+    return this.fetchAPI<T>(endpoint, { ...options, headers })
+  }
+
+  /**
+   * Generate a deterministic device fingerprint for guest identification.
+   * Uses available browser signals hashed with SHA-256.
+   */
+  private static _cachedFingerprint: string | null = null
+  static async getDeviceFingerprint(): Promise<string> {
+    if (this._cachedFingerprint) return this._cachedFingerprint
+
+    const signals = [
+      navigator.userAgent,
+      navigator.language,
+      screen.width + 'x' + screen.height,
+      Intl.DateTimeFormat().resolvedOptions().timeZone,
+      navigator.hardwareConcurrency?.toString() || '',
+    ].join('|')
+
+    // Use SubtleCrypto SHA-256
+    const encoder = new TextEncoder()
+    const data = encoder.encode(signals)
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+    const hashArray = Array.from(new Uint8Array(hashBuffer))
+    this._cachedFingerprint = hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
+    return this._cachedFingerprint
+  }
+
+  // ============================================================================
+  // Free Local Analysis APIs (verdict + sentiment — no credits, guests allowed)
+  // ============================================================================
+
+  /**
+   * Submit a free local verdict analysis job (guest or authenticated)
+   */
+  static async submitFreeVerdict(request: FreeAnalysisRequest): Promise<FreeAnalysisResponse> {
+    return this.fetchWithOptionalAuth<FreeAnalysisResponse>("/free-analysis/verdict", {
+      method: "POST",
+      body: JSON.stringify(request)
+    })
+  }
+
+  /**
+   * Submit a free local sentiment analysis job (guest or authenticated)
+   */
+  static async submitFreeSentiment(request: FreeAnalysisRequest): Promise<FreeAnalysisResponse> {
+    return this.fetchWithOptionalAuth<FreeAnalysisResponse>("/free-analysis/sentiment", {
+      method: "POST",
+      body: JSON.stringify(request)
+    })
+  }
+
+  /**
+   * Get job status — works for both authenticated and guest users
+   */
+  static async getJobStatusOptional(jobId: string): Promise<JobStatusResponse> {
+    const isAuth = await AuthService.isAuthenticated()
+    if (isAuth) {
+      return this.fetchWithAuth<JobStatusResponse>(`/jobs/${jobId}/status`)
+    }
+    // Guest path
+    const fingerprint = await this.getDeviceFingerprint()
+    return this.fetchAPI<JobStatusResponse>(`/jobs/${jobId}/guest-status`, {
+      headers: { 'X-Device-Fingerprint': fingerprint }
+    })
+  }
+
+  /**
+   * Get job result — works for both authenticated and guest users
+   */
+  static async getJobResultOptional(jobId: string): Promise<JobResultResponse> {
+    const isAuth = await AuthService.isAuthenticated()
+    if (isAuth) {
+      return this.fetchWithAuth<JobResultResponse>(`/jobs/${jobId}/result`)
+    }
+    // Guest path
+    const fingerprint = await this.getDeviceFingerprint()
+    return this.fetchAPI<JobResultResponse>(`/jobs/${jobId}/guest-result`, {
+      headers: { 'X-Device-Fingerprint': fingerprint }
+    })
+  }
+
+  /**
+   * Poll a free analysis job until complete (works for guests and auth users)
+   */
+  static async pollFreeJob(
+    jobId: string,
+    onProgress?: (status: JobStatusResponse) => void,
+    pollInterval = 1000,
+    abortSignal?: AbortSignal
+  ): Promise<JobResultResponse> {
+    while (true) {
+      if (abortSignal?.aborted) throw new Error("Polling aborted")
+
+      const status = await this.getJobStatusOptional(jobId)
+
+      if (abortSignal?.aborted) throw new Error("Polling aborted")
+
+      if (onProgress) onProgress(status)
+
+      if (status.is_terminal) {
+        if (status.status === "completed") {
+          return await this.getJobResultOptional(jobId)
+        } else if (status.status === "failed") {
+          throw new Error(status.error_message || "Job failed")
+        } else if (status.status === "cancelled") {
+          throw new Error("Job was cancelled")
+        }
+      }
+
+      if (abortSignal) {
+        await this.abortableSleep(pollInterval, abortSignal)
+      } else {
+        await new Promise(resolve => setTimeout(resolve, pollInterval))
+      }
+    }
+  }
+
+  /**
+   * Analyze channel trust (FREE & PUBLIC — no auth required, works for guests)
+   */
+  static async analyzeChannelTrustPublic(videoId: string, forceRefresh = false): Promise<ChannelTrustResponse> {
+    return this.fetchWithOptionalAuth<ChannelTrustResponse>("/videos/channel-trust", {
+      method: "POST",
+      body: JSON.stringify({ video_id: videoId, force_refresh: forceRefresh })
     })
   }
 
