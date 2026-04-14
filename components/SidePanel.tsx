@@ -695,17 +695,17 @@ export const SidePanel = ({
               <span style={{ display: "flex", alignItems: "center" }}>{tab.icon}</span>
               {tab.label}
               {tab.locked && (() => {
-                const isStarter = tab.requiredTier === "starter"
-                const label = isStarter ? "STARTER" : "PRO"
+                // STARTER tier is deprecated — all locked features are PRO only
+                const label = "PRO"
                 return (
                   <span style={{
                     padding: "1px 5px", borderRadius: "4px", fontSize: "10px", fontWeight: "700",
                     backgroundColor: activeTab === tab.id ? "rgba(255,255,255,0.25)" : (themeMode === "dark"
-                      ? (isStarter ? "rgba(234,179,8,0.2)" : "rgba(59,130,246,0.2)")
-                      : (isStarter ? "#fef9c3" : "#dbeafe")),
+                      ? "rgba(59,130,246,0.2)"
+                      : "#dbeafe"),
                     color: activeTab === tab.id ? "white" : (themeMode === "dark"
-                      ? (isStarter ? "#fcd34d" : "#93c5fd")
-                      : (isStarter ? "#92400e" : "#1d4ed8")),
+                      ? "#93c5fd"
+                      : "#1d4ed8"),
                   }}>{label}</span>
                 )
               })()}
