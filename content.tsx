@@ -922,13 +922,9 @@ const ContentScript = () => {
 
         const initialTier = userTierInfo?.tier || 'free'
         const initialDashboardUrl = userTierInfo?.dashboardUrl || `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
-        const initialSentimentTierRestriction = (!isFullyPublicSnapshot && initialTier === 'free') ? {
-          code: 'TIER_RESTRICTION' as const,
-          required_tier: 'starter' as const,
-          current_tier: initialTier as 'pro' | 'free' | 'starter',
-          message: 'Comment Sentiment analysis requires a Starter subscription.',
-          upgrade_url: initialDashboardUrl
-        } : null
+        // Sentiment is now FREE for all users via local analysis.
+        // Cloud-based detailed sentiment (via /jobs/analysis/sentiment) is PRO only.
+        const initialSentimentTierRestriction = null
         const initialViewerInsightsTierRestriction = (!isFullyPublicSnapshot && initialTier !== 'pro') ? {
           code: 'TIER_RESTRICTION' as const,
           required_tier: 'pro' as const,
@@ -1172,16 +1168,8 @@ const ContentScript = () => {
             topicGaps: !!topicGapsTierRestriction
           })
           
-          if (userTier === 'free' && !sentimentTierRestriction) {
-            console.log("Comment Verdict: 🚫 Blocking sentiment for free user")
-            sentimentTierRestriction = {
-              code: 'TIER_RESTRICTION' as const,
-              required_tier: 'starter' as const,
-              current_tier: userTier as 'pro' | 'free' | 'starter',
-              message: 'Comment Sentiment analysis requires a Starter subscription.',
-              upgrade_url: dashboardUrl
-            }
-          }
+          // Sentiment is now FREE for all users via local sentiment analysis.
+          // No tier restriction needed for basic sentiment.
 
           if (userTier !== 'pro' && !topicClustersTierRestriction) {
             console.log("Comment Verdict: 🚫 Blocking viewer insights for non-pro user (current:", userTier, ")")
@@ -1487,144 +1475,230 @@ const ContentScript = () => {
   }
 
   const startVideoAnalysis = async (videoId: string, forceRefresh: boolean = false) => {
-    // Check email verification status first
-    try {
-      const creditBalance = await FocusGuardAPI.getCreditBalance()
-      // Always refresh user profile from backend so verification state is accurate
-      // (avoids stale local storage showing unverified after user verifies email).
-      const currentUser = await AuthService.getCurrentUser(true)
-      const isVerified = currentUser?.is_verified !== false
-      setIsUserVerified(isVerified)
-      
-      if (!isVerified) {
-        // Show verification prompt dialog
-        setCreditConfirmData({
-          estimatedCredits: 0,
-          currentBalance: creditBalance.credits_balance,
-          hasSufficientCredits: false,
-          onConfirm: () => {
-            setShowCreditConfirmDialog(false)
-            setCreditConfirmData(null)
-          }
-        })
-        setShowCreditConfirmDialog(true)
-        return
-      }
-    } catch (error) {
-      console.warn("Failed to check verification status:", error)
-    }
-    
-    // Fetch tier if not already cached (needed for credit estimation)
-    let currentTier = userTierInfo?.tier || 'free'
-    if (!userTierInfo) {
-      console.log("⏱️ Fetching subscription tier for credit estimate...")
+    // ── New Flow: Toggle button triggers FREE local verdict analysis ──
+    // No credits required, no email verification needed, guests can use it.
+    // Each additional analysis (sentiment, trust, clustering, etc.) is
+    // triggered separately by the user from the side panel.
+
+    const isAuth = await AuthService.isAuthenticated()
+
+    // For authenticated users, optionally check verification for PRO features
+    // but DO NOT block free verdict generation
+    if (isAuth) {
       try {
-        const subscription = await SubscriptionService.getSubscription()
-        currentTier = subscription.tier?.toLowerCase() || 'free'
-        const dashboardUrl = `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
-        setUserTierInfo({ tier: currentTier, dashboardUrl })
-        console.log(`✅ Subscription tier fetched: ${currentTier}`)
+        const currentUser = await AuthService.getCurrentUser(true)
+        const isVerified = currentUser?.is_verified !== false
+        setIsUserVerified(isVerified)
       } catch (error) {
-        console.warn("Failed to fetch tier info, defaulting to free:", error)
-        currentTier = 'free'
+        console.warn("Failed to check verification status:", error)
       }
-    }
-    
-    // Always fetch latest settings from storage before estimating/proceeding so
-    // popup changes apply immediately even if React state in this content script
-    // is stale for a short time.
-    let latestSettings = settings
-    try {
-      const result = await chrome.storage.sync.get(["settings"])
-      if (result.settings) {
-        latestSettings = result.settings
-        setSettings(result.settings)
-      }
-    } catch (error) {
-      console.warn("Failed to refresh settings before analysis start, using in-memory settings:", error)
-    }
 
-    // Check if we should confirm credit usage
-    const shouldConfirm = latestSettings?.videoAnalysis?.confirmCreditUsage !== false
-    
-    if (shouldConfirm) {
-      // Estimate credit cost with tier-based limit enforcement
-      const settingsMaxComments = latestSettings?.videoAnalysis?.maxCommentDepth || 100
-      const maxCommentDepth = currentTier === 'pro' ? settingsMaxComments : Math.min(settingsMaxComments, 300)
-      console.log("💰 Credit Estimate Params:", { tier: currentTier, settingsMaxComments, maxCommentDepth, settings: latestSettings?.videoAnalysis })
-      try {
-        const estimate = await FocusGuardAPI.estimateCreditCost(maxCommentDepth, false)
-        console.log("💰 Credit Estimate Response:", estimate)
-
-        // When the user has run out of credits, fetch free queue status in the background
-        // so we can show it in the dialog while keeping it responsive.
-        let freeQueueStatus: FreeQueueStatus | null = null
-        let isFetchingFreeQueueStatus = false
-
-        if (!estimate.has_sufficient_credits) {
-          isFetchingFreeQueueStatus = true
-          // Show the dialog immediately with a loading indicator
-          setCreditConfirmData({
-            estimatedCredits: estimate.estimated_credits,
-            currentBalance: estimate.current_balance,
-            hasSufficientCredits: estimate.has_sufficient_credits,
-            freeQueueStatus: null,
-            isFetchingFreeQueueStatus: true,
-            onConfirm: () => {
-              setShowCreditConfirmDialog(false)
-              setCreditConfirmData(null)
-              proceedWithAnalysis(videoId, forceRefresh)
-            },
-            onFreeQueueConfirm: () => {
-              setShowCreditConfirmDialog(false)
-              setCreditConfirmData(null)
-              proceedWithAnalysis(videoId, forceRefresh, true, freeQueueStatus)
-            }
-          })
-          setShowCreditConfirmDialog(true)
-
-          // Fetch free queue status and update dialog once available
-          try {
-            freeQueueStatus = await FocusGuardAPI.getFreeQueueStatus()
-            console.log("🌐 Free Queue Status:", freeQueueStatus)
-          } catch (fqError) {
-            console.warn("Failed to fetch free queue status:", fqError)
-          }
-
-          setCreditConfirmData((prev) => prev ? {
-            ...prev,
-            freeQueueStatus,
-            isFetchingFreeQueueStatus: false
-          } : prev)
-          return // Dialog already shown
+      // Cache tier info for later use (e.g. feature gating in side panel)
+      if (!userTierInfo) {
+        try {
+          const subscription = await SubscriptionService.getSubscription()
+          const tier = subscription.tier?.toLowerCase() || 'free'
+          const dashboardUrl = `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
+          setUserTierInfo({ tier, dashboardUrl })
+        } catch (error) {
+          console.warn("Failed to fetch tier info:", error)
         }
+      }
+    }
 
-        // Show credit confirmation dialog (sufficient credits case)
-        setCreditConfirmData({
-          estimatedCredits: estimate.estimated_credits,
-          currentBalance: estimate.current_balance,
-          hasSufficientCredits: estimate.has_sufficient_credits,
-          onConfirm: () => {
-            setShowCreditConfirmDialog(false)
-            setCreditConfirmData(null)
-            // Proceed with analysis
-            proceedWithAnalysis(videoId, forceRefresh)
-          }
-        })
-        setShowCreditConfirmDialog(true)
-        return // Wait for user confirmation
-      } catch (error) {
-        console.warn("Failed to estimate credit cost, proceeding anyway:", error)
-        // Proceed without confirmation if estimate fails
-        proceedWithAnalysis(videoId, forceRefresh)
+    // Proceed directly — free verdict needs no credit check or confirmation dialog
+    proceedWithFreeVerdict(videoId)
+  }
+
+  /**
+   * New primary analysis flow: Submit a FREE local verdict job.
+   * Works for both authenticated users and guests.
+   * No credits consumed. Progress polling shows stage-by-stage updates.
+   */
+  const proceedWithFreeVerdict = async (videoId: string) => {
+    setIsAnalyzing(true)
+    setAnalysisState("analyzing")
+    setAnalysisStatus(null)
+    setVideoAnalysis(null)
+    setAnalysisError(null)
+    setProgressPercent(null)
+    setProgressMessage(null)
+
+    try {
+      const analysisStartTime = Date.now()
+      console.log("Starting FREE local verdict analysis for:", videoId)
+
+      // Submit free verdict job (works for guests and auth users)
+      const jobResponse = await FocusGuardAPI.submitFreeVerdict({
+        video_id: videoId,
+        is_public: true,
+        max_comments: settings?.videoAnalysis?.maxCommentDepth || 200,
+      })
+      console.log("Free verdict job submitted:", jobResponse)
+      const jobId = jobResponse.job_id
+      setCurrentJobId(jobId)
+
+      // Create abort controller for polling
+      const abortController = new AbortController()
+      abortPollingRef.current = () => abortController.abort()
+
+      // Poll job status with progress updates
+      const pollStartTime = Date.now()
+      const jobResult = await FocusGuardAPI.pollFreeJob(
+        jobId,
+        (status) => {
+          const elapsed = ((Date.now() - pollStartTime) / 1000).toFixed(1)
+          console.log(`[${elapsed}s] Verdict progress:`, status.progress_percent, "%", status.progress_message)
+          setProgressPercent(status.progress_percent)
+          setProgressMessage(status.progress_message || null)
+        },
+        1000, // Poll every 1s
+        abortController.signal
+      )
+
+      abortPollingRef.current = null
+      const pollDuration = ((Date.now() - pollStartTime) / 1000).toFixed(1)
+      console.log(`✅ Verdict job completed in ${pollDuration}s:`, jobResult)
+
+      // Extract verdict result data
+      const resultData = jobResult.result_data
+      const verdict = (resultData?.verdict || "UNKNOWN").toUpperCase()
+      const reasoning = resultData?.reasoning || ""
+      const weightedComments = resultData?.weighted_comments || []
+      const totalCommentsInput = resultData?.total_comments_input || 0
+
+      // Determine user tier for feature gating in side panel
+      const userTier = userTierInfo?.tier || 'free'
+      const dashboardUrl = userTierInfo?.dashboardUrl || `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
+      const isAuth = await AuthService.isAuthenticated()
+      const isPro = userTier === 'pro'
+
+      // Build tier restrictions for PRO-only features
+      const proOnlyRestriction = (!isPro) ? {
+        code: 'TIER_RESTRICTION' as const,
+        required_tier: 'pro' as const,
+        current_tier: userTier as 'pro' | 'free' | 'starter',
+        message: 'This feature is available for Pro users only.',
+        upgrade_url: dashboardUrl
+      } : null
+
+      // Build video analysis data from verdict result
+      const videoAnalysisData = {
+        videoId,
+        videoTitle: null, // Will be populated from metadata if available
+        videoUrl: `https://www.youtube.com/watch?v=${videoId}`,
+        channelName: null,
+        snapshotShareCode: null,
+        snapshotId: null,
+        isFullyPublic: resultData?.is_public ?? true,
+        summary: {
+          trustScore: 0,
+          evidenceScore: 0,
+          aiConfidence: 0,
+          clickbaitVerdict: {
+            label: verdict,
+            confidence: 0,
+            claims: [],
+            onLineSummary: reasoning,
+          },
+          channelCredibility: undefined,
+          key_takeaways: [],
+        },
+        trustScore: { score: 0 },
+        clickbaitVerdict: { verdict },
+        executiveSummary: reasoning,
+        // Verdict-specific data
+        localVerdict: {
+          verdict,
+          reasoning,
+          stage1_retained: resultData?.stage1_retained || 0,
+          stage2_top: resultData?.stage2_top || 0,
+          model_used: resultData?.model_used || '',
+          processing_time_seconds: resultData?.processing_time_seconds || 0,
+          total_comments_input: totalCommentsInput,
+          weighted_comments: weightedComments,
+        },
+        maxCommentsRequested: null,
+        actualCommentsFetched: totalCommentsInput,
+        channelCredibility: undefined,
+        // Sentiment: available for free but needs separate trigger
+        sentiment: null,
+        credibility: null,
+        topicClusters: null,
+        topicClustersData: undefined,
+        // PRO-only features show upgrade prompts
+        contentGaps: proOnlyRestriction ? {
+          botPercentage: 0,
+          gapCoverageScore: undefined,
+          botDetectionEnabled: true,
+          unansweredQuestions: [],
+          tierRestriction: proOnlyRestriction
+        } : undefined,
+        viewerInsights: proOnlyRestriction ? {
+          tierRestriction: proOnlyRestriction
+        } : undefined,
+        reportInfo: {
+          availableFormats: ["PDF", "TXT"],
+          analysisDate: new Date().toISOString(),
+          tierRestriction: proOnlyRestriction
+        },
+        // Flags for UI to show "Run analysis" buttons
+        separateAnalysis: true,
+        isGuest: !isAuth,
+      } as any
+
+      setVideoAnalysis(videoAnalysisData)
+      setAnalysisStatus({
+        trustScore: 0,
+        clickbaitVerdict: verdict as "LEGIT" | "MISLEADING" | "CLICKBAIT",
+        isAnalyzing: false,
+      })
+      setAnalysisState("complete")
+      setCurrentJobId(null)
+
+      const totalDuration = ((Date.now() - analysisStartTime) / 1000).toFixed(1)
+      console.log(`✅ Free verdict analysis completed in ${totalDuration}s: ${verdict}`)
+
+      // Show pre-watch popover with verdict result
+      setShowPreWatchPopover(true)
+
+    } catch (error) {
+      console.error("Free verdict analysis failed:", error)
+
+      if (error instanceof Error && error.message === "Polling aborted") {
+        console.log("Polling aborted due to video switch — expected")
+        setAnalysisState("idle")
+        setCurrentJobId(null)
         return
       }
-    } else {
-      // No confirmation needed - proceed directly
-      proceedWithAnalysis(videoId, forceRefresh)
+
+      let errorMessage = "Analysis failed"
+      if (error instanceof Error) {
+        const msg = error.message.toLowerCase()
+        if (msg.includes("daily limit") || msg.includes("5 analyses")) {
+          errorMessage = "Daily guest limit reached"
+        } else if (msg.includes("context invalidated")) {
+          errorMessage = "Refresh page to continue"
+        } else if (msg.includes("network") || msg.includes("connection")) {
+          errorMessage = "Network error — retry later"
+        } else if (msg.includes("timeout") || msg.includes("timed out")) {
+          errorMessage = "Timed out — tap to retry"
+        } else {
+          const trimmed = error.message.trim()
+          errorMessage = trimmed.length > 55 ? `${trimmed.slice(0, 52)}…` : trimmed || "Analysis failed — tap to retry"
+        }
+      }
+
+      setAnalysisError(errorMessage)
+      setAnalysisState("idle")
+      setCurrentJobId(null)
+    } finally {
+      setIsAnalyzing(false)
     }
   }
 
+  // ── Legacy: Full summary generation (PRO users, credit-based) ──
+  // Kept for users who want the comprehensive summary with all analyses.
   const proceedWithAnalysis = async (
     videoId: string,
     forceRefresh: boolean = false,
@@ -2156,16 +2230,8 @@ const ContentScript = () => {
       // - Viewer Insights: Pro only (block for Free and Starter)
       // - Content Gaps: Pro only (block for Free and Starter)
       
-      // Block sentiment for free users only (Starter+ can access)
-      if (userTier === 'free' && !sentimentTierRestriction) {
-        sentimentTierRestriction = {
-          code: 'TIER_RESTRICTION' as const,
-          required_tier: 'starter' as const,
-          current_tier: userTier,
-          message: 'Comment Sentiment analysis requires a Starter subscription.',
-          upgrade_url: dashboardUrl
-        }
-      }
+      // Sentiment is now FREE for all users via local analysis.
+      // Cloud-based detailed sentiment is PRO only but gated by the backend.
       
       // Block viewer insights for non-Pro users (Pro only)
       if (userTier !== 'pro' && !topicClustersTierRestriction) {
