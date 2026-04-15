@@ -163,13 +163,6 @@ export const CreditConfirmationDialog = ({
           color: "#6b7280"
         }
       }
-    } else {
-        secondaryButton: {
-          text: "Upgrade to Pro",
-          action: onUpgrade,
-          color: "#3b82f6"
-        }
-      }
     } else { // pro
       return {
         icon: "💎",
@@ -277,9 +270,8 @@ export const CreditConfirmationDialog = ({
                 color: "#4b5563",
                 lineHeight: "1.4"
               }}>
-              <strong>Note:</strong> Credits shown are based on the comments you asked for. Actual
-              cost may be lower (free capped at 100, starter capped at 300), and we try to refund
-              credits if the analysis fails.
+              <strong>Estimate:</strong> Based on ~{estimatedCredits} credit{estimatedCredits === 1 ? '' : 's'} for
+              the comments requested. Actual cost may differ slightly depending on final comment count.
             </div>
 
             <div style={{ display: "flex", gap: "12px" }}>

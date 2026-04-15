@@ -37,7 +37,9 @@ import type {
   FreeAnalysisRequest,
   FreeAnalysisResponse,
   LocalVerdictResult,
-  LocalSentimentResult
+  LocalSentimentResult,
+  CachedFreeVerdictResponse,
+  CachedFreeSentimentResponse
 } from "~types/backend"
 
 let API_BASE_URL = process.env.PLASMO_PUBLIC_API_URL || "https://api.commentverdict.com/api/v1"
@@ -105,10 +107,33 @@ export class FocusGuardAPI {
       ...options?.headers
     }
 
-    return this.fetchAPI<T>(endpoint, {
-      ...options,
-      headers
-    })
+    try {
+      return await this.fetchAPI<T>(endpoint, {
+        ...options,
+        headers
+      })
+    } catch (error: any) {
+      // On 401, try refreshing the token once before giving up
+      if (error?.status === 401) {
+        try {
+          console.log("FocusGuardAPI: 401 on", endpoint, "— attempting token refresh")
+          const token = await AuthService.refreshAccessToken()
+          const retryHeaders = {
+            Authorization: `Bearer ${token.access_token}`,
+            ...options?.headers
+          }
+          return await this.fetchAPI<T>(endpoint, {
+            ...options,
+            headers: retryHeaders
+          })
+        } catch (refreshError) {
+          console.error("FocusGuardAPI: Token refresh failed, clearing session")
+          await AuthService.clearTokens()
+          throw error
+        }
+      }
+      throw error
+    }
   }
 
   /**
@@ -181,6 +206,22 @@ export class FocusGuardAPI {
       method: "POST",
       body: JSON.stringify(request)
     })
+  }
+
+  /**
+   * Retrieve a previously computed free verdict for a video (guest or authenticated).
+   * Returns has_verdict: false if none exists.
+   */
+  static async getCachedFreeVerdict(videoId: string): Promise<CachedFreeVerdictResponse> {
+    return this.fetchWithOptionalAuth<CachedFreeVerdictResponse>(`/free-analysis/verdict/${videoId}`)
+  }
+
+  /**
+   * Retrieve a previously computed free sentiment for a video (guest or authenticated).
+   * Returns has_sentiment: false if none exists.
+   */
+  static async getCachedFreeSentiment(videoId: string): Promise<CachedFreeSentimentResponse> {
+    return this.fetchWithOptionalAuth<CachedFreeSentimentResponse>(`/free-analysis/sentiment/${videoId}`)
   }
 
   /**
@@ -566,6 +607,27 @@ export class FocusGuardAPI {
     return this.fetchWithAuth<JobSubmitResponse>("/jobs/summary", {
       method: "POST",
       body: JSON.stringify(request)
+    })
+  }
+
+  /**
+   * Submit a single analysis job (sentiment, clustering, gaps, relevancy, trust).
+   * Uses the individual job endpoint that does NOT create a report snapshot.
+   * POST /api/v1/jobs/analysis/{type}
+   */
+  static async submitSingleAnalysisJob(
+    videoId: string,
+    analysisType: "sentiment" | "clustering" | "gaps" | "relevancy" | "trust",
+    forceRefresh = true,
+    queryContext?: string
+  ): Promise<JobSubmitResponse> {
+    return this.fetchWithAuth<JobSubmitResponse>(`/jobs/analysis/${analysisType}`, {
+      method: "POST",
+      body: JSON.stringify({
+        video_id: videoId,
+        force_refresh: forceRefresh,
+        query_context: queryContext,
+      }),
     })
   }
 
@@ -1222,14 +1284,20 @@ export class FocusGuardAPI {
   }
 
   /**
-   * Estimate credit cost for an analysis operation
+   * Estimate credit cost for an analysis operation.
+   *
+   * @param commentDepth  Fallback comment count (used when video_id is unknown or not yet in DB)
+   * @param analysisType  One of: relevancy_analysis | topic_clustering | topic_gap_analysis | summary_generation | sentiment_analysis
+   * @param videoId       Optional YouTube video ID — backend will look up actual fetched comment count
    */
   static async estimateCreditCost(
     commentDepth: number,
-    isCustomContext: boolean = false
+    analysisType: string = "summary_generation",
+    videoId?: string
   ): Promise<{
     estimated_credits: number
     comment_depth: number
+    analysis_type: string
     has_sufficient_credits: boolean
     current_balance: number
   }> {
@@ -1237,7 +1305,8 @@ export class FocusGuardAPI {
       method: "POST",
       body: JSON.stringify({
         comment_depth: commentDepth,
-        is_custom_context: isCustomContext
+        analysis_type: analysisType,
+        ...(videoId ? { video_id: videoId } : {}),
       })
     })
   }

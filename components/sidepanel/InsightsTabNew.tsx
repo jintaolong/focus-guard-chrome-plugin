@@ -43,8 +43,7 @@ export const InsightsTabNew = ({ analysis }: InsightsTabNewProps) => {
   const { colors: C, mode } = useTheme()
   const isDark = mode === "dark"
   const topicData = analysis.topicClustersData
-  const viewerInsights = (analysis as any)?.viewerInsights
-  const tierRestriction = viewerInsights?.tierRestriction
+  const tierRestriction = (topicData as any)?.tierRestriction
   console.log("🎯 InsightsTabNew: received analysis -", { 
     hasTopicData: !!topicData,
     tierRestriction,
@@ -210,10 +209,14 @@ export const InsightsTabNew = ({ analysis }: InsightsTabNewProps) => {
         ]
       : [{ label: parentThemes.length > 0 ? "All Themes" : "All Clusters", onClick: () => {} }]
 
+  const insightsAnalysisError = (topicData as any)?.analysisError ?? null
+
   if (allClusters.length === 0) {
     return (
       <div style={{ padding: "48px 24px", textAlign: "center", color: C.ui.text.secondary }}>
-        <p style={{ margin: 0, fontSize: "14px", fontWeight: "600" }}>No insights data available.</p>
+        <p style={{ margin: 0, fontSize: "14px", fontWeight: "600" }}>
+          {insightsAnalysisError ? `Analysis failed: ${insightsAnalysisError}` : "No insights data available."}
+        </p>
       </div>
     )
   }

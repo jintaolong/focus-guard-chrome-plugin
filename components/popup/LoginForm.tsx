@@ -3,16 +3,18 @@ import { AuthService } from "~lib/auth"
 
 interface LoginFormProps {
   onLogin: (email: string, password: string) => Promise<void>
+  onGuestLogin: () => Promise<void>
   isLoading: boolean
 }
 
-export const LoginForm = ({ onLogin, isLoading }: LoginFormProps) => {
+export const LoginForm = ({ onLogin, onGuestLogin, isLoading }: LoginFormProps) => {
   const [mode, setMode] = useState<"login" | "register">("login")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [fullName, setFullName] = useState("")
   const [error, setError] = useState("")
   const [isGoogleLoading, setIsGoogleLoading] = useState(false)
+  const [isGuestLoading, setIsGuestLoading] = useState(false)
 
   const handleGoogleLogin = async () => {
     setError("")
@@ -173,6 +175,52 @@ export const LoginForm = ({ onLogin, isLoading }: LoginFormProps) => {
           </>
         )}
       </button>
+
+      {/* Guest / Visitor Login */}
+      <button
+        type="button"
+        onClick={async () => {
+          setError("")
+          setIsGuestLoading(true)
+          try {
+            await onGuestLogin()
+          } catch (err) {
+            setError(err instanceof Error ? err.message : "Failed to continue as visitor")
+          } finally {
+            setIsGuestLoading(false)
+          }
+        }}
+        disabled={isLoading || isGuestLoading}
+        style={{
+          width: "100%",
+          padding: "11px",
+          marginBottom: "4px",
+          fontSize: "13px",
+          fontWeight: "500",
+          color: "#6b7280",
+          backgroundColor: "transparent",
+          border: "1px solid #e5e5e5",
+          borderRadius: "8px",
+          cursor: (isLoading || isGuestLoading) ? "not-allowed" : "pointer",
+          transition: "all 0.2s"
+        }}
+        onMouseEnter={(e) => {
+          if (!isLoading && !isGuestLoading) {
+            e.currentTarget.style.backgroundColor = "#f9fafb"
+            e.currentTarget.style.borderColor = "#d1d5db"
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (!isLoading && !isGuestLoading) {
+            e.currentTarget.style.backgroundColor = "transparent"
+            e.currentTarget.style.borderColor = "#e5e5e5"
+          }
+        }}>
+        {isGuestLoading ? "Loading..." : "Continue as Visitor"}
+      </button>
+      <p style={{ marginTop: "4px", marginBottom: "16px", fontSize: "11px", color: "#9ca3af", textAlign: "center" }}>
+        No sign-up needed — free verdict &amp; sentiment analysis instantly.
+      </p>
 
       <div style={{
         display: "flex",

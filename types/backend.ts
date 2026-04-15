@@ -540,3 +540,44 @@ export interface LocalSentimentResult {
   }>
   is_public: boolean
 }
+
+/** Cached free verdict response from GET /free-analysis/verdict/{video_id} */
+export interface CachedFreeVerdictResponse {
+  video_id: string
+  has_verdict: boolean
+  verdict?: string
+  reasoning?: string
+  total_comments_input?: number
+  model_used?: string
+  processing_time_seconds?: number
+  weighted_comments?: Array<{
+    text: string
+    likes: number
+    replies: number
+    relevance_score: number
+    social_weight: number
+    weighted_score: number
+  }>
+  stage1_retained?: number
+  stage2_top?: number
+  created_at?: string
+  is_public: boolean
+}
+
+/** Cached free sentiment response from GET /free-analysis/sentiment/{video_id} */
+export interface CachedFreeSentimentResponse {
+  video_id: string
+  has_sentiment: boolean
+  distribution?: {
+    positive: number
+    negative: number
+    neutral: number
+    total: number
+  }
+  filtering_metadata?: {
+    total_input?: number
+    filtered_count?: number
+  }
+  model_used?: string
+  created_at?: string
+}

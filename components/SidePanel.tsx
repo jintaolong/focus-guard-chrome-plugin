@@ -4,18 +4,14 @@
 import { useState, useEffect, useMemo, createContext, useContext } from "react"
 import type { VideoAnalysis, AnalysisHistoryItem } from "~types/analysis"
 import { COLORS, DARK_COLORS, type ThemeMode } from "~lib/colors"
-import { LayoutGrid, Search, ShieldCheck, SmilePlus, MessageSquare, AlertTriangle, FileText, ExternalLink, Share2, RefreshCw, Moon, Sun, PanelLeft, PanelRight, Columns2, X, Users, Copy, Check, MessageCircle } from "lucide-react"
-import { SummaryTab } from "./sidepanel/SummaryTab"
-import { KeyInsightsTab } from "./sidepanel/KeyInsightsTab"
-import { CommentSentimentTab } from "./sidepanel/CommentSentimentTab"
-import { ContentGapsTab } from "./sidepanel/ContentGapsTab"
+import { Search, SmilePlus, MessageSquare, AlertTriangle, FileText, ExternalLink, Share2, RefreshCw, Moon, Sun, PanelLeft, PanelRight, Columns2, X, Copy, Check, MessageCircle, Shield, SlidersHorizontal } from "lucide-react"
 import { ReportTab } from "./sidepanel/ReportTab"
 import { ClaimsTabNew } from "./sidepanel/ClaimsTabNew"
 import { SentimentTabNew } from "./sidepanel/SentimentTabNew"
 import { InsightsTabNew } from "./sidepanel/InsightsTabNew"
 import { GapsTabNew } from "./sidepanel/GapsTabNew"
-import { ChannelCredibilitySubTab } from "./sidepanel/ChannelCredibilitySubTab"
 import { ChatPanel } from "./sidepanel/ChatPanel"
+import { ChannelCredibilitySubTab } from "./sidepanel/ChannelCredibilitySubTab"
 
 // ── Theme Context ─────────────────────────────────────────────────────────────
 export const ThemeContext = createContext<{ mode: ThemeMode; colors: typeof COLORS }>({
@@ -24,7 +20,7 @@ export const ThemeContext = createContext<{ mode: ThemeMode; colors: typeof COLO
 })
 export const useTheme = () => useContext(ThemeContext)
 
-type TabId = "overview" | "claims" | "trust" | "sentiment" | "insights" | "gaps" | "report" | "chat"
+type TabId = "chat" | "claims" | "sentiment" | "insights" | "gaps" | "report" | "trust"
 type PanelLayout = "center" | "left" | "right"
 
 interface SidePanelProps {
@@ -45,6 +41,14 @@ interface SidePanelProps {
   progressMessage?: string | null
   userTier?: string
   onLoadSnapshot?: (snapshotData: any) => void
+  onRunFullAnalysis?: () => void
+  onRunSingleAnalysis?: (type: "claims" | "sentiment" | "topic" | "gaps" | "report" | "chat" | "trust") => void
+  /** Credit cost estimates per analysis type, fetched silently on load */
+  costEstimates?: Partial<Record<"claims" | "sentiment" | "topic" | "gaps" | "report" | "full", number | null>>
+  /** PRO: current max comments value from settings (slider) */
+  maxComments?: number
+  /** PRO: called when user moves the slider; parent saves to storage + re-fetches costs */
+  onMaxCommentsChange?: (val: number) => void
 }
 
 export const SidePanel = ({
@@ -64,10 +68,15 @@ export const SidePanel = ({
   progressPercent,
   progressMessage,
   userTier,
-  onLoadSnapshot
+  onLoadSnapshot,
+  onRunFullAnalysis,
+  onRunSingleAnalysis,
+  costEstimates,
+  maxComments,
+  onMaxCommentsChange,
 }: SidePanelProps) => {
   const dock = panelDock ?? position
-  const [activeTab, setActiveTab] = useState<TabId>("overview")
+  const [activeTab, setActiveTab] = useState<TabId>("chat")
   const [isShareOpen, setIsShareOpen] = useState(false)
   const [shareCopied, setShareCopied] = useState(false)
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
@@ -78,6 +87,14 @@ export const SidePanel = ({
     try { return (localStorage.getItem("cv-panel-layout") as PanelLayout) || "center" }
     catch { return "center" }
   })
+  // PRO max-comments slider (visible in header near Run Full Analysis)
+  const [sliderOpen, setSliderOpen] = useState(false)
+  const [localMaxComments, setLocalMaxComments] = useState(maxComments ?? 200)
+
+  // Keep localMaxComments in sync if parent prop changes
+  useEffect(() => {
+    if (maxComments !== undefined) setLocalMaxComments(maxComments)
+  }, [maxComments])
 
   const C = themeMode === "dark" ? DARK_COLORS : COLORS
 
@@ -296,15 +313,33 @@ export const SidePanel = ({
     return stripped
   }, [analysis, isFullyPublic])
 
-  const tabs: { id: TabId; label: string; icon: React.ReactNode; count?: number; locked?: boolean; requiredTier?: "starter" | "pro" }[] = [
-    { id: "overview",   label: "Overview",    icon: <LayoutGrid size={tabIconSize} /> },
-    { id: "claims",     label: "Claims",      icon: <Search size={tabIconSize} />, count: claimsCount || undefined },
-    { id: "trust",      label: "Trust",       icon: <ShieldCheck size={tabIconSize} /> },
-    { id: "sentiment",  label: "Sentiment",   icon: <SmilePlus size={tabIconSize} />, locked: sentimentIsLocked, requiredTier: sentimentRequiredTier },
-    { id: "insights",   label: "Insights",    icon: <MessageSquare size={tabIconSize} />, count: insightsCount || undefined, locked: insightsIsLocked, requiredTier: insightsRequiredTier },
-    { id: "gaps",       label: "Gaps",        icon: <AlertTriangle size={tabIconSize} />, count: gapsCount || undefined, locked: gapsIsLocked, requiredTier: gapsRequiredTier },
-    { id: "report",     label: "Report",      icon: <FileText size={tabIconSize} />, locked: reportIsLocked, requiredTier: reportRequiredTier },
-    { id: "chat",       label: "Chat",        icon: <MessageCircle size={tabIconSize} />, locked: userTier !== undefined && userTier !== "pro", requiredTier: userTier !== undefined && userTier !== "pro" ? "pro" : undefined }
+  // Determine which analyses have data (for lazy CTA pattern)
+  const hasClaimsData = Boolean(claimsCount > 0)
+  // Free sentiment (from free verdict) should NOT count as deep sentiment data
+  const hasDeepSentimentData = Boolean((analysis as any)?.sentiment?.distribution && !(analysis as any)?.separateAnalysis)
+  const hasFreeSentimentData = Boolean((analysis as any)?.sentiment?.distribution)
+  const hasTopicData = Boolean(insightsCount > 0)
+  const hasGapsData = Boolean(analysis?.contentGaps?.unansweredQuestions?.length)
+  const gapsAnalysisRan = Boolean(analysis?.contentGaps && !analysis?.contentGaps?.tierRestriction)
+  // Report data requires a real generated summary (not just verdict reasoning)
+  // Distinguish by checking key_takeaways (populated by summary_generation) or separateAnalysis flag
+  const hasSummaryGenerated = Boolean(
+    (analysis?.summary as any)?.key_takeaways?.length > 0 ||
+    (analysis?.executiveSummary && !(analysis as any)?.separateAnalysis)
+  )
+  const hasReportData = hasSummaryGenerated
+  const hasChatAccess = !!userTier  // All registered users; credit balance is the gate
+  const hasChannelTrustData = Boolean(analysis?.channelTrust?.trust_score != null)
+  const channelTrustData = analysis?.channelTrust
+
+  const tabs: { id: TabId; label: string; icon: React.ReactNode; count?: number; locked?: boolean; requiredTier?: "starter" | "pro"; hasData?: boolean; tooltip?: string }[] = [
+    { id: "chat",       label: "AI Chat",            icon: <MessageCircle size={tabIconSize} />, locked: false, requiredTier: undefined, hasData: hasChatAccess, tooltip: "Ask AI questions about this video's comments" },
+    { id: "trust",      label: "Channel Trust",      icon: <Shield size={tabIconSize} />, hasData: hasChannelTrustData, tooltip: "Channel credibility score based on 5 trust metrics" },
+    { id: "claims",     label: "Video Claims",       icon: <Search size={tabIconSize} />, count: claimsCount || undefined, hasData: hasClaimsData, tooltip: "Fact-check claims made in the video against viewer comments" },
+    { id: "sentiment",  label: "Deep Sentiment",     icon: <SmilePlus size={tabIconSize} />, locked: sentimentIsLocked, requiredTier: sentimentRequiredTier, hasData: hasDeepSentimentData, tooltip: "Detailed sentiment breakdown of viewer reactions" },
+    { id: "insights",   label: "Topic",              icon: <MessageSquare size={tabIconSize} />, count: insightsCount || undefined, locked: insightsIsLocked, requiredTier: insightsRequiredTier, hasData: hasTopicData, tooltip: "Topic clustering and recurring themes in comments" },
+    { id: "gaps",       label: "Gaps",               icon: <AlertTriangle size={tabIconSize} />, count: gapsCount || undefined, locked: gapsIsLocked, requiredTier: gapsRequiredTier, hasData: hasGapsData || gapsAnalysisRan, tooltip: "Unanswered questions and content gaps" },
+    { id: "report",     label: "Summary & Report",   icon: <FileText size={tabIconSize} />, locked: reportIsLocked, requiredTier: reportRequiredTier, hasData: hasReportData, tooltip: "Executive summary and downloadable report" },
   ]
 
   if (!isOpen) return null
@@ -520,6 +555,77 @@ export const SidePanel = ({
               </button>
             )}
 
+            {/* PRO: Max comments slider (header popover) */}
+            {onMaxCommentsChange && userTier === "pro" && (
+              <div style={{ position: "relative" }}>
+                <button
+                  style={{
+                    ...iconBtn,
+                    backgroundColor: sliderOpen ? "rgba(255,255,255,0.15)" : "transparent",
+                  }}
+                  onMouseEnter={(e) => { if (!sliderOpen) e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.1)" }}
+                  onMouseLeave={(e) => { if (!sliderOpen) e.currentTarget.style.backgroundColor = "transparent" }}
+                  onClick={() => setSliderOpen((v) => !v)}
+                  title={sliderOpen ? "Hide comment depth slider" : `Max comments: ${localMaxComments}`}>
+                  <SlidersHorizontal size={14} />
+                </button>
+
+                {sliderOpen && (
+                  <>
+                    <div
+                      style={{ position: "fixed", inset: 0, zIndex: 10000 }}
+                      onClick={() => setSliderOpen(false)}
+                    />
+                    <div style={{
+                      position: "absolute",
+                      top: "calc(100% + 6px)",
+                      right: 0,
+                      zIndex: 10001,
+                      backgroundColor: themeMode === "dark" ? "#1e293b" : "white",
+                      border: `1px solid ${themeMode === "dark" ? "#334155" : "#e2e8f0"}`,
+                      borderRadius: "12px",
+                      boxShadow: "0 12px 32px rgba(0,0,0,0.2)",
+                      padding: "12px 14px",
+                      width: "210px",
+                    }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                        <span style={{ fontSize: "10px", fontWeight: "700", color: C.ui.text.secondary, textTransform: "uppercase" as const, letterSpacing: "0.06em" }}>
+                          Max Comments
+                        </span>
+                        <span style={{ fontSize: "12px", fontWeight: "800", color: "#2563eb" }}>
+                          {localMaxComments}
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={100}
+                        max={1000}
+                        step={100}
+                        value={localMaxComments}
+                        onChange={(e) => setLocalMaxComments(parseInt(e.target.value))}
+                        onMouseUp={(e) => onMaxCommentsChange(parseInt((e.target as HTMLInputElement).value))}
+                        onTouchEnd={(e) => onMaxCommentsChange(parseInt((e.target as HTMLInputElement).value))}
+                        style={{ width: "100%", height: "4px", borderRadius: "2px", cursor: "pointer", accentColor: "#2563eb" }}
+                      />
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "9px", color: C.ui.text.tertiary, marginTop: "4px", padding: "0 1px" }}>
+                        {[100, 200, 300, 400, 500, 600, 700, 800, 900, 1000].map(n => (
+                          <span key={n} style={{
+                            width: "18px", textAlign: "center",
+                            fontWeight: n === localMaxComments ? "700" : "400",
+                            color: n === localMaxComments ? "#2563eb" : undefined,
+                            opacity: n === localMaxComments ? 1 : 0.5,
+                          }}>{n < 1000 ? n / 100 : "1k"}</span>
+                        ))}
+                      </div>
+                      <div style={{ marginTop: "6px", fontSize: "10px", color: C.ui.text.tertiary, textAlign: "center" }}>
+                        ~{costEstimates?.full ?? Math.ceil(localMaxComments / 100)} credits for full analysis
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
             {/* Divider */}
             <div style={{ width: "1px", height: "20px", backgroundColor: "rgba(255,255,255,0.2)", margin: "0 4px", flexShrink: 0 }} />
 
@@ -563,72 +669,151 @@ export const SidePanel = ({
           </div>
         </div>
 
-        {/* ── Hero section (verdict gauge + sentiment bar, web-portal style) ── */}
+        {/* ── Hero section: Video info + Verdict + AI confidence + Run Full Analysis ── */}
         {analysis && verdictRaw && (
           <div style={{
-            padding: "16px 24px 12px",
+            padding: "20px 24px 16px",
             backgroundColor: themeMode === "dark" ? "#1e293b" : "white",
             borderBottom: `1px solid ${C.ui.border}`,
             flexShrink: 0,
           }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
-              {/* Thumbnail */}
-              {analysis.videoThumbnail && (
+            {/* Row 1: Video thumbnail + metadata + verdict badge */}
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "14px" }}>
+              {/* Video thumbnail */}
+              {analysis.videoId && (
                 <img
-                  src={analysis.videoThumbnail}
-                  alt="Video"
-                  style={{ width: "120px", height: "72px", borderRadius: "12px", objectFit: "cover", flexShrink: 0 }}
+                  src={analysis.videoThumbnail || `https://i.ytimg.com/vi/${analysis.videoId}/mqdefault.jpg`}
+                  alt=""
+                  style={{
+                    width: "96px",
+                    height: "54px",
+                    objectFit: "cover",
+                    borderRadius: "6px",
+                    flexShrink: 0,
+                    backgroundColor: themeMode === "dark" ? "#334155" : "#e2e8f0",
+                  }}
                 />
               )}
-              {/* Title + meta */}
+              {/* Video title + channel + views */}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <h1 style={{
-                  margin: 0, fontSize: "16px", fontWeight: "900",
-                  color: C.ui.text.primary, lineHeight: "1.3",
-                  overflow: "hidden", textOverflow: "ellipsis",
-                  display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
-                }}>
-                  {analysis.videoTitle || "Untitled Video"}
-                </h1>
-                <div style={{ display: "flex", alignItems: "center", gap: "12px", marginTop: "4px", fontSize: "11px", color: C.ui.text.secondary, flexWrap: "wrap" }}>
+                {analysis.videoTitle && (
+                  <div style={{
+                    fontSize: "13px",
+                    fontWeight: "700",
+                    color: C.ui.text.primary,
+                    lineHeight: "1.3",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    display: "-webkit-box",
+                    WebkitLineClamp: 1,
+                    WebkitBoxOrient: "vertical" as const,
+                  }}>
+                    {analysis.videoTitle}
+                  </div>
+                )}
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "2px", flexWrap: "wrap" }}>
                   {headerChannelName && (
-                    <span style={{ display: "flex", alignItems: "center", gap: "3px" }}>
-                      <Users size={11} /> {headerChannelName}
+                    <span style={{ fontSize: "11px", color: C.ui.text.secondary, fontWeight: "600" }}>
+                      {headerChannelName}
                     </span>
                   )}
                   {analysis.actualCommentsFetched && (
-                    <span>{analysis.actualCommentsFetched.toLocaleString()} comments analyzed</span>
+                    <span style={{ fontSize: "10px", color: C.ui.text.tertiary }}>
+                      {analysis.actualCommentsFetched} comments
+                    </span>
                   )}
                 </div>
               </div>
-              {/* Verdict gauge circle */}
-              <div style={{ flexShrink: 0, width: "120px", height: "120px", position: "relative", transform: "rotate(-8deg)" }}>
-                <svg width="120" height="120" viewBox="0 0 130 130">
-                  <circle cx="65" cy="65" r={52} fill={verdictSC.bg} stroke="#e2e8f0" strokeWidth="8" />
+              {/* Verdict donut badge (right side) — matches web-portal design */}
+              <div style={{
+                position: "relative",
+                width: "86px",
+                height: "86px",
+                flexShrink: 0,
+                transform: "rotate(-8deg)",
+              }}>
+                <svg width="86" height="86" viewBox="0 0 130 130">
+                  <circle cx="65" cy="65" r={52} fill={verdictSC.bg} stroke={themeMode === "dark" ? "#334155" : "#e2e8f0"} strokeWidth="8" />
                   <circle cx="65" cy="65" r={52} fill="none" stroke={verdictSC.arc} strokeWidth="8" strokeLinecap="round"
                     strokeDasharray={`${(confidenceScore / 100) * 2 * Math.PI * 52} ${(1 - confidenceScore / 100) * 2 * Math.PI * 52}`}
                     style={{ transform: "rotate(-90deg)", transformOrigin: "65px 65px", transition: "stroke-dasharray 0.8s ease" }} />
                 </svg>
                 <div style={{
-                  position: "absolute", inset: 0,
-                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                  position: "absolute",
+                  inset: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
                   transform: "rotate(8deg)",
                 }}>
                   <span style={{
-                    fontWeight: "900", letterSpacing: "0.05em", textAlign: "center", lineHeight: 1,
+                    fontWeight: "900",
+                    letterSpacing: "0.04em",
                     color: verdictSC.text,
-                    fontSize: `${verdictUpper.length > 7 ? 12 : verdictUpper.length > 5 ? 14 : 16}px`,
+                    fontSize: `${verdictUpper.length > 7 ? 10 : verdictUpper.length > 5 ? 12 : 14}px`,
+                    lineHeight: 1,
+                    textAlign: "center",
                   }}>
                     {verdictUpper}
                   </span>
-                  <span style={{ fontSize: "9px", fontWeight: "700", marginTop: "3px", color: verdictSC.text, opacity: 0.7 }}>
-                    {confidenceScore}% confidence
+                  <span style={{
+                    fontSize: "9px",
+                    fontWeight: "700",
+                    color: verdictSC.text,
+                    opacity: 0.7,
+                    marginTop: "3px",
+                  }}>
+                    {Math.round(confidenceScore)}%
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* Sentiment bar under hero */}
+            {/* Row 2: Run Full Analysis */}
+            {onRunFullAnalysis && !(hasClaimsData && hasDeepSentimentData && hasTopicData && hasGapsData && hasReportData) && (
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <button
+                  onClick={onRunFullAnalysis}
+                  disabled={isLoading}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "8px 16px",
+                    backgroundColor: isLoading ? (themeMode === "dark" ? "#1e3a5f" : "#dbeafe") : "#2563eb",
+                    color: isLoading ? (themeMode === "dark" ? "#93c5fd" : "#1d4ed8") : "white",
+                    border: "none",
+                    borderRadius: "8px",
+                    fontSize: "12px",
+                    fontWeight: "700",
+                    cursor: isLoading ? "wait" : "pointer",
+                    transition: "background-color 0.15s",
+                    flexShrink: 0,
+                  }}
+                  onMouseEnter={(e) => { if (!isLoading) e.currentTarget.style.backgroundColor = "#1d4ed8" }}
+                  onMouseLeave={(e) => { if (!isLoading) e.currentTarget.style.backgroundColor = "#2563eb" }}
+                  title="Run all analyses (claims, sentiment, topic, gaps, summary)">
+                  {isLoading ? (
+                    <>
+                      <span style={{
+                        width: "12px", height: "12px",
+                        border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white",
+                        borderRadius: "50%", animation: "cv-spin 0.8s linear infinite",
+                      }} />
+                      Analyzing…
+                    </>
+                  ) : (
+                    <>🔬 Run Full Analysis{(() => {
+                      const totalCost = costEstimates?.full ?? 0
+                      return totalCost > 0 ? ` (${totalCost} credits)` : ''
+                    })()}</>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {/* Row 3: Sentiment bar */}
             {sentimentPcts && (
               <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "10px", flexWrap: "wrap" }}>
                 <span style={{ fontSize: "10px", fontWeight: "700", color: C.ui.text.tertiary, textTransform: "uppercase", flexShrink: 0 }}>Sentiment</span>
@@ -648,6 +833,34 @@ export const SidePanel = ({
                 </div>
               </div>
             )}
+
+            {/* Row 4: Short reasoning (skip generic "insufficient" messages) */}
+            {(() => {
+              const reasoning = analysis.executiveSummary || (analysis.summary as any)?.clickbaitVerdict?.onLineSummary || ""
+              const isGeneric = /insufficient relevant comments/i.test(reasoning)
+              if (!reasoning || isGeneric) return null
+              // Parse **bold** markdown into <strong> elements
+              const parts = reasoning.split(/(\*\*[^*]+\*\*)/g)
+              return (
+                <p style={{
+                  margin: "10px 0 0",
+                  fontSize: "12px",
+                  lineHeight: "1.5",
+                  color: C.ui.text.secondary,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  display: "-webkit-box",
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: "vertical" as const,
+                }}>
+                  {parts.map((part: string, i: number) =>
+                    part.startsWith("**") && part.endsWith("**")
+                      ? <strong key={i}>{part.slice(2, -2)}</strong>
+                      : part
+                  )}
+                </p>
+              )
+            })()}
           </div>
         )}
 
@@ -665,7 +878,8 @@ export const SidePanel = ({
           {tabs.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => { if (!tab.locked) setActiveTab(tab.id) }}
+              onClick={() => setActiveTab(tab.id)}
+              title={tab.tooltip}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -680,10 +894,10 @@ export const SidePanel = ({
                 flexShrink: 0,
                 backgroundColor: activeTab === tab.id ? "#2563eb" : "transparent",
                 color: activeTab === tab.id ? "white" : tab.locked ? C.ui.text.tertiary : C.ui.text.secondary,
-                cursor: tab.locked ? "not-allowed" : "pointer",
+                cursor: "pointer",
               }}
               onMouseEnter={(e) => {
-                if (activeTab !== tab.id && !tab.locked) {
+                if (activeTab !== tab.id) {
                   e.currentTarget.style.backgroundColor = C.ui.hover
                 }
               }}
@@ -818,86 +1032,180 @@ export const SidePanel = ({
                 </div>
               ) : (
                 <div style={{ maxWidth: "900px", margin: "0 auto" }}>
-              {activeTab === "overview" && <SummaryTab analysis={analysis} panelDock={dock} />}
-              {activeTab === "claims" && (
-                isHydratingSecondary && claimsCount === 0 ? (
-                  <LoadingPlaceholder label="Loading claims analysis..." colors={C} />
+              {activeTab === "chat" && (
+                hasChatAccess ? (
+                  <div style={{ height: "calc(100vh - 320px)", minHeight: "300px" }}>
+                    <ChatPanel
+                      videoId={analysis?.videoId ?? null}
+                      analysis={analysis ?? null}
+                      userTier={userTier}
+                      sessionScopeId={analysis?.snapshotShareCode ?? (analysis?.snapshotId != null ? String(analysis.snapshotId) : null)}
+                    />
+                  </div>
                 ) : (
-                  <ClaimsTabNew analysis={analysis} panelDock={dock} />
+                  <TabCTA
+                    label="AI Chat"
+                    description="Chat with AI about this video's comments. Ask questions, get insights, and explore viewer reactions."
+                    buttonLabel="Upgrade to Pro"
+                    onRun={() => {}}
+                    colors={C}
+                    locked={true}
+                    requiredTier="pro"
+                  />
                 )
               )}
-              {activeTab === "trust" && (
-                (() => {
-                  const summary = analysis.summary || {} as any
-                  const channelTrust = summary.channelTrust || analysis.channelTrust
-                  const channelCredibility = summary.channelCredibility || analysis.channelCredibility || null
-                  const hasNewFormat = channelTrust && channelTrust.metrics
-                  const displayData = hasNewFormat ? channelTrust : channelCredibility
-                  const trustScore = hasNewFormat ? channelTrust.trust_score : (channelCredibility?.score !== undefined ? channelCredibility.score : (summary.trustScore ?? analysis.trustScore?.score ?? 0))
-                  const trustFactors = hasNewFormat ? [] : (channelCredibility?.factors || [])
-                  if (isHydratingSecondary && !hasTrustData) {
-                    return <LoadingPlaceholder label="Loading trust analysis..." colors={C} />
-                  }
-                  return displayData ? (
-                    <div style={{ padding: "24px" }}>
-                      <ChannelCredibilitySubTab
-                        channelCredibility={displayData}
-                        credibilityScore={trustScore}
-                        credibilityFactors={trustFactors}
-                      />
-                    </div>
-                  ) : (
-                    <LoadingPlaceholder label="No channel trust data available" colors={C} />
-                  )
-                })()
+              {activeTab === "claims" && (
+                hasClaimsData ? (
+                  <ClaimsTabNew analysis={analysis} panelDock={dock} />
+                ) : (
+                  <TabCTA
+                    label="Video Claims"
+                    description="Fact-check claims made in the video by cross-referencing with viewer comments and evidence."
+                    buttonLabel="Run Claims Analysis"
+                    onRun={() => onRunSingleAnalysis?.("claims")}
+                    colors={C}
+                    locked={false}
+                    estimatedCost={costEstimates?.claims}
+                  />
+                )
               )}
               {activeTab === "sentiment" && (
-                hasSentimentDataOrRestriction ? (
+                hasDeepSentimentData ? (
                   <SentimentTabNew analysis={displayAnalysis!} panelDock={dock} />
-                ) : isHydratingSecondary ? (
-                  <LoadingPlaceholder label="Loading sentiment analysis..." colors={C} />
+                ) : sentimentIsLocked ? (
+                  <TabCTA
+                    label="Deep Sentiment"
+                    description="Detailed sentiment analysis requires a Pro subscription."
+                    buttonLabel="Upgrade to Pro"
+                    onRun={() => {}}
+                    colors={C}
+                    locked={true}
+                    requiredTier="pro"
+                  />
                 ) : (
-                  <LoadingPlaceholder label="Sentiment analysis not yet available" colors={C} />
+                  <TabCTA
+                    label="Deep Sentiment"
+                    description={hasFreeSentimentData
+                      ? "Free sentiment is shown in the header. Run a deep analysis for detailed breakdowns with sample comments."
+                      : "Run a detailed sentiment breakdown showing positive, neutral, and negative reactions from viewers."}
+                    buttonLabel="Run Deep Sentiment Analysis"
+                    onRun={() => onRunSingleAnalysis?.("sentiment")}
+                    colors={C}
+                    locked={false}
+                    estimatedCost={costEstimates?.sentiment}
+                  />
                 )
               )}
               {activeTab === "insights" && (
-                hasViewerInsightsDataOrRestriction ? (
+                hasTopicData ? (
                   <InsightsTabNew analysis={displayAnalysis!} panelDock={dock} />
-                ) : isHydratingSecondary ? (
-                  <LoadingPlaceholder label="Loading viewer insights..." colors={C} />
+                ) : insightsIsLocked ? (
+                  <TabCTA
+                    label="Topic Clustering"
+                    description="Topic analysis requires a Pro subscription."
+                    buttonLabel="Upgrade to Pro"
+                    onRun={() => {}}
+                    colors={C}
+                    locked={true}
+                    requiredTier="pro"
+                  />
                 ) : (
-                  <LoadingPlaceholder label="Viewer insights not yet available" colors={C} />
+                  <TabCTA
+                    label="Topic Clustering"
+                    description="Discover recurring themes and group comments by topic to see what viewers are really talking about."
+                    buttonLabel="Run Topic Analysis"
+                    onRun={() => onRunSingleAnalysis?.("topic")}
+                    colors={C}
+                    locked={false}
+                    estimatedCost={costEstimates?.topic}
+                  />
                 )
               )}
               {activeTab === "gaps" && (
-                hasContentGapsDataOrRestriction ? (
+                hasGapsData ? (
                   <GapsTabNew analysis={displayAnalysis!} panelDock={dock} />
-                ) : isHydratingSecondary ? (
-                  <LoadingPlaceholder label="Loading content gaps..." colors={C} />
+                ) : gapsAnalysisRan ? (
+                  <div style={{ padding: "48px 24px", textAlign: "center" }}>
+                    <div style={{ fontSize: "48px", marginBottom: "16px" }}>✅</div>
+                    <h3 style={{ margin: "0 0 8px", fontSize: "16px", fontWeight: "600", color: C.ui.text.primary }}>
+                      No Content Gaps Found
+                    </h3>
+                    <p style={{ margin: 0, fontSize: "13px", color: C.ui.text.secondary, lineHeight: "1.5" }}>
+                      Viewers aren't asking unanswered questions — the creator appears to have covered the topic well.
+                    </p>
+                  </div>
+                ) : gapsIsLocked ? (
+                  <TabCTA
+                    label="Content Gaps"
+                    description="Gap analysis requires a Pro subscription."
+                    buttonLabel="Upgrade to Pro"
+                    onRun={() => {}}
+                    colors={C}
+                    locked={true}
+                    requiredTier="pro"
+                  />
                 ) : (
-                  <LoadingPlaceholder label="Content gaps not yet available" colors={C} />
+                  <TabCTA
+                    label="Content Gaps"
+                    description="Find unanswered questions and identify topics the creator missed that viewers are asking about."
+                    buttonLabel="Run Gap Analysis"
+                    onRun={() => onRunSingleAnalysis?.("gaps")}
+                    colors={C}
+                    locked={false}
+                    estimatedCost={costEstimates?.gaps}
+                  />
+                )
+              )}
+              {activeTab === "trust" && (
+                hasChannelTrustData && channelTrustData ? (
+                  <ChannelCredibilitySubTab
+                    channelCredibility={channelTrustData}
+                    credibilityScore={channelTrustData.trust_score ?? 0}
+                    credibilityFactors={[]}
+                  />
+                ) : (
+                  <TabCTA
+                    label="Channel Trust"
+                    description="Analyzing channel credibility based on audience reach, creator authority, niche focus, community loyalty, and content freshness."
+                    buttonLabel={isHydratingSecondary ? "Loading…" : "Run Channel Trust"}
+                    onRun={() => onRunSingleAnalysis?.("trust")}
+                    colors={C}
+                    locked={false}
+                  />
                 )
               )}
               {activeTab === "report" && (
-                <ReportTab
-                  analysis={displayAnalysis!}
-                  history={history}
-                  onDownloadReport={onDownloadReport}
-                  onReAnalyze={onReAnalyze}
-                  onDownloadHistoryReport={onDownloadHistoryReport}
-                  onLoadHistoryItem={onLoadHistoryItem}
-                  onLoadSnapshot={onLoadSnapshot}
-                />
-              )}
-              {activeTab === "chat" && (
-                <div style={{ height: "calc(100vh - 320px)", minHeight: "300px" }}>
-                  <ChatPanel
-                    videoId={analysis?.videoId ?? null}
-                    analysis={analysis ?? null}
-                    userTier={userTier}
-                    sessionScopeId={analysis?.snapshotShareCode ?? (analysis?.snapshotId != null ? String(analysis.snapshotId) : null)}
+                hasReportData ? (
+                  <ReportTab
+                    analysis={displayAnalysis!}
+                    history={history}
+                    onDownloadReport={onDownloadReport}
+                    onReAnalyze={onReAnalyze}
+                    onDownloadHistoryReport={onDownloadHistoryReport}
+                    onLoadHistoryItem={onLoadHistoryItem}
+                    onLoadSnapshot={onLoadSnapshot}
                   />
-                </div>
+                ) : reportIsLocked ? (
+                  <TabCTA
+                    label="Summary & Report"
+                    description="Full reports require a Pro subscription."
+                    buttonLabel="Upgrade to Pro"
+                    onRun={() => {}}
+                    colors={C}
+                    locked={true}
+                    requiredTier="pro"
+                  />
+                ) : (
+                  <TabCTA
+                    label="Summary & Report"
+                    description="Generate an executive summary and downloadable report covering all analyses."
+                    buttonLabel="Generate Summary & Report"
+                    onRun={() => onRunSingleAnalysis?.("report")}
+                    colors={C}
+                    locked={false}
+                    estimatedCost={costEstimates?.report}
+                  />
+                )
               )}
                 </div>
               )}
@@ -962,3 +1270,75 @@ const LoadingPlaceholder = ({ label, colors }: { label: string; colors: typeof C
     <style>{`@keyframes cv-spin { to { transform: rotate(360deg); } }`}</style>
   </div>
 )
+
+// ── Lazy CTA for tabs that haven't been analyzed yet ──
+const TabCTA = ({ label, description, buttonLabel, onRun, colors, locked, requiredTier, estimatedCost }: {
+  label: string
+  description: string
+  buttonLabel: string
+  onRun: () => void
+  colors: typeof COLORS | typeof DARK_COLORS
+  locked: boolean
+  requiredTier?: "starter" | "pro"
+  /** Credit cost estimate to append to the button label (omit if not applicable) */
+  estimatedCost?: number | null
+}) => {
+  const costLabel = !locked && estimatedCost != null
+    ? ` (${estimatedCost} credit${estimatedCost !== 1 ? 's' : ''})`
+    : ''
+  return (
+  <div style={{
+    display: "flex", flexDirection: "column", alignItems: "center",
+    justifyContent: "center", padding: "64px 32px", textAlign: "center",
+    color: colors.ui.text.secondary,
+  }}>
+    <div style={{ fontSize: "40px", marginBottom: "16px", opacity: 0.5 }}>
+      {locked ? "🔒" : "📋"}
+    </div>
+    <h3 style={{
+      margin: "0 0 8px", fontSize: "18px", fontWeight: "700",
+      color: colors.ui.text.primary,
+    }}>
+      {label}
+    </h3>
+    <p style={{
+      margin: "0 0 24px", fontSize: "13px", lineHeight: "1.6",
+      maxWidth: "360px", color: colors.ui.text.secondary,
+    }}>
+      {description}
+    </p>
+    <button
+      onClick={onRun}
+      style={{
+        display: "inline-flex", alignItems: "center", gap: "8px",
+        padding: "10px 24px",
+        backgroundColor: locked ? "#6366f1" : "#2563eb",
+        color: "white",
+        border: "none",
+        borderRadius: "10px",
+        fontSize: "13px",
+        fontWeight: "700",
+        cursor: "pointer",
+        transition: "background-color 0.15s, transform 0.1s",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.backgroundColor = locked ? "#4f46e5" : "#1d4ed8"
+        e.currentTarget.style.transform = "scale(1.02)"
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.backgroundColor = locked ? "#6366f1" : "#2563eb"
+        e.currentTarget.style.transform = "scale(1)"
+      }}>
+      {locked && requiredTier && (
+        <span style={{
+          padding: "2px 6px", backgroundColor: "rgba(255,255,255,0.2)",
+          borderRadius: "4px", fontSize: "10px", fontWeight: "800",
+        }}>
+          {requiredTier.toUpperCase()}
+        </span>
+      )}
+      {buttonLabel}{costLabel}
+    </button>
+  </div>
+  )
+}
