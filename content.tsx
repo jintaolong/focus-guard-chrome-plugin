@@ -943,6 +943,15 @@ const ContentScript = () => {
                 filteringMetadata: cachedSentiment.filtering_metadata,
               }
               setIsSentimentDone(true)
+              // Populate tooltip mini-bar from cached percentages
+              if (csd.positive_pct != null || csd.neutral_pct != null || csd.negative_pct != null) {
+                setTooltipSentimentSummary({
+                  positive_pct: csd.positive_pct ?? 0,
+                  neutral_pct: csd.neutral_pct ?? 0,
+                  negative_pct: csd.negative_pct ?? 0,
+                  dominant_sentiment: csd.dominant_sentiment ?? null,
+                })
+              }
             }
 
             const pageMeta = getPageVideoMeta()
@@ -2089,6 +2098,15 @@ const ContentScript = () => {
                 filteringMetadata: cachedSentiment.filtering_metadata,
               }
               setIsSentimentDone(true)
+              // Populate tooltip mini-bar from cached percentages
+              if (csd.positive_pct != null || csd.neutral_pct != null || csd.negative_pct != null) {
+                setTooltipSentimentSummary({
+                  positive_pct: csd.positive_pct ?? 0,
+                  neutral_pct: csd.neutral_pct ?? 0,
+                  negative_pct: csd.negative_pct ?? 0,
+                  dominant_sentiment: csd.dominant_sentiment ?? null,
+                })
+              }
             }
 
             const pageMeta = getPageVideoMeta()
