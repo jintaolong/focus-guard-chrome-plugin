@@ -537,8 +537,10 @@ const ContentScript = () => {
           }
           currentVideoIdRef.current = videoId
           setCurrentVideoId(videoId)
-          // Reset tier info cache for new video (will be fetched fresh on analysis)
-          setUserTierInfo(null)
+          // NOTE: userTierInfo is intentionally NOT reset here — the user's
+          // subscription tier doesn't change between videos and resetting it
+          // causes the toggle button to flash back to a stale/default look
+          // until the tier is re-fetched.
           
           // ALWAYS check cache first to update toggle button state
           // This is independent of auto-analyze setting
@@ -2491,6 +2493,8 @@ const ContentScript = () => {
           return
         } else if (msg.includes("context invalidated")) {
           errorMessage = "Refresh page to continue"
+        } else if (msg.includes("llm judge") || msg.includes("heuristic") || msg.includes("ollama")) {
+          errorMessage = "AI judge busy — tap to retry"
         } else if (msg.includes("network") || msg.includes("connection")) {
           errorMessage = "Network error — retry later"
         } else if (msg.includes("timeout") || msg.includes("timed out")) {
@@ -3490,6 +3494,8 @@ const ContentScript = () => {
           }
         } else if (msg.includes("context invalidated") || msg.includes("refresh the page")) {
           errorMessage = "Refresh page to continue"
+        } else if (msg.includes("llm judge") || msg.includes("heuristic") || msg.includes("ollama")) {
+          errorMessage = "AI judge busy — tap to retry"
         } else if (msg.includes("auth") || msg.includes("login") || msg.includes("401")) {
           errorMessage = "Please log in"
         } else if (msg.includes("network") || msg.includes("connection")) {
@@ -3667,6 +3673,7 @@ const ContentScript = () => {
               progressPercent={progressPercent}
               progressMessage={progressMessage}
               showCachedVerdict={settings?.videoAnalysis?.showCachedVerdict || false}
+              proMode={isPro ? (settings?.videoAnalysis?.proToggleMode ?? "free_verdict") : "free_verdict"}
               onToggle={() => {
                 if (isCheckingCache) {
                   return
@@ -3695,60 +3702,43 @@ const ContentScript = () => {
               }}
             />
 
-            {/* PRO: Max comments tuner — speech-bubble widget beside the toggle button */}
+            {/* PRO: Max comments tuner — gear icon at top-right */}
             {isPro && analysisState !== "analyzing" && (() => {
               const toggleMode = settings?.videoAnalysis?.proToggleMode ?? 'free_verdict'
               // Hard server-side cap: free verdict ≤500, full analysis ≤1000
               const sliderMax = toggleMode === 'free_verdict' ? 500 : 1000
               const sliderSteps = toggleMode === 'free_verdict'
                 ? [100, 200, 300, 400, 500]
-                : [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]
+                : [100, 300, 500, 700, 1000]
               // Clamp current value to allowed range
               const effectiveLocal = Math.min(toggleSliderLocal, sliderMax)
-
-              // Inline tail direction: tail points toward the toggle (right if docked right, left if left)
-              const tailRight = panelDock === "right"
 
               return (
                 <div style={{
                   position: "fixed",
-                  [panelDock]: "8px",
-                  top: "calc(50% - 52px)",
+                  right: "10px",
+                  top: "68px",
                   zIndex: 10000,
                 }}>
-                  {/* Speech-bubble button */}
+                  {/* Gear icon button */}
                   <div
                     onClick={(e) => { e.stopPropagation(); setToggleSliderOpen((v) => !v) }}
-                    title={`Up to ${effectiveLocal} comments (${toggleMode === 'free_verdict' ? 'max 500' : 'max 1000'})`}
+                    title={`Max comments: ${effectiveLocal} (${toggleMode === 'free_verdict' ? 'Quick Verdict · max 500' : 'Full Analysis · max 1000'})`}
                     style={{
-                      position: "relative",
-                      width: "42px",
-                      height: "34px",
-                      backgroundColor: toggleSliderOpen ? "rgba(37,99,235,0.97)" : "rgba(15,23,42,0.88)",
-                      border: `1.5px solid ${toggleSliderOpen ? "#60a5fa" : "rgba(96,165,250,0.45)"}`,
-                      borderRadius: "10px",
+                      width: "32px",
+                      height: "32px",
+                      backgroundColor: toggleSliderOpen ? "rgba(37,99,235,0.95)" : "rgba(15,23,42,0.82)",
+                      border: `1.5px solid ${toggleSliderOpen ? "#60a5fa" : "rgba(96,165,250,0.4)"}`,
+                      borderRadius: "50%",
                       cursor: "pointer",
                       display: "flex",
-                      flexDirection: "column",
                       alignItems: "center",
                       justifyContent: "center",
-                      gap: "1px",
                       transition: "all 0.15s",
                       userSelect: "none",
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.35)",
                     }}>
-                    <span style={{ fontSize: "7px", color: "rgba(255,255,255,0.5)", lineHeight: 1, letterSpacing: "0.02em" }}>up to</span>
-                    <span style={{ fontSize: "11px", fontWeight: "800", color: "rgba(255,255,255,0.95)", lineHeight: 1, letterSpacing: "-0.5px" }}>{effectiveLocal >= 1000 ? "1k" : effectiveLocal}</span>
-                    {/* Bubble tail pointing toward the toggle button */}
-                    <div style={{
-                      position: "absolute",
-                      bottom: "-7px",
-                      [tailRight ? "right" : "left"]: "8px",
-                      width: 0,
-                      height: 0,
-                      borderLeft: tailRight ? "5px solid transparent" : "none",
-                      borderRight: tailRight ? "none" : "5px solid transparent",
-                      borderTop: `7px solid ${toggleSliderOpen ? "rgba(37,99,235,0.97)" : "rgba(15,23,42,0.88)"}`,
-                    }} />
+                    <span style={{ fontSize: "15px", lineHeight: 1, userSelect: "none" }}>⚙️</span>
                   </div>
 
                   {/* Slider popover */}
@@ -3761,7 +3751,7 @@ const ContentScript = () => {
                       <div style={{
                         position: "absolute",
                         top: 0,
-                        [panelDock === "right" ? "right" : "left"]: "40px",
+                        right: "40px",
                         zIndex: 10001,
                         backgroundColor: "rgba(15,23,42,0.97)",
                         border: "1px solid rgba(96,165,250,0.3)",
@@ -3826,18 +3816,18 @@ const ContentScript = () => {
                           }}
                           style={{ width: "100%", height: "4px", borderRadius: "2px", cursor: "pointer", accentColor: "#60a5fa" }}
                         />
-                        {/* Step ticks — only show available range */}
+                        {/* Step ticks */}
                         <div style={{ display: "flex", justifyContent: "space-between", fontSize: "9px", color: "rgba(255,255,255,0.35)", marginTop: "4px", padding: "0 1px" }}>
                           {sliderSteps.map(n => (
                             <span key={n} style={{
                               fontWeight: n === effectiveLocal ? "700" : "400",
                               color: n === effectiveLocal ? "#60a5fa" : undefined,
                               opacity: n === effectiveLocal ? 1 : 0.5,
-                            }}>{n >= 1000 ? "1k" : n / 100}</span>
+                            }}>{n >= 1000 ? "1k" : n}</span>
                           ))}
                         </div>
                         <div style={{ marginTop: "7px", fontSize: "9px", color: "rgba(255,255,255,0.35)", textAlign: "center" }}>
-                          {toggleMode === 'free_verdict' ? '⚡ Free Verdict · max 500' : '🔬 Full Analysis · max 1000'}
+                          {toggleMode === 'free_verdict' ? '⚡ Quick Verdict · max 500' : '🔬 Full Analysis · max 1000'}
                         </div>
                       </div>
                     </>
