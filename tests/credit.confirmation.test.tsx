@@ -18,13 +18,13 @@ describe('CreditConfirmationDialog', () => {
 
     // phrases might be split across elements/newlines, so match simpler fragments
     expect(
-      screen.getByText(/credits shown are based on the comments/i)
+      screen.getByText(/based on/i)
     ).toBeTruthy()
     expect(
-      screen.getByText(/actual cost may be lower/i)
+      screen.getByText(/actual cost may differ/i)
     ).toBeTruthy()
     expect(
-      screen.getByText(/refund/i)
+      screen.getByText(/estimate/i)
     ).toBeTruthy()
   })
 })

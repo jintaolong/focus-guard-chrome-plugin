@@ -200,9 +200,9 @@ describe('Popup - Authentication UI State', () => {
       render(<IndexPopup />)
       
       await waitFor(() => {
-        // Should show usage stats (0 used, 10 limit)
+        // Should show credits-based usage (credit balance displayed)
         const usageText = document.body.textContent
-        expect(usageText).toContain('10') // daily searches limit
+        expect(usageText).toContain('Credits') // credits balance section
       })
     })
   })
