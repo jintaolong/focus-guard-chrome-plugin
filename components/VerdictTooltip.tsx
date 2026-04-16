@@ -336,32 +336,6 @@ export const VerdictTooltip = ({
               🚀 Register for unlimited free verdicts
             </button>
           )}
-
-          {/* Free tier: Get more credits / Upgrade to PRO for cheaper credits */}
-          {!isPro && !isGuest && isFreeTier && onUpgrade && (
-            <button
-              onClick={onUpgrade}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "6px",
-                width: "100%",
-                padding: "8px 12px",
-                background: "linear-gradient(135deg, #2563eb, #7c3aed)",
-                color: "white",
-                border: "none",
-                borderRadius: "8px",
-                fontSize: "12px",
-                fontWeight: "700",
-                cursor: "pointer",
-                transition: "opacity 0.15s",
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.9" }}
-              onMouseLeave={(e) => { e.currentTarget.style.opacity = "1" }}>
-              ⚡ Upgrade to PRO for cheaper monthly credits
-            </button>
-          )}
         </div>
       </div>
     </div>
