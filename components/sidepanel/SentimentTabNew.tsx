@@ -30,10 +30,14 @@ export const SentimentTabNew = ({ analysis }: SentimentTabNewProps) => {
     distribution: !!sentimentData?.distribution 
   })
 
+  const sentimentAnalysisError = (sentimentData as any)?.analysisError ?? null
+
   if (!sentimentData?.distribution) {
     return (
       <div style={{ padding: "48px 24px", textAlign: "center", color: C.ui.text.secondary }}>
-        <p style={{ margin: 0, fontSize: "14px", fontWeight: "600" }}>Sentiment data not available.</p>
+        <p style={{ margin: 0, fontSize: "14px", fontWeight: "600" }}>
+          {sentimentAnalysisError ? `Analysis failed: ${sentimentAnalysisError}` : "Sentiment data not available."}
+        </p>
       </div>
     )
   }

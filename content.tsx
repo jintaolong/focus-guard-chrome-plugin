@@ -7,6 +7,7 @@ import { SearchInterface } from "~components/SearchInterface"
 import { ToggleButton } from "~components/ToggleButton"
 import { SidePanel } from "~components/SidePanel"
 import { PreWatchPopover } from "~components/PreWatchPopover"
+import { VerdictTooltip } from "~components/VerdictTooltip"
 import { CommunityVerdictTeaser } from "~components/CommunityVerdictTeaser"
 import { AnalysisSettingsModal } from "~components/AnalysisSettingsModal"
 import { CreditConfirmationDialog } from "~components/CreditConfirmationDialog"
@@ -374,6 +375,40 @@ const ContentScript = () => {
     onFreeQueueConfirm?: () => void
   } | null>(null)
 
+  // Verdict tooltip state (chat-bubble shown after free verdict completes)
+  const [showVerdictTooltip, setShowVerdictTooltip] = useState(false)
+  const [verdictTooltipData, setVerdictTooltipData] = useState<{ verdict: string; reasoning: string } | null>(null)
+  // Sentiment analysis state (triggered from tooltip CTA)
+  const [isSentimentRunning, setIsSentimentRunning] = useState(false)
+  const [isSentimentDone, setIsSentimentDone] = useState(false)
+  const [tooltipSentimentSummary, setTooltipSentimentSummary] = useState<{ positive_pct: number; neutral_pct: number; negative_pct: number; dominant_sentiment?: string } | null>(null)
+  // Silent credit cost estimates shown on sub-analysis TabCTA buttons
+  const [subAnalysisCosts, setSubAnalysisCosts] = useState<Partial<Record<"claims" | "sentiment" | "topic" | "gaps" | "report" | "full", number | null>>>({})
+
+  // PRO toggle mode: if true, completing a full analysis from toggle auto-opens the panel
+  const openSidePanelAfterCompleteRef = useRef(false)
+  // PRO sidepanel max-comments slider value (persisted to settings on change)
+  const [proMaxComments, setProMaxComments] = useState<number>(200)
+  // PRO toggle-area slider popover open state
+  const [toggleSliderOpen, setToggleSliderOpen] = useState(false)
+  const [toggleSliderLocal, setToggleSliderLocal] = useState<number>(200)
+
+  // Extract video title and channel name from the YouTube page DOM
+  const getPageVideoMeta = () => {
+    const titleEl = document.querySelector("ytd-watch-metadata h1 yt-formatted-string") ||
+      document.querySelector("h1.title yt-formatted-string") ||
+      document.querySelector("#title h1 yt-formatted-string")
+    const videoTitle = titleEl?.textContent?.trim() || null
+
+    const channelEl = document.querySelector("ytd-watch-metadata ytd-channel-name a") ||
+      document.querySelector("ytd-video-owner-renderer ytd-channel-name a") ||
+      document.querySelector("#owner #channel-name a") ||
+      document.querySelector("yt-formatted-string#owner-name a")
+    const channelName = channelEl?.textContent?.trim() || null
+
+    return { videoTitle, channelName }
+  }
+
   // Expose the current analysis on the window for quick debugging in DevTools.
   // Usage in page console: `__FG_VIDEO_ANALYSIS` or `__FG_VIDEO_ANALYSIS_SUMMARY`.
   useEffect(() => {
@@ -384,6 +419,65 @@ const ContentScript = () => {
       // ignore
     }
   }, [videoAnalysis])
+
+  // When the side panel opens (or analysis loads with no title), re-scrape the video title from the DOM.
+  // YouTube's SPA may not have rendered the title when the initial analysis state was created.
+  useEffect(() => {
+    if (isSidePanelOpen && videoAnalysis && !videoAnalysis.videoTitle) {
+      const meta = getPageVideoMeta()
+      // Try DOM scrape first; fall back to document.title ("Title - YouTube" format).
+      const domTitle = meta.videoTitle ||
+        (document.title && document.title.endsWith(" - YouTube")
+          ? document.title.replace(/ - YouTube$/, "").trim()
+          : null)
+      if (domTitle) {
+        setVideoAnalysis((prev: any) => prev ? { ...prev, videoTitle: domTitle } : prev)
+      }
+    }
+  }, [isSidePanelOpen, videoAnalysis?.videoTitle])
+
+  // Silently fetch per-analysis credit cost estimates when analysis completes.
+  useEffect(() => {
+    if (analysisState === "complete" && currentVideoId) {
+      fetchSubAnalysisCosts(currentVideoId)
+    }
+  }, [analysisState, currentVideoId])
+
+  // Auto-open side panel when full analysis (triggered from toggle) completes
+  useEffect(() => {
+    if (analysisState === "complete" && openSidePanelAfterCompleteRef.current) {
+      openSidePanelAfterCompleteRef.current = false
+      setIsSidePanelOpen(true)
+      setShowPreWatchPopover(false)
+    }
+  }, [analysisState])
+
+  // Sync proMaxComments from settings whenever settings change
+  useEffect(() => {
+    const depth = settings?.videoAnalysis?.maxCommentDepth
+    if (typeof depth === "number" && depth > 0) {
+      setProMaxComments(depth)
+      setToggleSliderLocal(depth)
+    }
+  }, [settings?.videoAnalysis?.maxCommentDepth])
+
+  // Auto-run channel trust when sidepanel opens and trust data isn't available.
+  useEffect(() => {
+    if (isSidePanelOpen && currentVideoId && videoAnalysis && !videoAnalysis.channelTrust) {
+      console.log("Comment Verdict: auto-fetching channel trust for sidepanel")
+      FocusGuardAPI.analyzeChannelTrust(currentVideoId, false)
+        .then((trustData) => {
+          if (trustData) {
+            setVideoAnalysis((prev: any) => prev ? {
+              ...prev,
+              channelTrust: trustData,
+              channelName: prev.channelName || trustData.channel_name || null,
+            } : prev)
+          }
+        })
+        .catch((err) => console.warn("Auto channel trust fetch failed:", err))
+    }
+  }, [isSidePanelOpen, currentVideoId])
 
   useEffect(() => {
     // Check if we're on YouTube home page or watch page
@@ -396,6 +490,20 @@ const ContentScript = () => {
     // Load user stats and analysis history
     loadUserStats()
     loadAnalysisHistory()
+
+    // Eagerly load tier info so PRO UI (slider, toggle mode) shows without needing
+    // to click the toggle button first
+    ;(async () => {
+      try {
+        const isAuth = await AuthService.isAuthenticated()
+        if (isAuth) {
+          const subscription = await SubscriptionService.getSubscription()
+          const tier = subscription.tier?.toLowerCase() || 'free'
+          const dashboardUrl = `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
+          setUserTierInfo({ tier, dashboardUrl })
+        }
+      } catch {}
+    })()
     
     const checkPageType = () => {
       const isHome =
@@ -429,8 +537,10 @@ const ContentScript = () => {
           }
           currentVideoIdRef.current = videoId
           setCurrentVideoId(videoId)
-          // Reset tier info cache for new video (will be fetched fresh on analysis)
-          setUserTierInfo(null)
+          // NOTE: userTierInfo is intentionally NOT reset here — the user's
+          // subscription tier doesn't change between videos and resetting it
+          // causes the toggle button to flash back to a stale/default look
+          // until the tier is re-fetched.
           
           // ALWAYS check cache first to update toggle button state
           // This is independent of auto-analyze setting
@@ -458,6 +568,11 @@ const ContentScript = () => {
           // analysis completes on this new page.
           setPreWatchDismissed(false)
           setShowPreWatchPopover(false)
+          setShowVerdictTooltip(false)
+          setVerdictTooltipData(null)
+          setIsSentimentRunning(false)
+          setIsSentimentDone(false)
+          setTooltipSentimentSummary(null)
         }
       } else {
         // User left watch page - abort any ongoing polling
@@ -479,6 +594,11 @@ const ContentScript = () => {
         setIsSidePanelOpen(false)
         setShowPreWatchPopover(false)
         setPreWatchDismissed(false)
+        setShowVerdictTooltip(false)
+        setVerdictTooltipData(null)
+        setIsSentimentRunning(false)
+        setIsSentimentDone(false)
+        setTooltipSentimentSummary(null)
       }
     }
 
@@ -513,11 +633,12 @@ const ContentScript = () => {
     // YouTube sometimes navigates without triggering history events (clicking
     // video thumbnails, etc). Use a MutationObserver to detect URL changes
     // via DOM updates and check periodically.
+    let lastCheckedUrl = window.location.href
     const urlCheckInterval = setInterval(() => {
       const currentUrl = window.location.href
-      const currentVidId = getVideoIdFromUrl(currentUrl)
-      if (currentVidId && currentVidId !== currentVideoIdRef.current) {
-        console.log("Comment Verdict: URL polling detected new video")
+      if (currentUrl !== lastCheckedUrl) {
+        lastCheckedUrl = currentUrl
+        console.log("Comment Verdict: URL polling detected navigation")
         checkPageType()
       }
     }, 500)
@@ -757,7 +878,476 @@ const ContentScript = () => {
             console.warn("Failed to check credit balance:", err)
           }
         }
-        
+
+        // No snapshot cache — but a previous free verdict may exist.
+        // Try to load it so returning visitors see their verdict immediately.
+        try {
+          const [cachedVerdict, cachedSentiment] = await Promise.all([
+            FocusGuardAPI.getCachedFreeVerdict(videoId),
+            FocusGuardAPI.getCachedFreeSentiment(videoId),
+          ])
+
+          if (cachedVerdict.has_verdict) {
+            console.log("Comment Verdict: Found cached free verdict for returning visitor:", cachedVerdict.verdict)
+            const verdict = (cachedVerdict.verdict || "UNKNOWN").toUpperCase()
+            const reasoning = cachedVerdict.reasoning || ""
+            const weightedComments = cachedVerdict.weighted_comments || []
+            const totalCommentsInput = cachedVerdict.total_comments_input || 0
+
+            // Derive trust score same way as proceedWithFreeVerdict
+            const _verdictBases: Record<string, number> = {
+              LEGIT: 7.5, DISPUTED: 5.0, MISLEADING: 2.5, CLICKBAIT: 3.5, DANGEROUS: 1.5,
+            }
+            const _verdictBase = _verdictBases[verdict] ?? 5.0
+            const _avgWeighted = weightedComments.length > 0
+              ? weightedComments.reduce((s: number, c: any) => s + (c.weighted_score ?? 0), 0) / weightedComments.length
+              : 0
+            const _scoreNudge = Math.max(-1, Math.min(1, _avgWeighted / 5))
+            const derivedTrustScore = Math.max(0, Math.min(10,
+              Math.round((_verdictBase + _scoreNudge) * 10) / 10
+            ))
+
+            const isAuth = await AuthService.isAuthenticated()
+            // Fetch tier info if not yet loaded (reset on every video navigation)
+            let userTier = userTierInfo?.tier
+            let dashboardUrl = userTierInfo?.dashboardUrl || `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
+            if (!userTier && isAuth) {
+              try {
+                const subscription = await SubscriptionService.getSubscription()
+                userTier = subscription.tier?.toLowerCase() || 'free'
+                setUserTierInfo({ tier: userTier, dashboardUrl })
+              } catch (err) {
+                console.warn("Comment Verdict: Failed to fetch subscription during cache load:", err)
+                userTier = 'free'
+              }
+            }
+            userTier = userTier || 'free'
+            const isPro = userTier === 'pro'
+            const proOnlyRestriction = (!isPro) ? {
+              code: 'TIER_RESTRICTION' as const,
+              required_tier: 'pro' as const,
+              current_tier: userTier as 'pro' | 'free' | 'starter',
+              message: 'This feature is available for Pro users only.',
+              upgrade_url: dashboardUrl
+            } : null
+
+            // Build sentiment data from cache if available
+            let sentimentData: any = null
+            if (cachedSentiment.has_sentiment && cachedSentiment.distribution) {
+              const csd = cachedSentiment.distribution as any
+              sentimentData = {
+                distribution: {
+                  positive: csd.positive ?? csd.positive_count ?? 0,
+                  neutral: csd.neutral ?? csd.neutral_count ?? 0,
+                  negative: csd.negative ?? csd.negative_count ?? 0,
+                  dominant: csd.dominant_sentiment ?? null,
+                },
+                filteringMetadata: cachedSentiment.filtering_metadata,
+              }
+              setIsSentimentDone(true)
+              // Populate tooltip mini-bar from cached percentages
+              if (csd.positive_pct != null || csd.neutral_pct != null || csd.negative_pct != null) {
+                setTooltipSentimentSummary({
+                  positive_pct: csd.positive_pct ?? 0,
+                  neutral_pct: csd.neutral_pct ?? 0,
+                  negative_pct: csd.negative_pct ?? 0,
+                  dominant_sentiment: csd.dominant_sentiment ?? null,
+                })
+              }
+            }
+
+            const pageMeta = getPageVideoMeta()
+
+            const videoAnalysisData = {
+              videoId,
+              videoTitle: pageMeta.videoTitle,
+              videoUrl: `https://www.youtube.com/watch?v=${videoId}`,
+              channelName: pageMeta.channelName,
+              snapshotShareCode: null,
+              snapshotId: null,
+              isFullyPublic: cachedVerdict.is_public ?? true,
+              summary: {
+                trustScore: derivedTrustScore,
+                evidenceScore: 0,
+                aiConfidence: derivedTrustScore,
+                clickbaitVerdict: {
+                  label: verdict,
+                  confidence: derivedTrustScore * 10,
+                  claims: [],
+                  onLineSummary: reasoning,
+                },
+                channelCredibility: undefined,
+                key_takeaways: [],
+              },
+              trustScore: { score: derivedTrustScore },
+              clickbaitVerdict: { verdict },
+              executiveSummary: reasoning,
+              localVerdict: {
+                verdict,
+                reasoning,
+                stage1_retained: cachedVerdict.stage1_retained || 0,
+                stage2_top: cachedVerdict.stage2_top || 0,
+                model_used: cachedVerdict.model_used || '',
+                processing_time_seconds: cachedVerdict.processing_time_seconds || 0,
+                total_comments_input: totalCommentsInput,
+                weighted_comments: weightedComments,
+              },
+              maxCommentsRequested: null,
+              actualCommentsFetched: totalCommentsInput,
+              channelCredibility: undefined,
+              sentiment: sentimentData,
+              credibility: null,
+              topicClusters: null,
+              topicClustersData: undefined,
+              contentGaps: proOnlyRestriction ? {
+                botPercentage: 0,
+                gapCoverageScore: undefined,
+                botDetectionEnabled: true,
+                unansweredQuestions: [],
+                tierRestriction: proOnlyRestriction
+              } : undefined,
+              viewerInsights: proOnlyRestriction ? {
+                tierRestriction: proOnlyRestriction
+              } : undefined,
+              reportInfo: {
+                availableFormats: ["PDF", "TXT"],
+                analysisDate: cachedVerdict.created_at || new Date().toISOString(),
+                tierRestriction: proOnlyRestriction
+              },
+              separateAnalysis: true,
+              isGuest: !isAuth,
+            } as any
+
+            // If individual analyses exist (clustering, gaps, etc.), merge them
+            // into the free verdict data so they show up on page reload.
+            if ((cacheStatus as any).has_individual_analyses) {
+              const available = (cacheStatus as any).individual_analyses || {}
+              console.log("Comment Verdict: Merging individual analyses into free verdict data...", available)
+              try {
+                const [sentimentResult, clusteringResult, gapsResult, trustResult] = await Promise.allSettled([
+                  available.sentiment
+                    ? FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: false })
+                    : Promise.resolve(null),
+                  available.clustering
+                    ? FocusGuardAPI.analyzeTopicClusteringV2(videoId, false)
+                    : Promise.resolve(null),
+                  available.gaps
+                    ? FocusGuardAPI.analyzeTopicGapV2(videoId, false)
+                    : Promise.resolve(null),
+                  FocusGuardAPI.analyzeChannelTrust(videoId, false),
+                ])
+                const deepSentimentData = sentimentResult.status === 'fulfilled' ? sentimentResult.value : null
+                const clusteringData = clusteringResult.status === 'fulfilled' ? clusteringResult.value : null
+                const gapsData = gapsResult.status === 'fulfilled' ? gapsResult.value : null
+                const trustData = trustResult.status === 'fulfilled' ? trustResult.value : null
+
+                if (deepSentimentData) {
+                  const posCount = typeof deepSentimentData.data.positive === 'number' ? deepSentimentData.data.positive : (deepSentimentData.data.positive?.count ?? 0)
+                  const negCount = typeof deepSentimentData.data.negative === 'number' ? deepSentimentData.data.negative : (deepSentimentData.data.negative?.count ?? 0)
+                  const neuCount = typeof deepSentimentData.data.neutral === 'number' ? deepSentimentData.data.neutral : (deepSentimentData.data.neutral?.count ?? 0)
+                  videoAnalysisData.sentiment = {
+                    overall: posCount > negCount ? "positive" : negCount > posCount ? "negative" : "neutral",
+                    distribution: {
+                      positive: posCount,
+                      neutral: neuCount,
+                      negative: negCount,
+                      totalCommentsAnalyzed: posCount + negCount + neuCount,
+                      exampleComments: {
+                        positive: typeof deepSentimentData.data.positive === 'object' ? deepSentimentData.data.positive?.top_comments ?? [] : [],
+                        neutral: typeof deepSentimentData.data.neutral === 'object' ? deepSentimentData.data.neutral?.top_comments ?? [] : [],
+                        negative: typeof deepSentimentData.data.negative === 'object' ? deepSentimentData.data.negative?.top_comments ?? [] : [],
+                      },
+                    },
+                    filteringMetadata: deepSentimentData.filtering_metadata,
+                  }
+                  videoAnalysisData.viewerInsights = {
+                    sentimentBreakdown: {
+                      positive: posCount,
+                      negative: negCount,
+                      neutral: neuCount,
+                      mixed: 0,
+                      totalCommentsAnalyzed: posCount + negCount + neuCount,
+                    },
+                    actionableInsights: { highValue: [], improvements: [] },
+                  }
+                  // Allow SidePanel to show deep sentiment tab (requires separateAnalysis=false)
+                  videoAnalysisData.separateAnalysis = false
+                  setIsSentimentDone(true)
+                }
+
+                if (clusteringData) {
+                  const cd = clusteringData as any
+                  videoAnalysisData.topicClustersData = {
+                    clusters: cd.topic_clusters || [],
+                    parent_themes: cd.parent_themes || [],
+                    hierarchy_map: cd.hierarchy_map || {},
+                    total_parent_themes: cd.total_parent_themes || 0,
+                    method: cd.method || 'unknown',
+                    processing_time: cd.processing_time,
+                  }
+                }
+                if (gapsData) {
+                  videoAnalysisData.contentGaps = {
+                    botPercentage: 0,
+                    gapCoverageScore: gapsData.topic_gaps ? Math.max(0, 100 - (gapsData.topic_gaps.length * 10)) : 100,
+                    botDetectionEnabled: true,
+                    unansweredQuestions: (gapsData.topic_gaps || []).map((gap: any, idx: number) => {
+                      const supportingComments = mapGapSupportingComments(gap, idx)
+                      return {
+                        id: `gap-${idx}`,
+                        statement: gap.question_statement,
+                        type: "issue" as const,
+                        commentCount: supportingComments.length,
+                        supportingComments,
+                        isExpanded: false,
+                      }
+                    }),
+                    filteringMetadata: gapsData.filtering_metadata,
+                  }
+                }
+                if (trustData && 'trust_score' in trustData && 'metrics' in trustData) {
+                  const hasStructuredMetrics = trustData.metrics && typeof trustData.metrics === 'object' &&
+                    Object.values(trustData.metrics).some((v: any) => v && typeof v === 'object' && (v as any).score != null)
+                  const hasStructuredDetails = trustData.metric_details && typeof trustData.metric_details === 'object' &&
+                    Object.values(trustData.metric_details).some((v: any) => v && typeof v === 'object' && (v as any).score != null)
+                  const metricsSource = hasStructuredMetrics ? trustData.metrics : hasStructuredDetails ? trustData.metric_details : {}
+                  const factors = Object.entries(metricsSource)
+                    .filter(([, m]: [string, any]) => m && typeof m === 'object' && (m as any).score != null)
+                    .map(([name, metricData]: [string, any]) => ({
+                      name,
+                      weight: metricData.normalized_value ?? 0,
+                      value: String(metricData.score),
+                    }))
+                  videoAnalysisData.channelCredibility = {
+                    score: trustData.trust_score,
+                    factors,
+                    metrics: trustData.metrics,
+                    trust_score: trustData.trust_score,
+                    raw_metrics: trustData.raw_metrics,
+                    metric_details: trustData.metric_details,
+                  }
+                }
+              } catch (err) {
+                console.warn("Comment Verdict: Failed to merge individual analyses into free verdict:", (err as any)?.message || String(err))
+              }
+            }
+
+            setVideoAnalysis(videoAnalysisData)
+            setAnalysisStatus({
+              trustScore: derivedTrustScore,
+              clickbaitVerdict: verdict as "LEGIT" | "MISLEADING" | "CLICKBAIT",
+              isAnalyzing: false,
+            })
+            setAnalysisState("complete")
+
+            // Show verdict tooltip for returning visitors
+            setVerdictTooltipData({ verdict, reasoning })
+            setShowVerdictTooltip(true)
+
+            setIsCheckingCache(false)
+            return
+          }
+        } catch (err) {
+          console.log("Comment Verdict: No cached free verdict found (expected for fresh videos):", (err as any)?.message || String(err))
+        }
+
+        // If individual analyses exist (run without a full summary job), try loading
+        // them so the user sees their results after a page reload.
+        if ((cacheStatus as any).has_individual_analyses) {
+          const available = (cacheStatus as any).individual_analyses || {}
+          console.log("Comment Verdict: Found individual analyses (no snapshot), loading cached results...", available)
+          try {
+            const [sentimentResult, trustResult, clusteringResult, gapsResult] = await Promise.allSettled([
+              available.sentiment
+                ? FocusGuardAPI.analyzeSentimentV2({ video_id: videoId, force_refresh: false })
+                : Promise.resolve(null),
+              FocusGuardAPI.analyzeChannelTrust(videoId, false),
+              available.clustering
+                ? FocusGuardAPI.analyzeTopicClusteringV2(videoId, false)
+                : Promise.resolve(null),
+              available.gaps
+                ? FocusGuardAPI.analyzeTopicGapV2(videoId, false)
+                : Promise.resolve(null),
+            ])
+
+            const sentimentData = sentimentResult.status === 'fulfilled' ? sentimentResult.value : null
+            const trustData = trustResult.status === 'fulfilled' ? trustResult.value : null
+            const clusteringData = clusteringResult.status === 'fulfilled' ? clusteringResult.value : null
+            const gapsData = gapsResult.status === 'fulfilled' ? gapsResult.value : null
+
+            if (sentimentData || trustData || clusteringData || gapsData) {
+              const pageTitle = (cacheStatus as any).title ||
+                getPageVideoMeta().videoTitle ||
+                (document.title && document.title.endsWith(" - YouTube")
+                  ? document.title.replace(/ - YouTube$/, "").trim()
+                  : null)
+
+              // Build sentiment object
+              let sentimentObj: any = undefined
+              if (sentimentData) {
+                const posCount = typeof sentimentData.data.positive === 'number' ? sentimentData.data.positive : (sentimentData.data.positive?.count ?? 0)
+                const negCount = typeof sentimentData.data.negative === 'number' ? sentimentData.data.negative : (sentimentData.data.negative?.count ?? 0)
+                const neuCount = typeof sentimentData.data.neutral === 'number' ? sentimentData.data.neutral : (sentimentData.data.neutral?.count ?? 0)
+                sentimentObj = {
+                  overall: posCount > negCount ? "positive" : negCount > posCount ? "negative" : "neutral",
+                  distribution: {
+                    positive: posCount,
+                    neutral: neuCount,
+                    negative: negCount,
+                    totalCommentsAnalyzed: posCount + negCount + neuCount,
+                    exampleComments: {
+                      positive: typeof sentimentData.data.positive === 'object' ? sentimentData.data.positive?.top_comments ?? [] : [],
+                      neutral: typeof sentimentData.data.neutral === 'object' ? sentimentData.data.neutral?.top_comments ?? [] : [],
+                      negative: typeof sentimentData.data.negative === 'object' ? sentimentData.data.negative?.top_comments ?? [] : [],
+                    },
+                  },
+                  filteringMetadata: sentimentData.filtering_metadata,
+                }
+                setIsSentimentDone(true)
+              }
+
+              // Build channel credibility from trust data
+              let channelCredibilityObj: any = undefined
+              if (trustData && 'trust_score' in trustData && 'metrics' in trustData) {
+                const hasStructuredMetrics = trustData.metrics && typeof trustData.metrics === 'object' &&
+                  Object.values(trustData.metrics).some((v: any) => v && typeof v === 'object' && (v as any).score != null)
+                const hasStructuredDetails = trustData.metric_details && typeof trustData.metric_details === 'object' &&
+                  Object.values(trustData.metric_details).some((v: any) => v && typeof v === 'object' && (v as any).score != null)
+                const metricsSource = hasStructuredMetrics ? trustData.metrics : hasStructuredDetails ? trustData.metric_details : {}
+                const factors = Object.entries(metricsSource)
+                  .filter(([, m]: [string, any]) => m && typeof m === 'object' && (m as any).score != null)
+                  .map(([name, metricData]: [string, any]) => ({
+                    name,
+                    weight: metricData.normalized_value ?? 0,
+                    value: String(metricData.score),
+                  }))
+                channelCredibilityObj = {
+                  score: trustData.trust_score,
+                  factors,
+                  metrics: trustData.metrics,
+                  trust_score: trustData.trust_score,
+                  raw_metrics: trustData.raw_metrics,
+                  metric_details: trustData.metric_details,
+                }
+              }
+
+              // Build topic clusters
+              let topicClustersDataObj: any = undefined
+              if (clusteringData) {
+                const cd = clusteringData as any
+                topicClustersDataObj = {
+                  clusters: cd.topic_clusters || [],
+                  parent_themes: cd.parent_themes || [],
+                  hierarchy_map: cd.hierarchy_map || {},
+                  total_parent_themes: cd.total_parent_themes || 0,
+                  method: cd.method || 'unknown',
+                  processing_time: cd.processing_time,
+                }
+              }
+
+              // Build content gaps
+              let contentGapsObj: any = undefined
+              if (gapsData) {
+                contentGapsObj = {
+                  botPercentage: 0,
+                  gapCoverageScore: gapsData.topic_gaps ? Math.max(0, 100 - (gapsData.topic_gaps.length * 10)) : 100,
+                  botDetectionEnabled: true,
+                  unansweredQuestions: (gapsData.topic_gaps || []).map((gap: any, idx: number) => {
+                    const supportingComments = mapGapSupportingComments(gap, idx)
+                    return {
+                      id: `gap-${idx}`,
+                      statement: gap.question_statement,
+                      type: "issue" as const,
+                      commentCount: supportingComments.length,
+                      supportingComments,
+                      isExpanded: false,
+                    }
+                  }),
+                  filteringMetadata: gapsData.filtering_metadata,
+                }
+              }
+
+              const dashUrl = `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
+              const currentTier = userTierInfo?.tier || 'free'
+              const isPro = currentTier === 'pro'
+              const proOnlyRestriction = !isPro ? {
+                code: 'TIER_RESTRICTION' as const,
+                required_tier: 'pro' as const,
+                current_tier: currentTier as 'pro' | 'free' | 'starter',
+                message: 'This feature is available for Pro users only.',
+                upgrade_url: dashUrl,
+              } : null
+
+              setVideoAnalysis({
+                videoId,
+                videoTitle: pageTitle,
+                videoUrl: `https://www.youtube.com/watch?v=${videoId}`,
+                channelName: (cacheStatus as any).channel_name || (trustData as any)?.channel_name || null,
+                snapshotShareCode: null,
+                snapshotId: null,
+                isFullyPublic: false,
+                summary: {
+                  trustScore: 0,
+                  evidenceScore: 0,
+                  aiConfidence: 0,
+                  clickbaitVerdict: {
+                    label: 'UNKNOWN',
+                    confidence: 0,
+                    claims: [],
+                    onLineSummary: null,
+                  },
+                  channelCredibility: undefined,
+                  key_takeaways: [],
+                },
+                trustScore: { score: 0 },
+                clickbaitVerdict: { verdict: 'UNKNOWN' },
+                executiveSummary: null,
+                maxCommentsRequested: null,
+                actualCommentsFetched: null,
+                channelCredibility: channelCredibilityObj,
+                sentiment: sentimentObj,
+                credibility: null,
+                topicClusters: null,
+                topicClustersData: topicClustersDataObj,
+                contentGaps: contentGapsObj || (proOnlyRestriction ? {
+                  botPercentage: 0,
+                  gapCoverageScore: undefined,
+                  botDetectionEnabled: true,
+                  unansweredQuestions: [],
+                  tierRestriction: proOnlyRestriction,
+                } : undefined),
+                viewerInsights: sentimentObj ? {
+                  sentimentBreakdown: {
+                    positive: sentimentObj.distribution.positive,
+                    negative: sentimentObj.distribution.negative,
+                    neutral: sentimentObj.distribution.neutral,
+                    mixed: 0,
+                    totalCommentsAnalyzed: sentimentObj.distribution.totalCommentsAnalyzed,
+                  },
+                  actionableInsights: { highValue: [], improvements: [] },
+                } : (proOnlyRestriction ? { tierRestriction: proOnlyRestriction } : undefined),
+                reportInfo: {
+                  availableFormats: ["PDF", "TXT"],
+                  analysisDate: new Date().toISOString(),
+                  tierRestriction: proOnlyRestriction,
+                },
+                separateAnalysis: true,
+                isHydratingSecondary: false,
+              } as any)
+              setAnalysisStatus({
+                trustScore: 0,
+                clickbaitVerdict: 'UNKNOWN' as any,
+                isAnalyzing: false,
+              })
+              setAnalysisState("complete")
+              setIsCheckingCache(false)
+              return
+            }
+          } catch (err) {
+            console.warn("Comment Verdict: Failed to load individual analyses on page load:", (err as any)?.message || String(err))
+          }
+        }
+
         // Leave defaults
         setAnalysisState("idle")
         setAnalysisStatus(null)
@@ -922,13 +1512,9 @@ const ContentScript = () => {
 
         const initialTier = userTierInfo?.tier || 'free'
         const initialDashboardUrl = userTierInfo?.dashboardUrl || `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
-        const initialSentimentTierRestriction = (!isFullyPublicSnapshot && initialTier === 'free') ? {
-          code: 'TIER_RESTRICTION' as const,
-          required_tier: 'starter' as const,
-          current_tier: initialTier as 'pro' | 'free' | 'starter',
-          message: 'Comment Sentiment analysis requires a Starter subscription.',
-          upgrade_url: initialDashboardUrl
-        } : null
+        // Sentiment is now FREE for all users via local analysis.
+        // Cloud-based detailed sentiment (via /jobs/analysis/sentiment) is PRO only.
+        const initialSentimentTierRestriction = null
         const initialViewerInsightsTierRestriction = (!isFullyPublicSnapshot && initialTier !== 'pro') ? {
           code: 'TIER_RESTRICTION' as const,
           required_tier: 'pro' as const,
@@ -1022,8 +1608,11 @@ const ContentScript = () => {
           // buildChannelCredibility produces empty factors.  The direct endpoint returns
           // ChannelTrustResponse.metrics as a proper per-metric breakdown with .score.
           FocusGuardAPI.analyzeChannelTrust(videoId, false),
-          Promise.resolve(bundleData?.clustering ?? null),
-          Promise.resolve(bundleData?.gaps ?? null)
+          // Always call V2 endpoints for clustering/gaps — bundle only contains data when
+          // linked to the snapshot. Individual analysis runs (no full summary) store results
+          // in their own tables, which the V2 endpoints query by video_data_id directly.
+          FocusGuardAPI.analyzeTopicClusteringV2(videoId, false),
+          FocusGuardAPI.analyzeTopicGapV2(videoId, false)
         ])
 
         // Process secondary data in background WITHOUT blocking the spinner
@@ -1172,16 +1761,8 @@ const ContentScript = () => {
             topicGaps: !!topicGapsTierRestriction
           })
           
-          if (userTier === 'free' && !sentimentTierRestriction) {
-            console.log("Comment Verdict: 🚫 Blocking sentiment for free user")
-            sentimentTierRestriction = {
-              code: 'TIER_RESTRICTION' as const,
-              required_tier: 'starter' as const,
-              current_tier: userTier as 'pro' | 'free' | 'starter',
-              message: 'Comment Sentiment analysis requires a Starter subscription.',
-              upgrade_url: dashboardUrl
-            }
-          }
+          // Sentiment is now FREE for all users via local sentiment analysis.
+          // No tier restriction needed for basic sentiment.
 
           if (userTier !== 'pro' && !topicClustersTierRestriction) {
             console.log("Comment Verdict: 🚫 Blocking viewer insights for non-pro user (current:", userTier, ")")
@@ -1476,6 +2057,129 @@ const ContentScript = () => {
     } catch (error) {
       console.log("Comment Verdict: cache check failed on landing (likely unauthenticated):", (error as any)?.message || String(error))
       setIsCached(false)
+
+      // Guest user path — getCacheStatus requires auth, so we end up here.
+      // Still try to load a cached free verdict for returning guests.
+      try {
+        const videoId = currentVideoIdRef.current
+        if (videoId) {
+          const [cachedVerdict, cachedSentiment] = await Promise.all([
+            FocusGuardAPI.getCachedFreeVerdict(videoId),
+            FocusGuardAPI.getCachedFreeSentiment(videoId),
+          ])
+
+          if (cachedVerdict.has_verdict) {
+            console.log("Comment Verdict: Found cached free verdict for returning guest:", cachedVerdict.verdict)
+            const verdict = (cachedVerdict.verdict || "UNKNOWN").toUpperCase()
+            const reasoning = cachedVerdict.reasoning || ""
+            const weightedComments = cachedVerdict.weighted_comments || []
+            const totalCommentsInput = cachedVerdict.total_comments_input || 0
+
+            const _verdictBases: Record<string, number> = {
+              LEGIT: 7.5, DISPUTED: 5.0, MISLEADING: 2.5, CLICKBAIT: 3.5, DANGEROUS: 1.5,
+            }
+            const _verdictBase = _verdictBases[verdict] ?? 5.0
+            const _avgWeighted = weightedComments.length > 0
+              ? weightedComments.reduce((s: number, c: any) => s + (c.weighted_score ?? 0), 0) / weightedComments.length
+              : 0
+            const _scoreNudge = Math.max(-1, Math.min(1, _avgWeighted / 5))
+            const derivedTrustScore = Math.max(0, Math.min(10,
+              Math.round((_verdictBase + _scoreNudge) * 10) / 10
+            ))
+
+            let sentimentData: any = null
+            if (cachedSentiment.has_sentiment && cachedSentiment.distribution) {
+              const csd = cachedSentiment.distribution as any
+              sentimentData = {
+                distribution: {
+                  positive: csd.positive ?? csd.positive_count ?? 0,
+                  neutral: csd.neutral ?? csd.neutral_count ?? 0,
+                  negative: csd.negative ?? csd.negative_count ?? 0,
+                  dominant: csd.dominant_sentiment ?? null,
+                },
+                filteringMetadata: cachedSentiment.filtering_metadata,
+              }
+              setIsSentimentDone(true)
+              // Populate tooltip mini-bar from cached percentages
+              if (csd.positive_pct != null || csd.neutral_pct != null || csd.negative_pct != null) {
+                setTooltipSentimentSummary({
+                  positive_pct: csd.positive_pct ?? 0,
+                  neutral_pct: csd.neutral_pct ?? 0,
+                  negative_pct: csd.negative_pct ?? 0,
+                  dominant_sentiment: csd.dominant_sentiment ?? null,
+                })
+              }
+            }
+
+            const pageMeta = getPageVideoMeta()
+
+            setVideoAnalysis({
+              videoId,
+              videoTitle: pageMeta.videoTitle,
+              videoUrl: `https://www.youtube.com/watch?v=${videoId}`,
+              channelName: pageMeta.channelName,
+              snapshotShareCode: null,
+              snapshotId: null,
+              isFullyPublic: cachedVerdict.is_public ?? true,
+              summary: {
+                trustScore: derivedTrustScore,
+                evidenceScore: 0,
+                aiConfidence: derivedTrustScore,
+                clickbaitVerdict: {
+                  label: verdict,
+                  confidence: derivedTrustScore * 10,
+                  claims: [],
+                  onLineSummary: reasoning,
+                },
+                channelCredibility: undefined,
+                key_takeaways: [],
+              },
+              trustScore: { score: derivedTrustScore },
+              clickbaitVerdict: { verdict },
+              executiveSummary: reasoning,
+              localVerdict: {
+                verdict,
+                reasoning,
+                stage1_retained: cachedVerdict.stage1_retained || 0,
+                stage2_top: cachedVerdict.stage2_top || 0,
+                model_used: cachedVerdict.model_used || '',
+                processing_time_seconds: cachedVerdict.processing_time_seconds || 0,
+                total_comments_input: totalCommentsInput,
+                weighted_comments: weightedComments,
+              },
+              maxCommentsRequested: null,
+              actualCommentsFetched: totalCommentsInput,
+              channelCredibility: undefined,
+              sentiment: sentimentData,
+              credibility: null,
+              topicClusters: null,
+              topicClustersData: undefined,
+              contentGaps: undefined,
+              viewerInsights: undefined,
+              reportInfo: {
+                availableFormats: ["PDF", "TXT"],
+                analysisDate: cachedVerdict.created_at || new Date().toISOString(),
+                tierRestriction: null
+              },
+              separateAnalysis: true,
+              isGuest: true,
+            } as any)
+            setAnalysisStatus({
+              trustScore: derivedTrustScore,
+              clickbaitVerdict: verdict as "LEGIT" | "MISLEADING" | "CLICKBAIT",
+              isAnalyzing: false,
+            })
+            setAnalysisState("complete")
+            setVerdictTooltipData({ verdict, reasoning })
+            setShowVerdictTooltip(true)
+            setIsCheckingCache(false)
+            return
+          }
+        }
+      } catch (freeErr) {
+        console.log("Comment Verdict: No cached free verdict for guest:", (freeErr as any)?.message || String(freeErr))
+      }
+
       // Don't reset state if we're currently polling a job - only reset if no active job
       if (!currentJobId) {
         setAnalysisState("idle")
@@ -1487,144 +2191,446 @@ const ContentScript = () => {
   }
 
   const startVideoAnalysis = async (videoId: string, forceRefresh: boolean = false) => {
-    // Check email verification status first
+    // ── New Flow: Toggle button triggers FREE local verdict analysis ──
+    // No credits required, no email verification needed, guests can use it.
+    // Each additional analysis (sentiment, trust, clustering, etc.) is
+    // triggered separately by the user from the side panel.
+    //
+    // PRO exception: if proToggleMode === "full_analysis", the toggle runs the
+    // full credit-based summary generation pipeline instead.
+
+    const isAuth = await AuthService.isAuthenticated()
+
+    // For authenticated users, optionally check verification for PRO features
+    // but DO NOT block free verdict generation
+    if (isAuth) {
+      try {
+        const currentUser = await AuthService.getCurrentUser(true)
+        const isVerified = currentUser?.is_verified !== false
+        setIsUserVerified(isVerified)
+      } catch (error) {
+        console.warn("Failed to check verification status:", error)
+      }
+
+      // Cache tier info for later use (e.g. feature gating in side panel)
+      // (will be resolved below when checking isPro, so nothing needed here)
+    }
+
+    // PRO full-analysis mode: run the credit-based summary pipeline
+    // NOTE: We must use the locally-fetched tier (not userTierInfo state) because
+    // setUserTierInfo above is async and won't be reflected in the closure yet.
+    let resolvedTier = userTierInfo?.tier || 'free'
+    if (isAuth && !userTierInfo) {
+      // userTierInfo was null — we may have just set it above; re-read from subscription
+      try {
+        const sub = await SubscriptionService.getSubscription()
+        resolvedTier = sub.tier?.toLowerCase() || 'free'
+        const dashboardUrl = `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
+        setUserTierInfo({ tier: resolvedTier, dashboardUrl })
+      } catch {}
+    }
+    const isPro = resolvedTier === 'pro'
+    const toggleMode = settings?.videoAnalysis?.proToggleMode ?? 'free_verdict'
+    if (isPro && toggleMode === 'full_analysis') {
+      openSidePanelAfterCompleteRef.current = true
+      await startFullAnalysisWithCreditCheck(videoId, false)
+      return
+    }
+
+    // Proceed directly — free verdict needs no credit check or confirmation dialog
+    proceedWithFreeVerdict(videoId)
+  }
+
+  /**
+   * Credit-check wrapper for full analysis, used when the toggle button
+   * is in PRO "full analysis" mode. Shows the credit confirmation dialog
+   * (if enabled) then calls proceedWithAnalysis.
+   */
+  const startFullAnalysisWithCreditCheck = async (videoId: string, forceRefresh: boolean) => {
     try {
-      const creditBalance = await FocusGuardAPI.getCreditBalance()
-      // Always refresh user profile from backend so verification state is accurate
-      // (avoids stale local storage showing unverified after user verifies email).
-      const currentUser = await AuthService.getCurrentUser(true)
-      const isVerified = currentUser?.is_verified !== false
-      setIsUserVerified(isVerified)
-      
-      if (!isVerified) {
-        // Show verification prompt dialog
-        setCreditConfirmData({
-          estimatedCredits: 0,
-          currentBalance: creditBalance.credits_balance,
-          hasSufficientCredits: false,
-          onConfirm: () => {
-            setShowCreditConfirmDialog(false)
-            setCreditConfirmData(null)
-          }
-        })
-        setShowCreditConfirmDialog(true)
+      const isAuth = await AuthService.isAuthenticated()
+      if (!isAuth) {
+        const portalUrl = process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"
+        window.open(`${portalUrl}/login`, '_blank')
+        openSidePanelAfterCompleteRef.current = false
         return
       }
-    } catch (error) {
-      console.warn("Failed to check verification status:", error)
-    }
-    
-    // Fetch tier if not already cached (needed for credit estimation)
-    let currentTier = userTierInfo?.tier || 'free'
-    if (!userTierInfo) {
-      console.log("⏱️ Fetching subscription tier for credit estimate...")
+
+      // Read fresh settings from storage so slider value is current
+      let freshSettings = settings
       try {
-        const subscription = await SubscriptionService.getSubscription()
-        currentTier = subscription.tier?.toLowerCase() || 'free'
-        const dashboardUrl = `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
-        setUserTierInfo({ tier: currentTier, dashboardUrl })
-        console.log(`✅ Subscription tier fetched: ${currentTier}`)
-      } catch (error) {
-        console.warn("Failed to fetch tier info, defaulting to free:", error)
-        currentTier = 'free'
-      }
-    }
-    
-    // Always fetch latest settings from storage before estimating/proceeding so
-    // popup changes apply immediately even if React state in this content script
-    // is stale for a short time.
-    let latestSettings = settings
-    try {
-      const result = await chrome.storage.sync.get(["settings"])
-      if (result.settings) {
-        latestSettings = result.settings
-        setSettings(result.settings)
-      }
-    } catch (error) {
-      console.warn("Failed to refresh settings before analysis start, using in-memory settings:", error)
-    }
+        const result = await chrome.storage.sync.get(["settings"])
+        freshSettings = result.settings || settings
+      } catch {}
 
-    // Check if we should confirm credit usage
-    const shouldConfirm = latestSettings?.videoAnalysis?.confirmCreditUsage !== false
-    
-    if (shouldConfirm) {
-      // Estimate credit cost with tier-based limit enforcement
-      const settingsMaxComments = latestSettings?.videoAnalysis?.maxCommentDepth || 100
-      const maxCommentDepth = currentTier === 'pro' ? settingsMaxComments : Math.min(settingsMaxComments, 300)
-      console.log("💰 Credit Estimate Params:", { tier: currentTier, settingsMaxComments, maxCommentDepth, settings: latestSettings?.videoAnalysis })
-      try {
-        const estimate = await FocusGuardAPI.estimateCreditCost(maxCommentDepth, false)
-        console.log("💰 Credit Estimate Response:", estimate)
-
-        // When the user has run out of credits, fetch free queue status in the background
-        // so we can show it in the dialog while keeping it responsive.
-        let freeQueueStatus: FreeQueueStatus | null = null
-        let isFetchingFreeQueueStatus = false
-
-        if (!estimate.has_sufficient_credits) {
-          isFetchingFreeQueueStatus = true
-          // Show the dialog immediately with a loading indicator
-          setCreditConfirmData({
-            estimatedCredits: estimate.estimated_credits,
-            currentBalance: estimate.current_balance,
-            hasSufficientCredits: estimate.has_sufficient_credits,
-            freeQueueStatus: null,
-            isFetchingFreeQueueStatus: true,
-            onConfirm: () => {
-              setShowCreditConfirmDialog(false)
-              setCreditConfirmData(null)
-              proceedWithAnalysis(videoId, forceRefresh)
-            },
-            onFreeQueueConfirm: () => {
-              setShowCreditConfirmDialog(false)
-              setCreditConfirmData(null)
-              proceedWithAnalysis(videoId, forceRefresh, true, freeQueueStatus)
-            }
-          })
-          setShowCreditConfirmDialog(true)
-
-          // Fetch free queue status and update dialog once available
-          try {
-            freeQueueStatus = await FocusGuardAPI.getFreeQueueStatus()
-            console.log("🌐 Free Queue Status:", freeQueueStatus)
-          } catch (fqError) {
-            console.warn("Failed to fetch free queue status:", fqError)
-          }
-
-          setCreditConfirmData((prev) => prev ? {
-            ...prev,
-            freeQueueStatus,
-            isFetchingFreeQueueStatus: false
-          } : prev)
-          return // Dialog already shown
-        }
-
-        // Show credit confirmation dialog (sufficient credits case)
-        setCreditConfirmData({
-          estimatedCredits: estimate.estimated_credits,
-          currentBalance: estimate.current_balance,
-          hasSufficientCredits: estimate.has_sufficient_credits,
-          onConfirm: () => {
-            setShowCreditConfirmDialog(false)
-            setCreditConfirmData(null)
-            // Proceed with analysis
-            proceedWithAnalysis(videoId, forceRefresh)
-          }
-        })
-        setShowCreditConfirmDialog(true)
-        return // Wait for user confirmation
-      } catch (error) {
-        console.warn("Failed to estimate credit cost, proceeding anyway:", error)
-        // Proceed without confirmation if estimate fails
+      // Skip credit dialog if the user turned off confirmations
+      if (freshSettings?.videoAnalysis?.confirmCreditUsage === false) {
         proceedWithAnalysis(videoId, forceRefresh)
         return
       }
-    } else {
-      // No confirmation needed - proceed directly
+
+      const credits = await FocusGuardAPI.getCreditBalance()
+      // Mirror the exact formula used in proceedWithAnalysis so the estimate matches what will actually be requested
+      const tier = userTierInfo?.tier || 'free'
+      const settingsMaxComments = freshSettings?.videoAnalysis?.maxCommentDepth || 100
+      const commentCount = tier === 'pro' ? settingsMaxComments : Math.min(settingsMaxComments, 300)
+      const estimate = await FocusGuardAPI.estimateCreditCost(commentCount, "full_analysis", videoId)
+      const estimatedCredits = estimate.estimated_credits
+      const hasSufficient = credits.credits_balance >= estimatedCredits
+
+      setCreditConfirmData({
+        estimatedCredits,
+        currentBalance: credits.credits_balance,
+        hasSufficientCredits: hasSufficient,
+        onConfirm: () => {
+          setShowCreditConfirmDialog(false)
+          setCreditConfirmData(null)
+          proceedWithAnalysis(videoId, forceRefresh)
+        },
+      })
+      setShowCreditConfirmDialog(true)
+    } catch (err) {
+      console.warn("Failed to check credits for toggle full analysis:", err)
+      // Fall back to running directly
       proceedWithAnalysis(videoId, forceRefresh)
     }
   }
 
+  /**
+   * New primary analysis flow: Submit a FREE local verdict job.
+   * Works for both authenticated users and guests.
+   * No credits consumed. Progress polling shows stage-by-stage updates.
+   */
+  const proceedWithFreeVerdict = async (videoId: string) => {
+    setIsAnalyzing(true)
+    setAnalysisState("analyzing")
+    setAnalysisStatus(null)
+    setVideoAnalysis(null)
+    setAnalysisError(null)
+    setProgressPercent(null)
+    setProgressMessage(null)
+
+    try {
+      const analysisStartTime = Date.now()
+      console.log("Starting FREE local verdict analysis for:", videoId)
+
+      // Submit free verdict job (works for guests and auth users)
+      // Server enforces le=500 for free-queue jobs; clamp here to avoid 422.
+      const FREE_VERDICT_MAX = 500
+      const requestedDepth = userTierInfo?.tier === 'free' ? 100 : (settings?.videoAnalysis?.maxCommentDepth || 200)
+      const jobResponse = await FocusGuardAPI.submitFreeVerdict({
+        video_id: videoId,
+        is_public: true,
+        max_comments: Math.min(requestedDepth, FREE_VERDICT_MAX),
+      })
+      console.log("Free verdict job submitted:", jobResponse)
+      const jobId = jobResponse.job_id
+      setCurrentJobId(jobId)
+
+      // Create abort controller for polling
+      const abortController = new AbortController()
+      abortPollingRef.current = () => abortController.abort()
+
+      // Poll job status with progress updates
+      const pollStartTime = Date.now()
+      const jobResult = await FocusGuardAPI.pollFreeJob(
+        jobId,
+        (status) => {
+          const elapsed = ((Date.now() - pollStartTime) / 1000).toFixed(1)
+          console.log(`[${elapsed}s] Verdict progress:`, status.progress_percent, "%", status.progress_message)
+          setProgressPercent(status.progress_percent)
+          setProgressMessage(status.progress_message || null)
+        },
+        1000, // Poll every 1s
+        abortController.signal
+      )
+
+      abortPollingRef.current = null
+      const pollDuration = ((Date.now() - pollStartTime) / 1000).toFixed(1)
+      console.log(`✅ Verdict job completed in ${pollDuration}s:`, jobResult)
+
+      // Extract verdict result data
+      const resultData = jobResult.result_data
+      const verdict = (resultData?.verdict || "UNKNOWN").toUpperCase()
+      const reasoning = resultData?.reasoning || ""
+      const weightedComments = resultData?.weighted_comments || []
+      const totalCommentsInput = resultData?.total_comments_input || 0
+
+      // Compute a trust score (0-10) derived from the verdict + cross-encoder scores.
+      // The free pipeline has no separate confidence metric, so we derive one:
+      //   Verdict sets the band; avg weighted_score nudges ±1 point within it.
+      const _verdictBases: Record<string, number> = {
+        LEGIT: 7.5, DISPUTED: 5.0, MISLEADING: 2.5, CLICKBAIT: 3.5, DANGEROUS: 1.5,
+      }
+      const _verdictBase = _verdictBases[verdict] ?? 5.0
+      const _avgWeighted = weightedComments.length > 0
+        ? weightedComments.reduce((s: number, c: any) => s + (c.weighted_score ?? 0), 0) / weightedComments.length
+        : 0
+      // Raw scores typically range -5 to +5; normalise to a ±1 nudge
+      const _scoreNudge = Math.max(-1, Math.min(1, _avgWeighted / 5))
+      const derivedTrustScore = Math.max(0, Math.min(10,
+        Math.round((_verdictBase + _scoreNudge) * 10) / 10
+      ))
+
+      // Determine user tier for feature gating in side panel
+      const userTier = userTierInfo?.tier || 'free'
+      const dashboardUrl = userTierInfo?.dashboardUrl || `${process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"}/dashboard`
+      const isAuth = await AuthService.isAuthenticated()
+      const isPro = userTier === 'pro'
+
+      // Build tier restrictions for PRO-only features
+      const proOnlyRestriction = (!isPro) ? {
+        code: 'TIER_RESTRICTION' as const,
+        required_tier: 'pro' as const,
+        current_tier: userTier as 'pro' | 'free' | 'starter',
+        message: 'This feature is available for Pro users only.',
+        upgrade_url: dashboardUrl
+      } : null
+
+      // Build video analysis data from verdict result
+      const pageMeta = getPageVideoMeta()
+      const videoAnalysisData = {
+        videoId,
+        videoTitle: pageMeta.videoTitle,
+        videoUrl: `https://www.youtube.com/watch?v=${videoId}`,
+        channelName: pageMeta.channelName,
+        snapshotShareCode: null,
+        snapshotId: null,
+        isFullyPublic: resultData?.is_public ?? true,
+        summary: {
+          trustScore: derivedTrustScore,
+          evidenceScore: 0,
+          aiConfidence: derivedTrustScore,
+          clickbaitVerdict: {
+            label: verdict,
+            confidence: derivedTrustScore * 10,
+            claims: [],
+            onLineSummary: reasoning,
+          },
+          channelCredibility: undefined,
+          key_takeaways: [],
+        },
+        trustScore: { score: derivedTrustScore },
+        clickbaitVerdict: { verdict },
+        executiveSummary: reasoning,
+        // Verdict-specific data
+        localVerdict: {
+          verdict,
+          reasoning,
+          stage1_retained: resultData?.stage1_retained || 0,
+          stage2_top: resultData?.stage2_top || 0,
+          model_used: resultData?.model_used || '',
+          processing_time_seconds: resultData?.processing_time_seconds || 0,
+          total_comments_input: totalCommentsInput,
+          weighted_comments: weightedComments,
+        },
+        maxCommentsRequested: null,
+        actualCommentsFetched: totalCommentsInput,
+        channelCredibility: undefined,
+        // Sentiment: available for free but needs separate trigger
+        sentiment: null,
+        credibility: null,
+        topicClusters: null,
+        topicClustersData: undefined,
+        // PRO-only features show upgrade prompts
+        contentGaps: proOnlyRestriction ? {
+          botPercentage: 0,
+          gapCoverageScore: undefined,
+          botDetectionEnabled: true,
+          unansweredQuestions: [],
+          tierRestriction: proOnlyRestriction
+        } : undefined,
+        viewerInsights: proOnlyRestriction ? {
+          tierRestriction: proOnlyRestriction
+        } : undefined,
+        reportInfo: {
+          availableFormats: ["PDF", "TXT"],
+          analysisDate: new Date().toISOString(),
+          tierRestriction: proOnlyRestriction
+        },
+        // Flags for UI to show "Run analysis" buttons
+        separateAnalysis: true,
+        isGuest: !isAuth,
+      } as any
+
+      setVideoAnalysis(videoAnalysisData)
+      setAnalysisStatus({
+        trustScore: derivedTrustScore,
+        clickbaitVerdict: verdict as "LEGIT" | "MISLEADING" | "CLICKBAIT",
+        isAnalyzing: false,
+      })
+      setAnalysisState("complete")
+      setCurrentJobId(null)
+
+      const totalDuration = ((Date.now() - analysisStartTime) / 1000).toFixed(1)
+      console.log(`✅ Free verdict analysis completed in ${totalDuration}s: ${verdict}`)
+
+      // Show verdict chat-bubble tooltip (replaces PreWatchPopover)
+      setVerdictTooltipData({ verdict, reasoning })
+      setShowVerdictTooltip(true)
+      setIsSentimentDone(false)
+      setIsSentimentRunning(false)
+
+    } catch (error) {
+      console.error("Free verdict analysis failed:", error)
+
+      if (error instanceof Error && error.message === "Polling aborted") {
+        console.log("Polling aborted due to video switch — expected")
+        setAnalysisState("idle")
+        setCurrentJobId(null)
+        return
+      }
+
+      let errorMessage = "Analysis failed"
+      if (error instanceof Error) {
+        const msg = error.message.toLowerCase()
+        if (msg.includes("daily limit") || msg.includes("5 analyses")) {
+          // Show verdict tooltip with register CTA instead of error state
+          setVerdictTooltipData({
+            verdict: "limit_reached" as any,
+            reasoning: "You've used all 5 free verdicts today. Register for a free account to get unlimited verdicts!"
+          })
+          setShowVerdictTooltip(true)
+          setAnalysisState("idle")
+          setCurrentJobId(null)
+          return
+        } else if (msg.includes("context invalidated")) {
+          errorMessage = "Refresh page to continue"
+        } else if (msg.includes("llm judge") || msg.includes("heuristic") || msg.includes("ollama")) {
+          errorMessage = "AI judge busy — tap to retry"
+        } else if (msg.includes("network") || msg.includes("connection")) {
+          errorMessage = "Network error — retry later"
+        } else if (msg.includes("timeout") || msg.includes("timed out")) {
+          errorMessage = "Timed out — tap to retry"
+        } else {
+          const trimmed = error.message.trim()
+          errorMessage = trimmed.length > 55 ? `${trimmed.slice(0, 52)}…` : trimmed || "Analysis failed — tap to retry"
+        }
+      }
+
+      setAnalysisError(errorMessage)
+      setAnalysisState("idle")
+      setCurrentJobId(null)
+    } finally {
+      setIsAnalyzing(false)
+    }
+  }
+
+  // ── Silent credit cost estimation for sub-analysis TabCTA buttons ──
+  // Fetches estimates for claims/topic/gaps/report and stores them so each
+  // button can show "Run X Analysis (N credit)" without blocking the UI.
+  // overrideMaxDepth: when provided (from the sidepanel slider), use this
+  // depth for all estimates instead of reading from settings/actual count.
+  const fetchSubAnalysisCosts = async (videoId: string, overrideMaxDepth?: number) => {
+    try {
+      const isAuth = await AuthService.isAuthenticated()
+      if (!isAuth) return // Cost estimates require auth; guests see no suffix
+
+      // Use actual fetched comment count when available (most accurate),
+      // otherwise fall back to tier-based max depth as a rough estimate.
+      const actualCount = videoAnalysis?.actualCommentsFetched
+      const tierMax = userTierInfo?.tier === 'free' ? 100 : (settings?.videoAnalysis?.maxCommentDepth || 200)
+      const commentDepth = overrideMaxDepth ?? (actualCount && actualCount > 0 ? actualCount : tierMax)
+
+      const entries: Array<[keyof typeof subAnalysisCosts, string]> = [
+        ["claims", "relevancy_analysis"],
+        ["sentiment", "sentiment_analysis"],
+        ["topic",  "topic_clustering"],
+        ["gaps",   "topic_gap_analysis"],
+        ["report", "summary_generation"],
+        ["full",   "full_analysis"],
+      ]
+
+      const results = await Promise.allSettled(
+        entries.map(([key, analysisType]) =>
+          FocusGuardAPI.estimateCreditCost(commentDepth, analysisType, videoId)
+            .then(res => ({ key, cost: res.estimated_credits }))
+        )
+      )
+
+      const costs: typeof subAnalysisCosts = {}
+      results.forEach(r => {
+        if (r.status === "fulfilled") {
+          costs[r.value.key] = r.value.cost
+        }
+      })
+      setSubAnalysisCosts(costs)
+    } catch (err) {
+      console.log("Comment Verdict: sub-analysis cost fetch skipped:", (err as any)?.message)
+    }
+  }
+
+  // ── Free sentiment analysis (triggered from VerdictTooltip CTA) ──
+  const triggerFreeSentiment = async () => {
+    if (!currentVideoId || isSentimentRunning || isSentimentDone) return
+    setIsSentimentRunning(true)
+    setProgressPercent(0)
+    setProgressMessage("Starting sentiment…")
+    try {
+      // Use the same slider value as the verdict, clamped to the server cap
+      const FREE_SENTIMENT_MAX = 500
+      const requestedDepth = userTierInfo?.tier === 'free' ? 100 : toggleSliderLocal
+      const jobResponse = await FocusGuardAPI.submitFreeSentiment({
+        video_id: currentVideoId,
+        is_public: true,
+        max_comments: Math.min(requestedDepth, FREE_SENTIMENT_MAX),
+      })
+      console.log("Free sentiment job submitted:", jobResponse)
+      const jobId = jobResponse.job_id
+
+      const abortController = new AbortController()
+      const jobResult = await FocusGuardAPI.pollFreeJob(
+        jobId,
+        (status) => {
+          console.log(`Sentiment progress: ${status.progress_percent}%`, status.progress_message)
+          setProgressPercent(status.progress_percent)
+          setProgressMessage(status.progress_message || null)
+        },
+        1000,
+        abortController.signal
+      )
+      console.log("✅ Free sentiment completed:", jobResult)
+
+      // Merge sentiment data into existing videoAnalysis
+      const sentimentResult = jobResult.result_data
+      const sentimentSummary = sentimentResult?.sentiment_summary ?? null
+      if (sentimentResult && videoAnalysis) {
+        const updatedAnalysis = {
+          ...videoAnalysis,
+          sentiment: {
+            distribution: sentimentSummary ? {
+              positive: sentimentSummary.positive_count ?? 0,
+              neutral: sentimentSummary.neutral_count ?? 0,
+              negative: sentimentSummary.negative_count ?? 0,
+              dominant: sentimentSummary.dominant_sentiment ?? null,
+              total: (sentimentSummary.positive_count ?? 0) + (sentimentSummary.neutral_count ?? 0) + (sentimentSummary.negative_count ?? 0),
+            } : sentimentResult,
+            filteringMetadata: sentimentResult.filtering_metadata,
+          },
+        }
+        setVideoAnalysis(updatedAnalysis as any)
+      }
+      // Store summary so the tooltip can display the mini distribution
+      if (sentimentSummary) {
+        setTooltipSentimentSummary({
+          positive_pct: sentimentSummary.positive_pct ?? 0,
+          neutral_pct: sentimentSummary.neutral_pct ?? 0,
+          negative_pct: sentimentSummary.negative_pct ?? 0,
+          dominant_sentiment: sentimentSummary.dominant_sentiment,
+        })
+      }
+      setIsSentimentDone(true)
+    } catch (error) {
+      console.error("Free sentiment failed:", error)
+    } finally {
+      setProgressPercent(null)
+      setProgressMessage(null)
+      setIsSentimentRunning(false)
+    }
+  }
+
+  // ── Legacy: Full summary generation (PRO users, credit-based) ──
+  // Kept for users who want the comprehensive summary with all analyses.
   const proceedWithAnalysis = async (
     videoId: string,
     forceRefresh: boolean = false,
@@ -2053,12 +3059,13 @@ const ContentScript = () => {
             }
           } else {
             // OLD format: ChannelCredibilityResponseV2
+            const oldCred = credibilityData as any
             return {
-              score: credibilityData.score,
-              factors: credibilityData.normalized_factors ? Object.entries(credibilityData.normalized_factors).map(([name, weight]) => ({
+              score: oldCred.score,
+              factors: oldCred.normalized_factors ? Object.entries(oldCred.normalized_factors).map(([name, weight]) => ({
                 name,
                 weight,
-                value: credibilityData.factual_factors?.[name] ?? 'N/A'
+                value: oldCred.factual_factors?.[name] ?? 'N/A'
               })) : []
             }
           }
@@ -2156,16 +3163,8 @@ const ContentScript = () => {
       // - Viewer Insights: Pro only (block for Free and Starter)
       // - Content Gaps: Pro only (block for Free and Starter)
       
-      // Block sentiment for free users only (Starter+ can access)
-      if (userTier === 'free' && !sentimentTierRestriction) {
-        sentimentTierRestriction = {
-          code: 'TIER_RESTRICTION' as const,
-          required_tier: 'starter' as const,
-          current_tier: userTier,
-          message: 'Comment Sentiment analysis requires a Starter subscription.',
-          upgrade_url: dashboardUrl
-        }
-      }
+      // Sentiment is now FREE for all users via local analysis.
+      // Cloud-based detailed sentiment is PRO only but gated by the backend.
       
       // Block viewer insights for non-Pro users (Pro only)
       if (userTier !== 'pro' && !topicClustersTierRestriction) {
@@ -2296,12 +3295,13 @@ const ContentScript = () => {
             }
           } else {
             // OLD format: ChannelCredibilityResponseV2
+            const oldCred = credibilityData as any
             return {
-              score: credibilityData.score,
-              factors: credibilityData.normalized_factors ? Object.entries(credibilityData.normalized_factors).map(([name, weight]) => ({
+              score: oldCred.score,
+              factors: oldCred.normalized_factors ? Object.entries(oldCred.normalized_factors).map(([name, weight]) => ({
                 name,
                 weight,
-                value: credibilityData.factual_factors?.[name] ?? 'N/A'
+                value: oldCred.factual_factors?.[name] ?? 'N/A'
               })) : []
             }
           }
@@ -2497,6 +3497,8 @@ const ContentScript = () => {
           }
         } else if (msg.includes("context invalidated") || msg.includes("refresh the page")) {
           errorMessage = "Refresh page to continue"
+        } else if (msg.includes("llm judge") || msg.includes("heuristic") || msg.includes("ollama")) {
+          errorMessage = "AI judge busy — tap to retry"
         } else if (msg.includes("auth") || msg.includes("login") || msg.includes("401")) {
           errorMessage = "Please log in"
         } else if (msg.includes("network") || msg.includes("connection")) {
@@ -2623,26 +3625,38 @@ const ContentScript = () => {
   console.log("🔍 Content render check: onWatchPage=", onWatchPage, "settings?.isEnabled=", settings?.isEnabled, "shouldRender=", shouldRender)
   
   if (shouldRender) {
+    const isPro = userTierInfo?.tier === 'pro'
+    const isGuest = !userTierInfo
+    const isFreeTier = userTierInfo?.tier === 'free'
+    const portalBaseUrl = process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"
+
     return (
       <>
-        {/* FR-101: Pre-Watch Popover */}
-        {showPreWatchPopover && (
-          <PreWatchPopover
-            analysis={videoAnalysis}
-            isLoading={isAnalyzing}
-            panelDock={panelDock}
-            onDismiss={() => {
-              setShowPreWatchPopover(false)
-              setPreWatchDismissed(true)
-            }}
-            onViewFullAnalysis={() => {
-              setShowPreWatchPopover(false)
-              setPreWatchDismissed(true)
+        {/* Verdict chat-bubble tooltip (shown for ALL users after free verdict) */}
+        {showVerdictTooltip && verdictTooltipData && !isSidePanelOpen && (
+          <VerdictTooltip
+            verdict={verdictTooltipData.verdict}
+            reasoning={verdictTooltipData.reasoning}
+            dock={panelDock}
+            isPro={isPro}
+            isGuest={isGuest}
+            isFreeTier={isFreeTier}
+            isSentimentRunning={isSentimentRunning}
+            isSentimentDone={isSentimentDone}
+            sentimentSummary={tooltipSentimentSummary}
+            onRunSentiment={triggerFreeSentiment}
+            onViewFullAnalysis={!isGuest ? () => {
+              setShowVerdictTooltip(false)
               setIsSidePanelOpen(true)
-            }}
-            onWatchAnyway={() => {
-              setShowPreWatchPopover(false)
-              setPreWatchDismissed(true)
+            } : undefined}
+            onRegister={isGuest ? () => {
+              window.open(`${portalBaseUrl}/login`, '_blank')
+            } : undefined}
+            onUpgrade={isFreeTier ? () => {
+              window.open(`${portalBaseUrl}/dashboard?tab=billing&purchase_type=tier`, '_blank')
+            } : undefined}
+            onDismiss={() => {
+              setShowVerdictTooltip(false)
             }}
           />
         )}
@@ -2662,19 +3676,24 @@ const ContentScript = () => {
               progressPercent={progressPercent}
               progressMessage={progressMessage}
               showCachedVerdict={settings?.videoAnalysis?.showCachedVerdict || false}
+              proMode={isPro ? (settings?.videoAnalysis?.proToggleMode ?? "free_verdict") : "free_verdict"}
               onToggle={() => {
                 if (isCheckingCache) {
-                  // Do nothing while checking cache
                   return
                 }
                 if (analysisState === "idle") {
-                  // Start analysis when in idle state
                   if (currentVideoId) {
                     startVideoAnalysis(currentVideoId)
                   }
                 } else if (analysisState === "complete") {
-                  // Open panel when analysis is complete
-                  setIsSidePanelOpen(true)
+                  if (!isGuest) {
+                    // Registered users (free & pro): toggle opens the full analysis side panel
+                    setIsSidePanelOpen(true)
+                    setShowVerdictTooltip(false)
+                  } else {
+                    // Guests (visitors): toggle the verdict tooltip — side panel is not available
+                    setShowVerdictTooltip((prev) => !prev)
+                  }
                 }
                 // Do nothing if analyzing (wait for completion)
               }}
@@ -2685,6 +3704,140 @@ const ContentScript = () => {
                 } catch (e) {}
               }}
             />
+
+            {/* PRO: Max comments tuner — gear icon at top-right */}
+            {isPro && analysisState !== "analyzing" && (() => {
+              const toggleMode = settings?.videoAnalysis?.proToggleMode ?? 'free_verdict'
+              // Hard server-side cap: free verdict ≤500, full analysis ≤1000
+              const sliderMax = toggleMode === 'free_verdict' ? 500 : 1000
+              const sliderSteps = toggleMode === 'free_verdict'
+                ? [100, 200, 300, 400, 500]
+                : [100, 300, 500, 700, 1000]
+              // Clamp current value to allowed range
+              const effectiveLocal = Math.min(toggleSliderLocal, sliderMax)
+
+              return (
+                <div style={{
+                  position: "fixed",
+                  right: "10px",
+                  top: "68px",
+                  zIndex: 10000,
+                }}>
+                  {/* Gear icon button */}
+                  <div
+                    onClick={(e) => { e.stopPropagation(); setToggleSliderOpen((v) => !v) }}
+                    title={`Max comments: ${effectiveLocal} (${toggleMode === 'free_verdict' ? 'Quick Verdict · max 500' : 'Full Analysis · max 1000'})`}
+                    style={{
+                      width: "32px",
+                      height: "32px",
+                      backgroundColor: toggleSliderOpen ? "rgba(37,99,235,0.95)" : "rgba(15,23,42,0.82)",
+                      border: `1.5px solid ${toggleSliderOpen ? "#60a5fa" : "rgba(96,165,250,0.4)"}`,
+                      borderRadius: "50%",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      transition: "all 0.15s",
+                      userSelect: "none",
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.35)",
+                    }}>
+                    <span style={{ fontSize: "15px", lineHeight: 1, userSelect: "none" }}>⚙️</span>
+                  </div>
+
+                  {/* Slider popover */}
+                  {toggleSliderOpen && (
+                    <>
+                      <div
+                        style={{ position: "fixed", inset: 0, zIndex: 9999 }}
+                        onClick={() => setToggleSliderOpen(false)}
+                      />
+                      <div style={{
+                        position: "absolute",
+                        top: 0,
+                        right: "40px",
+                        zIndex: 10001,
+                        backgroundColor: "rgba(15,23,42,0.97)",
+                        border: "1px solid rgba(96,165,250,0.3)",
+                        borderRadius: "12px",
+                        boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+                        padding: "10px 12px",
+                        width: "190px",
+                        backdropFilter: "blur(8px)",
+                      }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                          <span style={{ fontSize: "10px", fontWeight: "700", color: "rgba(255,255,255,0.55)", textTransform: "uppercase" as const, letterSpacing: "0.07em" }}>
+                            Max Comments
+                          </span>
+                          <span style={{ fontSize: "12px", fontWeight: "800", color: "#60a5fa" }}>
+                            {effectiveLocal}
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min={100}
+                          max={sliderMax}
+                          step={100}
+                          value={effectiveLocal}
+                          onChange={(e) => setToggleSliderLocal(parseInt(e.target.value))}
+                          onMouseUp={async (e) => {
+                            const newDepth = parseInt((e.target as HTMLInputElement).value)
+                            setProMaxComments(newDepth)
+                            const newSettings = {
+                              ...settings,
+                              videoAnalysis: {
+                                showPreWatchPopover: settings?.videoAnalysis?.showPreWatchPopover ?? true,
+                                autoAnalyze: settings?.videoAnalysis?.autoAnalyze ?? false,
+                                botDetectionEnabled: settings?.videoAnalysis?.botDetectionEnabled ?? true,
+                                showCachedVerdict: settings?.videoAnalysis?.showCachedVerdict ?? false,
+                                confirmCreditUsage: settings?.videoAnalysis?.confirmCreditUsage ?? true,
+                                maxCommentDepth: newDepth,
+                                proToggleMode: toggleMode,
+                              }
+                            }
+                            try { await chrome.storage.sync.set({ settings: newSettings }) } catch {}
+                            if (currentVideoId) fetchSubAnalysisCosts(currentVideoId, newDepth)
+                          }}
+                          onTouchEnd={async (e) => {
+                            const newDepth = parseInt((e.target as HTMLInputElement).value)
+                            setProMaxComments(newDepth)
+                            try {
+                              const newSettings = {
+                                ...settings,
+                                videoAnalysis: {
+                                  showPreWatchPopover: settings?.videoAnalysis?.showPreWatchPopover ?? true,
+                                  autoAnalyze: settings?.videoAnalysis?.autoAnalyze ?? false,
+                                  botDetectionEnabled: settings?.videoAnalysis?.botDetectionEnabled ?? true,
+                                  showCachedVerdict: settings?.videoAnalysis?.showCachedVerdict ?? false,
+                                  confirmCreditUsage: settings?.videoAnalysis?.confirmCreditUsage ?? true,
+                                  maxCommentDepth: newDepth,
+                                  proToggleMode: toggleMode,
+                                }
+                              }
+                              await chrome.storage.sync.set({ settings: newSettings })
+                            } catch {}
+                            if (currentVideoId) fetchSubAnalysisCosts(currentVideoId, newDepth)
+                          }}
+                          style={{ width: "100%", height: "4px", borderRadius: "2px", cursor: "pointer", accentColor: "#60a5fa" }}
+                        />
+                        {/* Step ticks */}
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "9px", color: "rgba(255,255,255,0.35)", marginTop: "4px", padding: "0 1px" }}>
+                          {sliderSteps.map(n => (
+                            <span key={n} style={{
+                              fontWeight: n === effectiveLocal ? "700" : "400",
+                              color: n === effectiveLocal ? "#60a5fa" : undefined,
+                              opacity: n === effectiveLocal ? 1 : 0.5,
+                            }}>{n >= 1000 ? "1k" : n}</span>
+                          ))}
+                        </div>
+                        <div style={{ marginTop: "7px", fontSize: "9px", color: "rgba(255,255,255,0.35)", textAlign: "center" }}>
+                          {toggleMode === 'free_verdict' ? '⚡ Quick Verdict · max 500' : '🔬 Full Analysis · max 1000'}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )
+            })()}
 
             {/* Settings Button - temporarily hidden */}
             {false && (userTierInfo?.tier === 'pro' || userTierInfo?.tier === 'starter') && analysisState === 'idle' && (
@@ -2736,9 +3889,52 @@ const ContentScript = () => {
           onBotFilterChange={(enabled) => {
             console.log("Bot filter changed:", enabled)
           }}
-          onForceRefresh={() => {
-            if (currentVideoId) {
-              startVideoAnalysis(currentVideoId, true)
+          onForceRefresh={async () => {
+            if (!currentVideoId) return
+            // Force refresh reruns the full analysis.
+            // Show credit confirmation dialog with a rough estimate.
+            try {
+              const isAuth = await AuthService.isAuthenticated()
+              if (!isAuth) {
+                // Guest can't run full analysis — prompt login
+                const portalUrl = process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"
+                window.open(`${portalUrl}/login`, '_blank')
+                return
+              }
+
+              // Read fresh settings from storage so the slider value is current
+              let freshSettings = settings
+              try {
+                const result = await chrome.storage.sync.get(["settings"])
+                freshSettings = result.settings || settings
+              } catch {}
+
+              const credits = await FocusGuardAPI.getCreditBalance()
+              // Mirror the exact formula used in proceedWithAnalysis so the estimate matches what will actually be requested
+              const refreshTier = userTierInfo?.tier || 'free'
+              const refreshMaxComments = freshSettings?.videoAnalysis?.maxCommentDepth || 100
+              const commentCount = refreshTier === 'pro' ? refreshMaxComments : Math.min(refreshMaxComments, 300)
+              const estimate = await FocusGuardAPI.estimateCreditCost(commentCount, "full_analysis", currentVideoId)
+              const estimatedCredits = estimate.estimated_credits
+              const hasSufficient = credits.credits_balance >= estimatedCredits
+
+              setCreditConfirmData({
+                estimatedCredits,
+                currentBalance: credits.credits_balance,
+                hasSufficientCredits: hasSufficient,
+                onConfirm: () => {
+                  setShowCreditConfirmDialog(false)
+                  setCreditConfirmData(null)
+                  if (currentVideoId) {
+                    proceedWithAnalysis(currentVideoId, true)
+                  }
+                },
+              })
+              setShowCreditConfirmDialog(true)
+            } catch (err) {
+              console.warn("Failed to check credits for force refresh:", err)
+              // Fall back to running directly
+              proceedWithAnalysis(currentVideoId, true)
             }
           }}
           onLoadHistoryItem={(item) => {
@@ -2750,6 +3946,303 @@ const ContentScript = () => {
           progressMessage={progressMessage}
           panelDock={panelDock}
           userTier={userTierInfo?.tier}
+          costEstimates={subAnalysisCosts}
+          maxComments={proMaxComments}
+          onMaxCommentsChange={async (newDepth: number) => {
+            setProMaxComments(newDepth)
+            // Persist to settings so proceedWithAnalysis picks up the new value
+            const newSettings = {
+              ...settings,
+              videoAnalysis: {
+                showPreWatchPopover: settings?.videoAnalysis?.showPreWatchPopover ?? true,
+                autoAnalyze: settings?.videoAnalysis?.autoAnalyze ?? false,
+                botDetectionEnabled: settings?.videoAnalysis?.botDetectionEnabled ?? true,
+                showCachedVerdict: settings?.videoAnalysis?.showCachedVerdict ?? false,
+                confirmCreditUsage: settings?.videoAnalysis?.confirmCreditUsage ?? true,
+                maxCommentDepth: newDepth,
+                proToggleMode: settings?.videoAnalysis?.proToggleMode ?? 'free_verdict',
+              }
+            }
+            try {
+              await chrome.storage.sync.set({ settings: newSettings })
+            } catch {}
+            // Re-fetch cost estimates with the new depth
+            if (currentVideoId) {
+              fetchSubAnalysisCosts(currentVideoId, newDepth)
+            }
+          }}
+          onRunFullAnalysis={() => {
+            if (currentVideoId) {
+              // Trigger legacy full analysis (all analyses at once)
+              proceedWithAnalysis(currentVideoId, true)
+            }
+          }}
+          onRunSingleAnalysis={async (type) => {
+            console.log(`Run single analysis: ${type}`)
+
+            if (type === "trust") {
+              // Channel trust is free — no credits required
+              if (!currentVideoId) return
+              try {
+                const trustData = await FocusGuardAPI.analyzeChannelTrust(currentVideoId, false)
+                if (trustData && videoAnalysis) {
+                  setVideoAnalysis({
+                    ...videoAnalysis,
+                    channelTrust: trustData,
+                    channelName: videoAnalysis.channelName || trustData.channel_name || null,
+                  } as any)
+                }
+              } catch (err) {
+                console.warn("Channel trust analysis failed:", err)
+              }
+              return
+            }
+
+            if (!currentVideoId) return
+
+            const isAuth = await AuthService.isAuthenticated()
+            if (!isAuth) {
+              const portalUrl = process.env.PLASMO_PUBLIC_WEB_PORTAL_URL || "http://localhost:3000"
+              window.open(`${portalUrl}/login`, '_blank')
+              return
+            }
+
+            // "report" runs the full summary+snapshot job — creates a web-portal report
+            if (type === "report") {
+              try {
+                const credits = await FocusGuardAPI.getCreditBalance()
+                const estimatedCredits = subAnalysisCosts?.report ?? 1
+                const hasSufficient = credits.credits_balance >= estimatedCredits
+                setCreditConfirmData({
+                  estimatedCredits,
+                  currentBalance: credits.credits_balance,
+                  hasSufficientCredits: hasSufficient,
+                  onConfirm: () => {
+                    setShowCreditConfirmDialog(false)
+                    setCreditConfirmData(null)
+                    if (currentVideoId) proceedWithAnalysis(currentVideoId, true)
+                  },
+                })
+                setShowCreditConfirmDialog(true)
+              } catch (err) {
+                console.warn("Failed to check credits for report:", err)
+                proceedWithAnalysis(currentVideoId, true)
+              }
+              return
+            }
+
+            // Individual analyses: use the dedicated per-type job endpoints.
+            // These do NOT create a report snapshot. Credit balance is the only gate.
+            const jobTypeMap: Partial<Record<string, "sentiment" | "clustering" | "gaps" | "relevancy">> = {
+              claims: "relevancy",
+              sentiment: "sentiment",
+              topic: "clustering",
+              gaps: "gaps",
+            }
+            const jobType = jobTypeMap[type]
+            if (!jobType) return
+
+            // Use the stored per-type cost estimate (from fetchSubAnalysisCosts)
+            const costKey = type as keyof typeof subAnalysisCosts
+            const estimatedCredits = subAnalysisCosts?.[costKey] ?? 1
+
+            try {
+              const credits = await FocusGuardAPI.getCreditBalance()
+              const hasSufficient = credits.credits_balance >= estimatedCredits
+
+              setCreditConfirmData({
+                estimatedCredits,
+                currentBalance: credits.credits_balance,
+                hasSufficientCredits: hasSufficient,
+                onConfirm: async () => {
+                  setShowCreditConfirmDialog(false)
+                  setCreditConfirmData(null)
+                  if (!currentVideoId) return
+
+                  setAnalysisState("analyzing")
+                  setIsAnalyzing(true)
+                  setAnalysisError(null)
+                  setProgressPercent(0)
+                  setProgressMessage(`Starting ${type} analysis…`)
+
+                  try {
+                    // Submit to the individual job endpoint (NOT /jobs/summary)
+                    const jobResponse = await FocusGuardAPI.submitSingleAnalysisJob(currentVideoId, jobType, true)
+                    const jobId = jobResponse.job_id
+                    setCurrentJobId(jobId)
+
+                    const abortController = new AbortController()
+                    await FocusGuardAPI.pollJob(
+                      jobId,
+                      (status) => {
+                        setProgressPercent(status.progress_percent ?? null)
+                        setProgressMessage(status.progress_message ?? null)
+                      },
+                      2000,
+                      abortController.signal
+                    )
+
+                    // Job done — fetch the freshly-cached result and patch the state
+                    if (type === "claims") {
+                      const relevancy = await FocusGuardAPI.analyzeRelevancyV2(currentVideoId, false)
+                      if (relevancy?.data) {
+                        setVideoAnalysis((prev: any) => prev ? {
+                          ...prev,
+                          summary: {
+                            ...prev.summary,
+                            clickbaitVerdict: {
+                              ...prev.summary?.clickbaitVerdict,
+                              claims: relevancy.data.claims || [],
+                            },
+                          },
+                        } : prev)
+                      }
+                    } else if (type === "sentiment") {
+                      const sentimentResp = await FocusGuardAPI.analyzeSentimentV2({ video_id: currentVideoId, force_refresh: false })
+                      if (sentimentResp?.data) {
+                        const sd = sentimentResp.data
+                        const pos = typeof sd.positive === 'number' ? sd.positive : ((sd.positive as any)?.count ?? 0)
+                        const neu = typeof sd.neutral === 'number' ? sd.neutral : ((sd.neutral as any)?.count ?? 0)
+                        const neg = typeof sd.negative === 'number' ? sd.negative : ((sd.negative as any)?.count ?? 0)
+                        const positiveComments = typeof sd.positive === 'object' ? (sd.positive as any)?.top_comments ?? [] : []
+                        const neutralComments = typeof sd.neutral === 'object' ? (sd.neutral as any)?.top_comments ?? [] : []
+                        const negativeComments = typeof sd.negative === 'object' ? (sd.negative as any)?.top_comments ?? [] : []
+                        setVideoAnalysis((prev: any) => prev ? {
+                          ...prev,
+                          separateAnalysis: false,
+                          sentiment: {
+                            overall: pos > neg ? "positive" : neg > pos ? "negative" : "neutral",
+                            distribution: {
+                              positive: pos,
+                              neutral: neu,
+                              negative: neg,
+                              totalCommentsAnalyzed: pos + neu + neg,
+                              exampleComments: { positive: positiveComments, neutral: neutralComments, negative: negativeComments },
+                            },
+                            filteringMetadata: sentimentResp.filtering_metadata,
+                          },
+                          viewerInsights: {
+                            ...(prev?.viewerInsights && typeof prev.viewerInsights === 'object' ? prev.viewerInsights : {}),
+                            sentimentBreakdown: {
+                              positive: pos,
+                              negative: neg,
+                              neutral: neu,
+                              mixed: 0,
+                              totalCommentsAnalyzed: pos + neu + neg,
+                            },
+                          },
+                        } : prev)
+                        setIsSentimentDone(true)
+                      }
+                    } else if (type === "topic") {
+                      const topicsResp = await FocusGuardAPI.analyzeTopicClusteringV2(currentVideoId, false)
+                      if (topicsResp?.topic_clusters) {
+                        setVideoAnalysis((prev: any) => prev ? {
+                          ...prev,
+                          topicClustersData: {
+                            clusters: topicsResp.topic_clusters,
+                            parent_themes: (topicsResp as any).parent_themes || [],
+                            hierarchy_map: (topicsResp as any).hierarchy_map || {},
+                            total_parent_themes: (topicsResp as any).total_parent_themes || 0,
+                            method: (topicsResp as any).method || 'unknown',
+                            processing_time: topicsResp.processing_time,
+                          },
+                          viewerInsights: {
+                            ...(prev?.viewerInsights && typeof prev.viewerInsights === 'object'
+                              ? { sentimentBreakdown: (prev.viewerInsights as any).sentimentBreakdown }
+                              : {}),
+                            insights: topicsResp.topic_clusters
+                              .filter((c: any) => c.count > 0)
+                              .slice(0, 5)
+                              .map((cluster: any, idx: number) => ({
+                                id: `benefit-${idx}`,
+                                statement: cluster.statement,
+                                type: "benefit" as const,
+                                commentCount: cluster.count,
+                                supportingComments: (cluster.supporting_quotes || []).map((q: any, qIdx: number) => {
+                                  if (q && typeof q === 'object') return { ...q, id: q.id ?? `comment-${idx}-${qIdx}` }
+                                  return { id: `comment-${idx}-${qIdx}`, text: typeof q === 'string' ? q : "" }
+                                }),
+                                isExpanded: false,
+                              })),
+                          },
+                        } : prev)
+                      }
+                    } else if (type === "gaps") {
+                      const gapsResp = await FocusGuardAPI.analyzeTopicGapV2(currentVideoId, false)
+                      if (gapsResp?.topic_gaps) {
+                        const unansweredQuestions = gapsResp.topic_gaps.map((gap: any, idx: number) => {
+                          const supportingComments = mapGapSupportingComments(gap, idx)
+                          return {
+                            id: `gap-${idx}`,
+                            statement: gap.question_statement,
+                            type: "issue" as const,
+                            commentCount: supportingComments.length,
+                            supportingComments,
+                            isExpanded: false,
+                          }
+                        })
+                        setVideoAnalysis((prev: any) => prev ? {
+                          ...prev,
+                          contentGaps: {
+                            ...prev.contentGaps,
+                            unansweredQuestions,
+                            gapCoverageScore: Math.max(0, 100 - gapsResp.topic_gaps.length * 10),
+                            filteringMetadata: gapsResp.filtering_metadata,
+                            tierRestriction: undefined,
+                          },
+                        } : prev)
+                      }
+                    }
+
+                    setAnalysisState("complete")
+                    setIsAnalyzing(false)
+                    setProgressPercent(null)
+                    setProgressMessage(null)
+                    setCurrentJobId(null)
+                    // Re-fetch cost estimates after credits were spent
+                    fetchSubAnalysisCosts(currentVideoId)
+                  } catch (err) {
+                    const errRaw = (err as any)?.message || "Analysis failed — tap to retry"
+                    console.error(`Individual ${type} analysis failed:`, err)
+                    setAnalysisError(errRaw)
+                    // Show a user-friendly message in the tab itself so the user
+                    // sees WHY the tab is empty rather than just a blank state.
+                    const friendly = errRaw.toLowerCase().includes("insufficient credits")
+                      ? "Insufficient credits — add more credits to run this analysis"
+                      : errRaw
+                    if (type === "topic") {
+                      setVideoAnalysis((prev: any) => prev ? {
+                        ...prev,
+                        topicClustersData: { ...(prev.topicClustersData ?? {}), analysisError: friendly },
+                      } : prev)
+                    } else if (type === "gaps") {
+                      setVideoAnalysis((prev: any) => prev ? {
+                        ...prev,
+                        contentGaps: {
+                          ...(prev.contentGaps ?? { botPercentage: 0, botDetectionEnabled: true, unansweredQuestions: [] }),
+                          analysisError: friendly,
+                        },
+                      } : prev)
+                    } else if (type === "sentiment") {
+                      setVideoAnalysis((prev: any) => prev ? {
+                        ...prev,
+                        sentiment: { ...(prev.sentiment ?? {}), analysisError: friendly },
+                      } : prev)
+                    }
+                    setAnalysisState("complete")
+                    setIsAnalyzing(false)
+                    setProgressPercent(null)
+                    setProgressMessage(null)
+                    setCurrentJobId(null)
+                  }
+                },
+              })
+              setShowCreditConfirmDialog(true)
+            } catch (err) {
+              console.warn("Failed to check credits for sub-analysis:", err)
+            }
+          }}
           onLoadSnapshot={(snapshotData) => {
             // Map ShareableReportBundle fields to VideoAnalysis shape
             if (!snapshotData) return

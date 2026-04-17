@@ -122,6 +122,9 @@ export const ReportTab = ({
   // Check for tier restriction (Report is Pro-only)
   const reportTierRestriction = (analysis as any)?.reportInfo?.tierRestriction
   const currentSnapshotId = Number((analysis as any)?.snapshotId)
+  const executiveSummary = analysis?.executiveSummary || ""
+  const keyTakeaways = (analysis?.summary as any)?.key_takeaways || []
+  const availableFormats = analysis.reportInfo?.availableFormats || []
   console.log("🎯 ReportTab: received analysis -", { 
     hasReportInfo: !!(analysis as any)?.reportInfo,
     reportTierRestriction,
@@ -129,128 +132,132 @@ export const ReportTab = ({
   
   const content = (
     <div>
-      {/* Report Download Section */}
-      <div style={{ marginBottom: "32px" }}>
-        <h3
-          style={{
-            margin: "0 0 12px 0",
+      {/* Executive Summary with download buttons tucked top-right */}
+      {executiveSummary && (
+        <div style={{ marginBottom: "24px" }}>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px", marginBottom: "8px" }}>
+            <h3 style={{
+              margin: 0,
+              fontSize: "14px",
+              fontWeight: "700",
+              color: C.ui.text.primary,
+            }}>
+              Executive Summary
+            </h3>
+            {/* Download buttons — compact, top-right */}
+            {availableFormats.length > 0 && onDownloadReport && (
+              <div style={{ display: "flex", alignItems: "center", gap: "4px", flexShrink: 0 }}>
+                {availableFormats.map((format: any) => (
+                  <button
+                    key={format}
+                    onClick={async () => {
+                      setSelectedFormat(format)
+                      setIsDownloading(true)
+                      try { await onDownloadReport(format) } finally { setIsDownloading(false) }
+                    }}
+                    disabled={isDownloading}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      padding: "4px 10px",
+                      backgroundColor: C.ui.surface,
+                      border: `1px solid ${C.ui.border}`,
+                      borderRadius: "6px",
+                      fontSize: "11px",
+                      fontWeight: "600",
+                      color: C.ui.text.secondary,
+                      cursor: isDownloading ? "wait" : "pointer",
+                      transition: "all 0.15s",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.neutral.primary; e.currentTarget.style.color = C.ui.text.primary }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.ui.border; e.currentTarget.style.color = C.ui.text.secondary }}>
+                    📥 {format}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div style={{
+            padding: "14px 16px",
+            backgroundColor: C.ui.surface,
+            border: `1px solid ${C.ui.border}`,
+            borderRadius: "10px",
+            fontSize: "13px",
+            lineHeight: "1.7",
+            color: C.ui.text.primary,
+          }}>
+            {executiveSummary.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
+              part.startsWith("**") && part.endsWith("**")
+                ? <strong key={i}>{part.slice(2, -2)}</strong>
+                : part
+            )}
+          </div>
+          {analysis.reportInfo?.analysisDate && (
+            <p style={{
+              margin: "6px 0 0",
+              fontSize: "10px",
+              color: C.ui.text.tertiary,
+              textAlign: "right",
+            }}>
+              {new Date(analysis.reportInfo.analysisDate).toLocaleString()}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Key Takeaways */}
+      {keyTakeaways.length > 0 && (
+        <div style={{ marginBottom: "24px" }}>
+          <h3 style={{
+            margin: "0 0 8px 0",
             fontSize: "14px",
             fontWeight: "700",
-            color: C.ui.text.primary
+            color: C.ui.text.primary,
           }}>
-          Download Report
-        </h3>
-
-        {/* Format Selector */}
-        <div style={{ marginBottom: "16px" }}>
-          <p
-            style={{
-              margin: "0 0 8px 0",
-              fontSize: "12px",
-              fontWeight: "600",
-              color: C.ui.text.secondary
-            }}>
-            Select Format:
-          </p>
-            <div style={{ display: "flex", gap: "12px" }}>
-            {(analysis.reportInfo?.availableFormats || []).map((format: any) => (
-              <button
-                key={format}
-                onClick={() => setSelectedFormat(format)}
-                style={{
-                  flex: 1,
-                  padding: "8px",
-                  backgroundColor:
-                    selectedFormat === format ? C.neutral.primary : C.ui.background,
-                  color: selectedFormat === format ? "white" : C.ui.text.primary,
-                  border: `1.5px solid ${C.neutral.primary}`,
-                  borderRadius: "8px",
-                  fontSize: "12px",
-                  fontWeight: "600",
-                  cursor: "pointer",
-                  transition: "all 0.2s"
-                }}
-                onMouseEnter={(e) => {
-                  if (selectedFormat !== format) {
-                    e.currentTarget.style.backgroundColor = C.neutral.light
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (selectedFormat !== format) {
-                    e.currentTarget.style.backgroundColor = C.ui.background
-                  }
+            Key Takeaways
+          </h3>
+          <div style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "6px",
+          }}>
+            {keyTakeaways.map((takeaway: string, i: number) => (
+              <div key={i} style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "8px",
+                padding: "10px 12px",
+                backgroundColor: C.ui.surface,
+                border: `1px solid ${C.ui.border}`,
+                borderRadius: "8px",
+                fontSize: "12px",
+                lineHeight: "1.5",
+                color: C.ui.text.primary,
+              }}>
+                <span style={{
+                  flexShrink: 0,
+                  width: "20px",
+                  height: "20px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: isDark ? "rgba(37,99,235,0.2)" : "#dbeafe",
+                  borderRadius: "50%",
+                  fontSize: "10px",
+                  fontWeight: "700",
+                  color: "#2563eb",
                 }}>
-                {format}
-              </button>
+                  {i + 1}
+                </span>
+                <span>{takeaway}</span>
+              </div>
             ))}
           </div>
         </div>
+      )}
 
-        {/* Download Button */}
-        <button
-          onClick={handleDownload}
-          disabled={isDownloading}
-          style={{
-            width: "100%",
-            padding: "10px",
-            backgroundColor: isDownloading ? C.ui.border : C.neutral.primary,
-            color: "white",
-            border: "none",
-            borderRadius: "8px",
-            fontSize: "13px",
-            fontWeight: "600",
-            cursor: isDownloading ? "not-allowed" : "pointer",
-            transition: "background-color 0.2s",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "8px"
-          }}
-          onMouseEnter={(e) => {
-            if (!isDownloading) {
-              e.currentTarget.style.backgroundColor = C.neutral.dark
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (!isDownloading) {
-              e.currentTarget.style.backgroundColor = C.neutral.primary
-            }
-          }}>
-          {isDownloading ? (
-            <>
-              <div
-                style={{
-                  width: "16px",
-                  height: "16px",
-                  border: "2px solid white",
-                  borderTopColor: "transparent",
-                  borderRadius: "50%",
-                  animation: "spin 1s linear infinite"
-                }}
-              />
-              <span>Preparing Download...</span>
-            </>
-          ) : (
-            <>
-              <span>📥</span>
-              <span>Download {selectedFormat} Report</span>
-            </>
-          )}
-        </button>
-
-        {/* Analysis Date */}
-          <p
-          style={{
-            margin: "8px 0 0 0",
-            fontSize: "11px",
-              color: C.ui.text.secondary,
-            textAlign: "center"
-          }}>
-          Analysis performed: {analysis.reportInfo?.analysisDate ? new Date(analysis.reportInfo.analysisDate).toLocaleString() : "Unknown"}
-        </p>
-      </div>
-
-      {/* Report Snapshots from Backend */}
+      {/* Report Snapshots History */}
       <div style={{ marginBottom: "32px" }}>
         <h3
           style={{

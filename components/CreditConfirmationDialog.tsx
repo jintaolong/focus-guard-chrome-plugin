@@ -147,13 +147,13 @@ export const CreditConfirmationDialog = ({
 
   // Tier-specific messaging for insufficient credits
   const getInsufficientCreditsContent = () => {
-    if (userTier === "free") {
+    if (userTier !== "pro") {
       return {
         icon: "🎯",
-        title: "Unlock Video Analysis",
-        message: "You've used all your welcome credits! Upgrade to continue analyzing videos with instant access.",
+        title: "Unlock Premium Analysis",
+        message: "This analysis requires credits. Upgrade to Pro for a monthly credit quota and access to all premium features.",
         primaryButton: {
-          text: "Upgrade to Starter ($3.99/mo)",
+          text: "Upgrade to Pro ($9.99/mo)",
           action: onUpgrade,
           color: "#3b82f6"
         },
@@ -161,22 +161,6 @@ export const CreditConfirmationDialog = ({
           text: "View Community Verdict",
           action: onCancel,
           color: "#6b7280"
-        }
-      }
-    } else if (userTier === "starter") {
-      return {
-        icon: "⚡",
-        title: "More Credits Needed",
-        message: `This analysis requires ${estimatedCredits} credits, but you only have ${currentBalance}. Top up for immediate credits or upgrade to Pro for a larger monthly quota.`,
-        primaryButton: {
-          text: "Top Up Credits",
-          action: onTopUp,
-          color: "#10b981"
-        },
-        secondaryButton: {
-          text: "Upgrade to Pro",
-          action: onUpgrade,
-          color: "#3b82f6"
         }
       }
     } else { // pro
@@ -286,9 +270,8 @@ export const CreditConfirmationDialog = ({
                 color: "#4b5563",
                 lineHeight: "1.4"
               }}>
-              <strong>Note:</strong> Credits shown are based on the comments you asked for. Actual
-              cost may be lower (free capped at 100, starter capped at 300), and we try to refund
-              credits if the analysis fails.
+              <strong>Estimate:</strong> Based on ~{estimatedCredits} credit{estimatedCredits === 1 ? '' : 's'} for
+              the comments requested. Actual cost may differ slightly depending on final comment count.
             </div>
 
             <div style={{ display: "flex", gap: "12px" }}>

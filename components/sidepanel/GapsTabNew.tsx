@@ -139,7 +139,18 @@ export const GapsTabNew = ({ analysis }: GapsTabNewProps) => {
     return (c as any).likes || 0
   }
 
+  const gapsAnalysisError = (contentGaps as any)?.analysisError ?? null
+
   if (questions.length === 0) {
+    if (gapsAnalysisError) {
+      return (
+        <div style={{ padding: "48px 24px", textAlign: "center", color: C.ui.text.secondary }}>
+          <p style={{ margin: 0, fontSize: "14px", fontWeight: "600" }}>
+            {`Analysis failed: ${gapsAnalysisError}`}
+          </p>
+        </div>
+      )
+    }
     return (
       <div style={{ padding: "48px 24px", textAlign: "center" }}>
         <div style={{ fontSize: "48px", marginBottom: "16px" }}>✅</div>

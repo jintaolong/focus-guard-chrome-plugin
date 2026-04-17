@@ -25,6 +25,19 @@ const TOGGLE_CSS = `
     0%, 100% { opacity: 0.35; }
     50%       { opacity: 0.85; }
   }
+  @keyframes cv-lightning-flash {
+    0%, 85%, 100% { opacity: 0.18; }
+    90%            { opacity: 0.55; }
+  }
+  @keyframes cv-bubble {
+    0%   { transform: translateY(0px) scale(1);    opacity: 0.75; }
+    100% { transform: translateY(-20px) scale(0.2); opacity: 0; }
+  }
+  @keyframes cv-scope-spin {
+    0%   { transform: rotate(0deg) scale(1);    opacity: 0.18; }
+    50%  { opacity: 0.32; }
+    100% { transform: rotate(360deg) scale(1);  opacity: 0.18; }
+  }
 `
 
 // WiFi signal watermark — reusable SVG group
@@ -36,6 +49,61 @@ const WiFiWatermark = ({ opacity }: { opacity: number }) => (
     <path d="M 16 31 Q 35 17 54 31" />
   </g>
 )
+
+// Lightning bolt watermark — for Quick Verdict mode
+const LightningWatermark = ({ opacity }: { opacity: number }) => (
+  <g opacity={opacity} style={{ animation: "cv-lightning-flash 3.5s ease-in-out infinite" }}>
+    <polygon
+      points="40,12 27,36 36,36 30,58 47,31 38,31"
+      fill="white"
+    />
+  </g>
+)
+
+// Magnifier watermark — for Full Analysis mode
+const MagnifierWatermark = ({ opacity }: { opacity: number }) => (
+  <g opacity={opacity} fill="none" stroke="white" strokeLinecap="round"
+    style={{ animation: "cv-scope-spin 12s linear infinite", transformOrigin: "35px 35px" }}>
+    <circle cx="31" cy="30" r="13" strokeWidth="3" />
+    <line x1="40" y1="40" x2="53" y2="53" strokeWidth="4.5" />
+    {/* crosshair ticks inside lens */}
+    <line x1="31" y1="20" x2="31" y2="24" strokeWidth="1.5" />
+    <line x1="31" y1="36" x2="31" y2="40" strokeWidth="1.5" />
+    <line x1="21" y1="30" x2="25" y2="30" strokeWidth="1.5" />
+    <line x1="37" y1="30" x2="41" y2="30" strokeWidth="1.5" />
+  </g>
+)
+
+// Floating bubbles — for Full Analysis idle animation
+const BubbleLayer = () => {
+  const bubbles = [
+    { cx: 25, cy: 54, r: 3,   delay: "0s",    dur: "1.8s"  },
+    { cx: 35, cy: 57, r: 2,   delay: "0.5s",  dur: "2.1s"  },
+    { cx: 44, cy: 53, r: 2.5, delay: "1.1s",  dur: "1.6s"  },
+    { cx: 30, cy: 55, r: 1.5, delay: "0.8s",  dur: "2.4s"  },
+    { cx: 41, cy: 56, r: 1.8, delay: "1.6s",  dur: "1.9s"  },
+    { cx: 22, cy: 56, r: 1.5, delay: "1.3s",  dur: "2.0s"  },
+  ]
+  return (
+    <g>
+      {bubbles.map((b, i) => (
+        <circle
+          key={i}
+          cx={b.cx}
+          cy={b.cy}
+          r={b.r}
+          fill="none"
+          stroke="rgba(167,139,250,0.75)"
+          strokeWidth="1.2"
+          style={{
+            animation: `cv-bubble ${b.dur} ease-in infinite`,
+            animationDelay: b.delay,
+          }}
+        />
+      ))}
+    </g>
+  )
+}
 
 interface ToggleButtonProps {
   // accepted shapes: a raw number, or an object like { score: number }
@@ -57,11 +125,13 @@ interface ToggleButtonProps {
   progressMessage?: string | null
   // Whether to show cached verdict (from settings)
   showCachedVerdict?: boolean
+  // PRO toggle mode — controls idle-state appearance
+  proMode?: "free_verdict" | "full_analysis"
 }
 
 type DockPosition = "left" | "right"
 
-export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", onDockChange, state = "complete", isCached = null, errorMessage = null, progressPercent = null, progressMessage = null, showCachedVerdict = false }: ToggleButtonProps) => {
+export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", onDockChange, state = "complete", isCached = null, errorMessage = null, progressPercent = null, progressMessage = null, showCachedVerdict = false, proMode }: ToggleButtonProps) => {
   const [isDragging, setIsDragging] = useState(false)
   const movedRef = useRef(false)
   const [dockPosition, setDockPosition] = useState<DockPosition>(dock)
@@ -233,6 +303,65 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
         )
       }
 
+      // ── Sub-state: PRO Quick Verdict mode ──
+      if (proMode === "free_verdict") {
+        return (
+          <div style={{ width: 70, height: 70, position: "relative" }}>
+            <style>{TOGGLE_CSS}</style>
+            <svg width="70" height="70" viewBox="0 0 70 70">
+              <circle cx="35" cy="35" r="33" fill="rgba(37,99,235,0.6)" />
+              <circle cx="35" cy="35" r="33" fill="none" stroke="rgba(96,165,250,0.65)" strokeWidth="2"
+                style={{ animation: "cv-idle-pulse 2.2s ease-in-out infinite" }} />
+            </svg>
+            <div style={{
+              position: "absolute", inset: 0,
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1px",
+            }}>
+              <span style={{ fontSize: "16px", lineHeight: 1 }}>⚡</span>
+              <span style={{
+                fontSize: "7.5px", fontWeight: "800", color: "white",
+                textShadow: "0 1px 3px rgba(0,0,0,0.5)",
+                textAlign: "center", lineHeight: 1.2, letterSpacing: "0.04em",
+              }}>QUICK</span>
+              <span style={{
+                fontSize: "6.5px", fontWeight: "600", color: "rgba(255,255,255,0.75)",
+                textAlign: "center", lineHeight: 1.2,
+              }}>VERDICT</span>
+            </div>
+          </div>
+        )
+      }
+
+      // ── Sub-state: PRO Full Analysis mode ──
+      if (proMode === "full_analysis") {
+        return (
+          <div style={{ width: 70, height: 70, position: "relative" }}>
+            <style>{TOGGLE_CSS}</style>
+            <svg width="70" height="70" viewBox="0 0 70 70">
+              <circle cx="35" cy="35" r="33" fill="rgba(37,99,235,0.6)" />
+              <circle cx="35" cy="35" r="33" fill="none" stroke="rgba(96,165,250,0.65)" strokeWidth="2"
+                strokeDasharray="42 165"
+                style={{ animation: "cv-orbit-slow 5s linear infinite", transformOrigin: "center" }} />
+            </svg>
+            <div style={{
+              position: "absolute", inset: 0,
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1px",
+            }}>
+              <span style={{ fontSize: "16px", lineHeight: 1 }}>🔬</span>
+              <span style={{
+                fontSize: "7px", fontWeight: "800", color: "white",
+                textShadow: "0 1px 3px rgba(0,0,0,0.5)",
+                textAlign: "center", lineHeight: 1.2, letterSpacing: "0.04em",
+              }}>DEEP</span>
+              <span style={{
+                fontSize: "6.5px", fontWeight: "600", color: "rgba(255,255,255,0.75)",
+                textAlign: "center", lineHeight: 1.2,
+              }}>ANALYSIS</span>
+            </div>
+          </div>
+        )
+      }
+
       // ── Sub-state: Normal idle (or cached+showCachedVerdict=true) ──
       const buttonText = isCached === false ? "Summarize" : "Analyzed!"
       return (
@@ -315,8 +444,8 @@ export const ToggleButton = ({ trustScore, verdict, onToggle, dock = "right", on
       LEGIT:      { bg: '#D1FAE5', text: '#065F46', arc: '#10B981' },
       CLICKBAIT:  { bg: '#FEE2E2', text: '#991B1B', arc: '#EF4444' },
       DANGEROUS:  { bg: '#FEE2E2', text: '#7F1D1D', arc: '#991B1B' },
-      DISPUTED:   { bg: '#FEF3C7', text: '#92400E', arc: '#F59E0B' },
-      MISLEADING: { bg: '#FEF3C7', text: '#92400E', arc: '#F59E0B' },
+      DISPUTED:   { bg: '#FEF9C3', text: '#854D0E', arc: '#EAB308' },
+      MISLEADING: { bg: '#FFEDD5', text: '#9A3412', arc: '#F97316' },
       MIXED:      { bg: '#DBEAFE', text: '#1E40AF', arc: '#3B82F6' },
     }
     const vUpper = verdictLabel.toUpperCase()

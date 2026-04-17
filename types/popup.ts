@@ -1,5 +1,7 @@
 export interface UserAccount {
   isLoggedIn: boolean
+  isGuest?: boolean // True when browsing as an unauthenticated visitor
+  deviceFingerprint?: string // Device fingerprint used as guest identifier
   email?: string
   isVerified?: boolean // Email verification status
   welcomeBonusUsed?: boolean // Whether welcome bonus credits have been used
@@ -27,6 +29,7 @@ export interface FocusGuardSettings {
     showCachedVerdict?: boolean // Toggle to show verdict for cached analyses
     confirmCreditUsage?: boolean // Toggle to confirm before using credits
     maxCommentDepth?: number // Max comments for PRO users (100-1000)
+    proToggleMode?: "free_verdict" | "full_analysis" // PRO only: toggle button default behavior
   }
   // Mode controls available UI presets; optional for existing saved settings
   mode?: 'deep-work' | 'curated' | 'intelligence' | 'video-analysis'

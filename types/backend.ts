@@ -107,7 +107,7 @@ export interface CheckoutResponse {
 // Async Job Types
 // ============================================================================
 
-export type JobType = "summary" | "report"
+export type JobType = "summary" | "report" | "local_verdict" | "local_sentiment"
 export type JobStatus = "pending" | "running" | "completed" | "failed" | "cancelled"
 
 export interface SummaryJobRequest {
@@ -476,4 +476,108 @@ export interface ValidationError {
   loc: (string | number)[]
   msg: string
   type: string
+}
+
+// ============================================================================
+// Free Local Analysis Types (verdict + sentiment — no credits, guests allowed)
+// ============================================================================
+
+export interface FreeAnalysisRequest {
+  video_id: string // 11 characters
+  is_public?: boolean // default true
+  max_comments?: number // default 200, range 1-500
+}
+
+export interface FreeAnalysisResponse {
+  job_id: string
+  analysis_type: "local_verdict" | "local_sentiment"
+  status: string
+  status_url: string
+  result_url: string
+  message: string
+}
+
+/** Result data from a completed local verdict job */
+export interface LocalVerdictResult {
+  analysis_type: "local_verdict"
+  video_id: string
+  verdict: "LEGIT" | "DISPUTED" | "MISLEADING" | "CLICKBAIT" | "DANGEROUS"
+  reasoning: string
+  stage1_retained: number
+  stage2_top: number
+  model_used: string
+  processing_time_seconds: number
+  total_comments_input: number
+  weighted_comments: Array<{
+    text: string
+    likes: number
+    replies: number
+    relevance_score: number
+    social_weight: number
+    weighted_score: number
+  }>
+  is_public: boolean
+}
+
+/** Result data from a completed local sentiment job */
+export interface LocalSentimentResult {
+  analysis_type: "local_sentiment"
+  video_id: string
+  sentiment_summary: {
+    positive: number
+    negative: number
+    neutral: number
+    total: number
+  }
+  model_used: string
+  total_comments_input: number
+  total_comments_processed: number
+  total_processing_time_ms: number
+  comment_sentiments: Array<{
+    text: string
+    sentiment: string
+    confidence: number
+  }>
+  is_public: boolean
+}
+
+/** Cached free verdict response from GET /free-analysis/verdict/{video_id} */
+export interface CachedFreeVerdictResponse {
+  video_id: string
+  has_verdict: boolean
+  verdict?: string
+  reasoning?: string
+  total_comments_input?: number
+  model_used?: string
+  processing_time_seconds?: number
+  weighted_comments?: Array<{
+    text: string
+    likes: number
+    replies: number
+    relevance_score: number
+    social_weight: number
+    weighted_score: number
+  }>
+  stage1_retained?: number
+  stage2_top?: number
+  created_at?: string
+  is_public: boolean
+}
+
+/** Cached free sentiment response from GET /free-analysis/sentiment/{video_id} */
+export interface CachedFreeSentimentResponse {
+  video_id: string
+  has_sentiment: boolean
+  distribution?: {
+    positive: number
+    negative: number
+    neutral: number
+    total: number
+  }
+  filtering_metadata?: {
+    total_input?: number
+    filtered_count?: number
+  }
+  model_used?: string
+  created_at?: string
 }

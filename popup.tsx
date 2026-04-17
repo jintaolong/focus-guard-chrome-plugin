@@ -42,7 +42,8 @@ function normalizeSettings(input?: FocusGuardSettings | null): FocusGuardSetting
       botDetectionEnabled: input?.videoAnalysis?.botDetectionEnabled ?? true,
       showCachedVerdict: input?.videoAnalysis?.showCachedVerdict ?? false,
       confirmCreditUsage: input?.videoAnalysis?.confirmCreditUsage ?? true,
-      maxCommentDepth: normalizedDepth
+      maxCommentDepth: normalizedDepth,
+      proToggleMode: input?.videoAnalysis?.proToggleMode ?? "free_verdict",
     }
   }
 }
@@ -215,8 +216,32 @@ function IndexPopup() {
           setAccount(null)
         }
       } else {
-        console.log("Popup: Not authenticated, setting account to null")
-        setAccount(null)
+        console.log("Popup: Not authenticated, checking for saved guest session")
+        // Restore a persisted guest session so visitors aren't asked to log in
+        // again every time the popup is reopened.
+        const localResult = await chrome.storage.local.get(["guest_session"])
+        if (localResult.guest_session?.deviceFingerprint) {
+          const fp: string = localResult.guest_session.deviceFingerprint
+          const guestAccount: UserAccount = {
+            isLoggedIn: true,
+            isGuest: true,
+            deviceFingerprint: fp,
+            tier: "free",
+            dailySearchesLimit: 0,
+            searchesUsedToday: 0,
+            searchesRemaining: 0,
+            resetTime: "",
+            creditsBalance: 0,
+            monthlyCreditsRemaining: 0,
+            monthlyQuota: 0,
+            purchasedCredits: 0
+          }
+          console.log("Popup: Restored guest session from local storage")
+          setAccount(guestAccount)
+        } else {
+          console.log("Popup: No guest session found, setting account to null")
+          setAccount(null)
+        }
       }
       } catch (error) {
         console.error("Popup: Failed to load user data:", error)
@@ -273,6 +298,13 @@ function IndexPopup() {
           console.log("Popup: Detected auth change in storage, reloading data")
           // force=true: bypass throttle so logout/login storage events always reflect immediately
           loadUserData("storage-change", true)
+        }
+      }
+      if (areaName === 'local') {
+        // Guest session cleared in another context (e.g. background script)
+        if (changes.guest_session && !changes.guest_session.newValue) {
+          console.log("Popup: Guest session cleared externally, resetting account")
+          setAccount(null)
         }
       }
     }
@@ -341,6 +373,37 @@ function IndexPopup() {
     }
   }
 
+  const handleGuestLogin = async () => {
+    setIsLoading(true)
+    setError(null)
+    try {
+      const fingerprint = await FocusGuardAPI.getDeviceFingerprint()
+      const guestAccount: UserAccount = {
+        isLoggedIn: true,
+        isGuest: true,
+        deviceFingerprint: fingerprint,
+        tier: "free",
+        dailySearchesLimit: 0,
+        searchesUsedToday: 0,
+        searchesRemaining: 0,
+        resetTime: "",
+        creditsBalance: 0,
+        monthlyCreditsRemaining: 0,
+        monthlyQuota: 0,
+        purchasedCredits: 0
+      }
+      // Persist to local storage so the session survives popup close/reload
+      await chrome.storage.local.set({ guest_session: { deviceFingerprint: fingerprint } })
+      setAccount(guestAccount)
+    } catch (error) {
+      console.error("Guest login failed:", error)
+      setError(error instanceof Error ? error.message : "Failed to continue as visitor")
+      throw error
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   const handleManagePlan = async () => {
     try {
       // Open the web portal Plans & Billing tab
@@ -362,6 +425,12 @@ function IndexPopup() {
   }
 
   const handleLogout = async () => {
+    // For guest sessions clear the persisted session and in-memory account
+    if (account?.isGuest) {
+      await chrome.storage.local.remove("guest_session")
+      setAccount(null)
+      return
+    }
     try {
       await AuthService.logout()
       setAccount(null)
@@ -456,7 +525,7 @@ function IndexPopup() {
   if (!account?.isLoggedIn) {
     return (
       <div style={{ width: 360 }}>
-        <LoginForm onLogin={handleLogin} isLoading={isLoading} />
+        <LoginForm onLogin={handleLogin} onGuestLogin={handleGuestLogin} isLoading={isLoading} />
       </div>
     )
   }
@@ -487,16 +556,51 @@ function IndexPopup() {
           }}>
           <img src={chrome.runtime.getURL("assets/blue.png")} alt="Comment Verdict" style={{ width: "24px", height: "24px" }} />
           Comment Verdict
+          {account.isGuest && (
+            <span style={{
+              marginLeft: "auto",
+              fontSize: "10px",
+              fontWeight: "700",
+              color: "#6b7280",
+              backgroundColor: "#f3f4f6",
+              border: "1px solid #e5e7eb",
+              borderRadius: "6px",
+              padding: "2px 8px",
+              letterSpacing: "0.04em"
+            }}>VISITOR</span>
+          )}
         </h1>
+        {account.isGuest && (
+          <p style={{ margin: "8px 0 0", fontSize: "12px", color: "#9ca3af" }}>
+            You're browsing as a visitor.{" "}
+            <button
+              type="button"
+              onClick={() => setAccount(null)}
+              style={{
+                color: "#3b82f6",
+                background: "none",
+                border: "none",
+                padding: 0,
+                cursor: "pointer",
+                fontSize: "12px",
+                textDecoration: "underline"
+              }}>
+              Sign in
+            </button>
+            {" "}for full access.
+          </p>
+        )}
       </div>
 
-      {/* Account Info */}
+      {/* Account Info — skip for visitors since they have no account data */}
+      {!account.isGuest && (
       <AccountInfo 
         account={account} 
         onManagePlan={handleManagePlan} 
         onTopUp={handleTopUp} 
         onResendVerification={handleResendVerification}
       />
+      )}
 
       {/* Enable/Disable Toggle */}
       <ToggleSwitch
@@ -562,75 +666,174 @@ function IndexPopup() {
           />
         </div>
 
-        {/* Comment Depth Slider - free: locked at 100, starter: up to 300, pro: up to 1000 */}
-        {(() => {
-          const tier = account?.tier ?? "free"
-          const tierMax = tier === "pro" ? 1000 : tier === "starter" ? 300 : 100
-          const isLocked = tier === "free"
-          const currentDepth = Math.min(settings.videoAnalysis?.maxCommentDepth || 100, tierMax)
-          const creditCount = Math.ceil(currentDepth / 100)
-          return (
-            <div style={{ marginTop: "16px", opacity: isLocked ? 0.6 : 1 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                <label style={{ fontSize: "12px", fontWeight: "600", color: "#666" }}>
-                  Max Comments per Analysis
-                  {isLocked && (
-                    <span style={{ fontSize: "10px", fontWeight: "400", color: "#f59e0b", marginLeft: "6px" }}>
-                      🔒 Starter+
-                    </span>
-                  )}
-                </label>
-                <span style={{ fontSize: "12px", fontWeight: "700", color: isLocked ? "#999" : "#3b82f6" }}>
-                  {currentDepth} • {creditCount} credit{creditCount !== 1 ? "s" : ""}
-                </span>
-              </div>
-              <input
-                type="range"
-                min="100"
-                max={tierMax}
-                step="100"
-                value={currentDepth}
-                disabled={isLocked}
-                onChange={async (e) => {
-                  const newDepth = parseInt(e.target.value)
-                  const newSettings: FocusGuardSettings = {
-                    ...settings,
-                    videoAnalysis: {
-                      showPreWatchPopover: settings.videoAnalysis?.showPreWatchPopover ?? true,
-                      autoAnalyze: settings.videoAnalysis?.autoAnalyze ?? false,
-                      botDetectionEnabled: settings.videoAnalysis?.botDetectionEnabled ?? true,
-                      showCachedVerdict: settings.videoAnalysis?.showCachedVerdict ?? false,
-                      confirmCreditUsage: settings.videoAnalysis?.confirmCreditUsage ?? true,
-                      maxCommentDepth: newDepth
-                    }
-                  }
-                  setSettings(newSettings)
-                  await chrome.storage.sync.set({ settings: newSettings })
-                }}
-                style={{
-                  width: "100%",
-                  height: "6px",
-                  borderRadius: "3px",
-                  outline: "none",
-                  cursor: isLocked ? "not-allowed" : "pointer"
-                }}
-              />
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "#999", marginTop: "4px" }}>
-                <span>Fast (100)</span>
-                {tier === "starter" && <span style={{ color: "#3b82f6" }}>Starter max: 300</span>}
-                <span>{tier === "pro" ? "Deep (1000)" : tier === "starter" ? "Max (300)" : "Free (100)"}</span>
-              </div>
-              {isLocked && (
-                <div style={{
-                  fontSize: "11px", color: "#f59e0b", marginTop: "8px", padding: "8px",
-                  backgroundColor: "#fffbeb", borderRadius: "4px", border: "1px solid #fef3c7"
-                }}>
-                  🚀 <strong>Upgrade to Starter</strong> to analyze up to 300 comments, or <strong>Pro</strong> for up to 1,000.
-                </div>
-              )}
+        {/* Comment Depth Slider removed — slider now lives in the side panel header for PRO users */}
+
+        {/* Toggle Button Default — visible to all users */}
+        <div style={{ marginTop: "16px" }}>
+          <div style={{
+            padding: "12px 16px",
+            backgroundColor: "white",
+            border: "1px solid #e5e5e5",
+            borderRadius: "12px",
+          }}>
+            <p style={{ fontSize: "14px", fontWeight: "600", color: "#1a1a1a", margin: "0 0 2px" }}>
+              Toggle Button Default
+            </p>
+            <p style={{ fontSize: "12px", color: "#666", margin: "0 0 10px" }}>
+              What the ⊙ button triggers when you click it on a new video
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {(["free_verdict", "full_analysis"] as const).map((mode) => {
+                const isVisitor = !!account?.isGuest
+                const isPro = account?.tier === "pro"
+                const isDisabledOption = isVisitor && mode === "full_analysis"
+                const selectedMode = isVisitor ? "free_verdict" : (settings.videoAnalysis?.proToggleMode ?? "free_verdict")
+                const isSelected = selectedMode === mode
+
+                // Fixed values for non-pro tiers
+                const fixedVal = mode === "free_verdict" ? 200 : 100
+                const sliderMax = mode === "free_verdict" ? 500 : 1000
+                const sliderSteps = mode === "free_verdict"
+                  ? [100, 200, 300, 400, 500]
+                  : [100, 300, 500, 700, 1000]
+                const canSlide = isPro && !isDisabledOption
+                const currentDepth = settings.videoAnalysis?.maxCommentDepth ?? fixedVal
+                const displayVal = canSlide ? Math.min(currentDepth, sliderMax) : fixedVal
+
+                return (
+                  <div key={mode} style={{
+                    padding: "10px",
+                    borderRadius: "8px",
+                    backgroundColor: isSelected ? "#eff6ff" : (isDisabledOption ? "#fafafa" : "#f9fafb"),
+                    border: `1px solid ${isSelected ? "#3b82f6" : "#e5e7eb"}`,
+                    opacity: isDisabledOption ? 0.4 : 1,
+                    transition: "all 0.15s",
+                  }}>
+                    {/* Mode header row — clickable for free/pro */}
+                    <div
+                      style={{ display: "flex", alignItems: "center", gap: "10px", cursor: isDisabledOption || isVisitor ? "default" : "pointer" }}
+                      onClick={isDisabledOption || isVisitor ? undefined : async () => {
+                        const ns: FocusGuardSettings = {
+                          ...settings,
+                          videoAnalysis: {
+                            showPreWatchPopover: settings.videoAnalysis?.showPreWatchPopover ?? true,
+                            autoAnalyze: settings.videoAnalysis?.autoAnalyze ?? false,
+                            botDetectionEnabled: settings.videoAnalysis?.botDetectionEnabled ?? true,
+                            showCachedVerdict: settings.videoAnalysis?.showCachedVerdict ?? false,
+                            confirmCreditUsage: settings.videoAnalysis?.confirmCreditUsage ?? true,
+                            maxCommentDepth: settings.videoAnalysis?.maxCommentDepth ?? fixedVal,
+                            proToggleMode: mode,
+                          }
+                        }
+                        setSettings(ns)
+                        await chrome.storage.sync.set({ settings: ns })
+                      }}
+                    >
+                      {/* Custom radio dot */}
+                      <div style={{
+                        width: "14px", height: "14px", borderRadius: "50%", flexShrink: 0,
+                        border: `2px solid ${isSelected ? "#3b82f6" : "#d1d5db"}`,
+                        backgroundColor: isSelected ? "#3b82f6" : "white",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                      }}>
+                        {isSelected && <div style={{ width: "5px", height: "5px", borderRadius: "50%", backgroundColor: "white" }} />}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                          <span style={{ fontSize: "13px", fontWeight: "600", color: isSelected ? "#1d4ed8" : (isDisabledOption ? "#9ca3af" : "#374151") }}>
+                            {mode === "free_verdict" ? "⚡ Quick Verdict" : "🔬 Full Analysis"}
+                          </span>
+                          {isDisabledOption && (
+                            <span style={{ fontSize: "9px", color: "#9ca3af", fontStyle: "italic" }}>sign in required</span>
+                          )}
+                          {mode === "full_analysis" && !isDisabledOption && !isPro && (
+                            <span style={{ fontSize: "9px", color: "#6b7280", fontStyle: "italic" }}>credits used</span>
+                          )}
+                        </div>
+                        <p style={{ fontSize: "11px", color: "#6b7280", margin: "2px 0 0" }}>
+                          {mode === "free_verdict" ? "Fast free verdict — no credits used" : "Comprehensive analysis using credits"}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Max comments sub-row */}
+                    {!isDisabledOption && (
+                      <div style={{ marginTop: "8px", paddingLeft: "24px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: canSlide ? "5px" : "0" }}>
+                          <span style={{ fontSize: "9.5px", color: "#9ca3af", fontWeight: "600", textTransform: "uppercase" as const, letterSpacing: "0.06em" }}>
+                            Max Comments
+                          </span>
+                          <span style={{ fontSize: "12px", fontWeight: "700", color: canSlide ? "#2563eb" : "#9ca3af" }}>
+                            {displayVal}
+                          </span>
+                        </div>
+                        {canSlide ? (
+                          <>
+                            <input
+                              type="range"
+                              min={100}
+                              max={sliderMax}
+                              step={100}
+                              value={displayVal}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) => {
+                                const v = parseInt(e.target.value)
+                                setSettings({
+                                  ...settings,
+                                  videoAnalysis: {
+                                    showPreWatchPopover: settings.videoAnalysis?.showPreWatchPopover ?? true,
+                                    autoAnalyze: settings.videoAnalysis?.autoAnalyze ?? false,
+                                    botDetectionEnabled: settings.videoAnalysis?.botDetectionEnabled ?? true,
+                                    showCachedVerdict: settings.videoAnalysis?.showCachedVerdict ?? false,
+                                    confirmCreditUsage: settings.videoAnalysis?.confirmCreditUsage ?? true,
+                                    maxCommentDepth: v,
+                                    proToggleMode: settings.videoAnalysis?.proToggleMode ?? "free_verdict",
+                                  }
+                                })
+                              }}
+                              onMouseUp={async (e) => {
+                                const v = parseInt((e.target as HTMLInputElement).value)
+                                const ns: FocusGuardSettings = {
+                                  ...settings,
+                                  videoAnalysis: {
+                                    showPreWatchPopover: settings.videoAnalysis?.showPreWatchPopover ?? true,
+                                    autoAnalyze: settings.videoAnalysis?.autoAnalyze ?? false,
+                                    botDetectionEnabled: settings.videoAnalysis?.botDetectionEnabled ?? true,
+                                    showCachedVerdict: settings.videoAnalysis?.showCachedVerdict ?? false,
+                                    confirmCreditUsage: settings.videoAnalysis?.confirmCreditUsage ?? true,
+                                    maxCommentDepth: v,
+                                    proToggleMode: settings.videoAnalysis?.proToggleMode ?? "free_verdict",
+                                  }
+                                }
+                                setSettings(ns)
+                                await chrome.storage.sync.set({ settings: ns })
+                              }}
+                              style={{ width: "100%", height: "3px", borderRadius: "2px", cursor: "pointer", accentColor: "#3b82f6" }}
+                            />
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "8px", color: "rgba(0,0,0,0.3)", marginTop: "3px", padding: "0 1px" }}>
+                              {sliderSteps.map(n => (
+                                <span key={n} style={{
+                                  fontWeight: n === displayVal ? "700" : "400",
+                                  color: n === displayVal ? "#2563eb" : undefined,
+                                }}>
+                                  {n >= 1000 ? "1k" : n}
+                                </span>
+                              ))}
+                            </div>
+                          </>
+                        ) : (
+                          <div style={{ fontSize: "9px", color: "#c4b5fd", marginTop: "2px" }}>
+                            {isPro ? "" : "fixed — upgrade to Pro to adjust"}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
-          )
-        })()}
+          </div>
+        </div>
       </div>
 
       {/* Footer */}
@@ -657,7 +860,7 @@ function IndexPopup() {
           onMouseLeave={(e) => {
             e.currentTarget.style.color = "#999"
           }}>
-          Sign Out
+          {account.isGuest ? "Exit Visitor Mode" : "Sign Out"}
         </button>
       </div>
     </div>
