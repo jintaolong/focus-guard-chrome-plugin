@@ -202,8 +202,8 @@ export const SidePanel = ({
     LEGIT:      { bg: '#D1FAE5', text: '#065F46', border: '#10B981', arc: '#10B981' },
     CLICKBAIT:  { bg: '#FEE2E2', text: '#991B1B', border: '#EF4444', arc: '#EF4444' },
     DANGEROUS:  { bg: '#FEE2E2', text: '#7F1D1D', border: '#991B1B', arc: '#991B1B' },
-    DISPUTED:   { bg: '#FEF3C7', text: '#92400E', border: '#F59E0B', arc: '#F59E0B' },
-    MISLEADING: { bg: '#FEF3C7', text: '#92400E', border: '#F59E0B', arc: '#F59E0B' },
+    DISPUTED:   { bg: '#FEF9C3', text: '#854D0E', border: '#EAB308', arc: '#EAB308' },
+    MISLEADING: { bg: '#FFEDD5', text: '#9A3412', border: '#F97316', arc: '#F97316' },
     MIXED:      { bg: '#DBEAFE', text: '#1E40AF', border: '#3B82F6', arc: '#3B82F6' },
   }
 

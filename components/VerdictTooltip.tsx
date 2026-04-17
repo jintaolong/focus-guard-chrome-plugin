@@ -38,8 +38,8 @@ interface VerdictTooltipProps {
 
 const VERDICT_COLORS: Record<string, { bg: string; text: string; border: string; emoji: string }> = {
   LEGIT:          { bg: "#D1FAE5", text: "#065F46", border: "#10B981", emoji: "✅" },
-  DISPUTED:       { bg: "#FEF3C7", text: "#92400E", border: "#F59E0B", emoji: "⚠️" },
-  MISLEADING:     { bg: "#FEF3C7", text: "#92400E", border: "#F59E0B", emoji: "⚠️" },
+  DISPUTED:       { bg: "#FEF9C3", text: "#854D0E", border: "#EAB308", emoji: "⚠️" },
+  MISLEADING:     { bg: "#FFEDD5", text: "#9A3412", border: "#F97316", emoji: "🔶" },
   CLICKBAIT:      { bg: "#FEE2E2", text: "#991B1B", border: "#EF4444", emoji: "🚨" },
   DANGEROUS:      { bg: "#FEE2E2", text: "#7F1D1D", border: "#991B1B", emoji: "🛑" },
   MIXED:          { bg: "#DBEAFE", text: "#1E40AF", border: "#3B82F6", emoji: "🔍" },

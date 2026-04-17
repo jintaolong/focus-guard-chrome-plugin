@@ -2270,7 +2270,10 @@ const ContentScript = () => {
       }
 
       const credits = await FocusGuardAPI.getCreditBalance()
-      const commentCount = freshSettings?.videoAnalysis?.maxCommentDepth || 200
+      // Mirror the exact formula used in proceedWithAnalysis so the estimate matches what will actually be requested
+      const tier = userTierInfo?.tier || 'free'
+      const settingsMaxComments = freshSettings?.videoAnalysis?.maxCommentDepth || 100
+      const commentCount = tier === 'pro' ? settingsMaxComments : Math.min(settingsMaxComments, 300)
       const estimate = await FocusGuardAPI.estimateCreditCost(commentCount, "full_analysis", videoId)
       const estimatedCredits = estimate.estimated_credits
       const hasSufficient = credits.credits_balance >= estimatedCredits
@@ -3907,8 +3910,10 @@ const ContentScript = () => {
               } catch {}
 
               const credits = await FocusGuardAPI.getCreditBalance()
-              // Use the user's selected max comment depth (slider), NOT the old actual count
-              const commentCount = freshSettings?.videoAnalysis?.maxCommentDepth || 200
+              // Mirror the exact formula used in proceedWithAnalysis so the estimate matches what will actually be requested
+              const refreshTier = userTierInfo?.tier || 'free'
+              const refreshMaxComments = freshSettings?.videoAnalysis?.maxCommentDepth || 100
+              const commentCount = refreshTier === 'pro' ? refreshMaxComments : Math.min(refreshMaxComments, 300)
               const estimate = await FocusGuardAPI.estimateCreditCost(commentCount, "full_analysis", currentVideoId)
               const estimatedCredits = estimate.estimated_credits
               const hasSufficient = credits.credits_balance >= estimatedCredits
