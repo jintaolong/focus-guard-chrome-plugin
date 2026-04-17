@@ -59,6 +59,10 @@ export const CreditConfirmationDialog = ({
     : null
   if (!isOpen) return null
 
+  // Round credits to integers for display — API may return floats
+  const displayEstimate = Math.ceil(estimatedCredits)
+  const displayBalance = Math.round(currentBalance)
+
   // Show verification prompt for unverified users
   if (isVerified === false) {
     return (
@@ -167,7 +171,7 @@ export const CreditConfirmationDialog = ({
       return {
         icon: "💎",
         title: "Additional Credits Required",
-        message: `This analysis requires ${estimatedCredits} credits, but you only have ${currentBalance}. Purchase a top-up pack for immediate access, or contact sales for enterprise plans.`,
+        message: `This analysis requires ${displayEstimate} credits, but you only have ${displayBalance}. Purchase a top-up pack for immediate access, or contact sales for enterprise plans.`,
         primaryButton: {
           text: "Purchase Credits",
           action: onTopUp,
@@ -228,7 +232,7 @@ export const CreditConfirmationDialog = ({
               <p style={{ fontSize: "14px", color: "#666", lineHeight: "1.5" }}>
                 This analysis will use{" "}
                 <strong style={{ color: "#3b82f6" }}>
-                  {estimatedCredits} credit{estimatedCredits === 1 ? "" : "s"}
+                  {displayEstimate} credit{displayEstimate === 1 ? "" : "s"}
                 </strong>
               </p>
             </div>
@@ -246,15 +250,15 @@ export const CreditConfirmationDialog = ({
                   style={{
                     fontSize: "16px",
                     fontWeight: "600",
-                    color: currentBalance <= 5 ? "#d97706" : "#10b981"
+                    color: displayBalance <= 5 ? "#d97706" : "#10b981"
                   }}>
-                  {currentBalance} credits
+                  {displayBalance} credits
                 </span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ fontSize: "13px", color: "#666" }}>After Analysis</span>
+                <span style={{ fontSize: "13px", color: "#666" }}>Est. balance after</span>
                 <span style={{ fontSize: "16px", fontWeight: "600", color: "#1a1a1a" }}>
-                  {currentBalance - estimatedCredits} credits
+                  {Math.max(0, displayBalance - displayEstimate)} credits
                 </span>
               </div>
             </div>
@@ -270,8 +274,8 @@ export const CreditConfirmationDialog = ({
                 color: "#4b5563",
                 lineHeight: "1.4"
               }}>
-              <strong>Estimate:</strong> Based on ~{estimatedCredits} credit{estimatedCredits === 1 ? '' : 's'} for
-              the comments requested. Actual cost may differ slightly depending on final comment count.
+              <strong>Estimate:</strong> Based on ~{displayEstimate} credit{displayEstimate === 1 ? '' : 's'} for
+              the comments requested. Actual cost may vary slightly based on final comment count.
             </div>
 
             <div style={{ display: "flex", gap: "12px" }}>
@@ -351,13 +355,13 @@ export const CreditConfirmationDialog = ({
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
                 <span style={{ fontSize: "13px", color: "#666" }}>Credits Needed</span>
                 <span style={{ fontSize: "16px", fontWeight: "600", color: "#dc2626" }}>
-                  {estimatedCredits}
+                  {displayEstimate}
                 </span>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ fontSize: "13px", color: "#666" }}>Current Balance</span>
                 <span style={{ fontSize: "16px", fontWeight: "600", color: "#dc2626" }}>
-                  {currentBalance}
+                  {displayBalance}
                 </span>
               </div>
             </div>
