@@ -534,7 +534,6 @@ export interface LocalSentimentResult {
   total_comments_processed: number
   total_processing_time_ms: number
   comment_sentiments: Array<{
-    text: string
     sentiment: string
     confidence: number
   }>
@@ -550,14 +549,6 @@ export interface CachedFreeVerdictResponse {
   total_comments_input?: number
   model_used?: string
   processing_time_seconds?: number
-  weighted_comments?: Array<{
-    text: string
-    likes: number
-    replies: number
-    relevance_score: number
-    social_weight: number
-    weighted_score: number
-  }>
   stage1_retained?: number
   stage2_top?: number
   created_at?: string
