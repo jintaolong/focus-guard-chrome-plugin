@@ -30,6 +30,7 @@ export interface FocusGuardSettings {
     confirmCreditUsage?: boolean // Toggle to confirm before using credits
     maxCommentDepth?: number // Max comments for PRO users (100-1000)
     proToggleMode?: "free_verdict" | "full_analysis" // PRO only: toggle button default behavior
+    autoQuickVerdict?: boolean // Auto-run quick verdict on new videos when toggle default is Quick Verdict
   }
   // Mode controls available UI presets; optional for existing saved settings
   mode?: 'deep-work' | 'curated' | 'intelligence' | 'video-analysis'

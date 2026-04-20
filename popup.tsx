@@ -24,7 +24,8 @@ const DEFAULT_SETTINGS: FocusGuardSettings = {
     botDetectionEnabled: true,
     showCachedVerdict: false,
     confirmCreditUsage: true,
-    maxCommentDepth: 100
+    maxCommentDepth: 100,
+    autoQuickVerdict: true
   }
 }
 
@@ -44,6 +45,7 @@ function normalizeSettings(input?: FocusGuardSettings | null): FocusGuardSetting
       confirmCreditUsage: input?.videoAnalysis?.confirmCreditUsage ?? true,
       maxCommentDepth: normalizedDepth,
       proToggleMode: input?.videoAnalysis?.proToggleMode ?? "free_verdict",
+      autoQuickVerdict: input?.videoAnalysis?.autoQuickVerdict ?? true,
     }
   }
 }
@@ -204,7 +206,9 @@ function IndexPopup() {
                 botDetectionEnabled: storedSettings.videoAnalysis?.botDetectionEnabled ?? true,
                 showCachedVerdict: storedSettings.videoAnalysis?.showCachedVerdict ?? false,
                 confirmCreditUsage: tier === "free", // ON for free, OFF for starter/pro
-                maxCommentDepth: Math.min(currentMaxCommentDepth, tierMaxComments)
+                maxCommentDepth: Math.min(currentMaxCommentDepth, tierMaxComments),
+                proToggleMode: storedSettings.videoAnalysis?.proToggleMode ?? "free_verdict",
+                autoQuickVerdict: storedSettings.videoAnalysis?.autoQuickVerdict ?? true,
               }
             }
             setSettings(updatedSettings)
@@ -443,7 +447,8 @@ function IndexPopup() {
           botDetectionEnabled: true,
           showCachedVerdict: false,
           confirmCreditUsage: true,
-          maxCommentDepth: 100
+          maxCommentDepth: 100,
+          autoQuickVerdict: true
         }
       })
       
@@ -632,7 +637,9 @@ function IndexPopup() {
                 botDetectionEnabled: settings.videoAnalysis?.botDetectionEnabled ?? true,
                 showCachedVerdict: enabled,
                 confirmCreditUsage: settings.videoAnalysis?.confirmCreditUsage ?? true,
-                maxCommentDepth: settings.videoAnalysis?.maxCommentDepth ?? 100
+                maxCommentDepth: settings.videoAnalysis?.maxCommentDepth ?? 100,
+                proToggleMode: settings.videoAnalysis?.proToggleMode ?? "free_verdict",
+                autoQuickVerdict: settings.videoAnalysis?.autoQuickVerdict ?? true,
               }
             }
             setSettings(newSettings)
@@ -655,7 +662,9 @@ function IndexPopup() {
                   botDetectionEnabled: settings.videoAnalysis?.botDetectionEnabled ?? true,
                   showCachedVerdict: settings.videoAnalysis?.showCachedVerdict ?? false,
                   confirmCreditUsage: enabled,
-                  maxCommentDepth: settings.videoAnalysis?.maxCommentDepth ?? 100
+                  maxCommentDepth: settings.videoAnalysis?.maxCommentDepth ?? 100,
+                  proToggleMode: settings.videoAnalysis?.proToggleMode ?? "free_verdict",
+                  autoQuickVerdict: settings.videoAnalysis?.autoQuickVerdict ?? true,
                 }
               }
               setSettings(newSettings)
@@ -663,6 +672,32 @@ function IndexPopup() {
             }}
             label="Confirm Before Using Credits"
             description="Get a confirmation dialog before analyzing a video"
+          />
+        </div>
+
+        {/* Auto Quick Verdict Toggle */}
+        <div style={{ marginTop: "12px" }}>
+          <ToggleSwitch
+            enabled={settings.videoAnalysis?.autoQuickVerdict !== false}
+            onToggle={async (enabled) => {
+              const newSettings: FocusGuardSettings = {
+                ...settings,
+                videoAnalysis: {
+                  showPreWatchPopover: settings.videoAnalysis?.showPreWatchPopover ?? true,
+                  autoAnalyze: settings.videoAnalysis?.autoAnalyze ?? false,
+                  botDetectionEnabled: settings.videoAnalysis?.botDetectionEnabled ?? true,
+                  showCachedVerdict: settings.videoAnalysis?.showCachedVerdict ?? false,
+                  confirmCreditUsage: settings.videoAnalysis?.confirmCreditUsage ?? true,
+                  maxCommentDepth: settings.videoAnalysis?.maxCommentDepth ?? 100,
+                  proToggleMode: settings.videoAnalysis?.proToggleMode ?? "free_verdict",
+                  autoQuickVerdict: enabled,
+                }
+              }
+              setSettings(newSettings)
+              await chrome.storage.sync.set({ settings: newSettings })
+            }}
+            label="Auto Quick Verdict"
+            description="Automatically run quick verdict when you open a video"
           />
         </div>
 
@@ -723,6 +758,7 @@ function IndexPopup() {
                             confirmCreditUsage: settings.videoAnalysis?.confirmCreditUsage ?? true,
                             maxCommentDepth: settings.videoAnalysis?.maxCommentDepth ?? fixedVal,
                             proToggleMode: mode,
+                            autoQuickVerdict: settings.videoAnalysis?.autoQuickVerdict ?? true,
                           }
                         }
                         setSettings(ns)
@@ -788,6 +824,7 @@ function IndexPopup() {
                                     confirmCreditUsage: settings.videoAnalysis?.confirmCreditUsage ?? true,
                                     maxCommentDepth: v,
                                     proToggleMode: settings.videoAnalysis?.proToggleMode ?? "free_verdict",
+                                    autoQuickVerdict: settings.videoAnalysis?.autoQuickVerdict ?? true,
                                   }
                                 })
                               }}
@@ -803,6 +840,7 @@ function IndexPopup() {
                                     confirmCreditUsage: settings.videoAnalysis?.confirmCreditUsage ?? true,
                                     maxCommentDepth: v,
                                     proToggleMode: settings.videoAnalysis?.proToggleMode ?? "free_verdict",
+                                    autoQuickVerdict: settings.videoAnalysis?.autoQuickVerdict ?? true,
                                   }
                                 }
                                 setSettings(ns)

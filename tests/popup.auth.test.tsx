@@ -40,7 +40,8 @@ describe('Popup - Authentication UI State', () => {
           videoAnalysis: {
             showPreWatchPopover: true,
             autoAnalyze: false,
-            botDetectionEnabled: true
+            botDetectionEnabled: true,
+            autoQuickVerdict: true
           }
         }
       }

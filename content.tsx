@@ -323,7 +323,8 @@ const ContentScript = () => {
       botDetectionEnabled: true,
       showCachedVerdict: false,
       confirmCreditUsage: true,
-      maxCommentDepth: 100
+      maxCommentDepth: 100,
+      autoQuickVerdict: true
     }
   })
 
@@ -553,7 +554,10 @@ const ContentScript = () => {
           
           // Check if auto-analyze is enabled (for starting actual analysis)
           const shouldAutoAnalyze = settings?.videoAnalysis?.autoAnalyze ?? false
-          if (!shouldAutoAnalyze) {
+          // Auto-run quick verdict when toggle default is Quick Verdict and auto-quick-verdict is enabled
+          const toggleMode = settings?.videoAnalysis?.proToggleMode ?? 'free_verdict'
+          const shouldAutoQuickVerdict = (settings?.videoAnalysis?.autoQuickVerdict ?? true) && toggleMode === 'free_verdict'
+          if (!shouldAutoAnalyze && !shouldAutoQuickVerdict) {
             // Don't auto-analyze; just reset state and wait for user to click the button
             // (cache check above will update toggle if cached report exists)
             console.log("Comment Verdict: Auto-analyze disabled, waiting for user action")
@@ -562,6 +566,20 @@ const ContentScript = () => {
             setCurrentJobId(null)
             setProgressPercent(null)
             setProgressMessage(null)
+          } else if (shouldAutoQuickVerdict && !shouldAutoAnalyze) {
+            // Auto-run quick verdict for the new video
+            console.log("Comment Verdict: Auto-running quick verdict for video", videoId)
+            setAnalysisState("idle")
+            setAnalysisError(null)
+            setCurrentJobId(null)
+            setProgressPercent(null)
+            setProgressMessage(null)
+            // Small delay to let the page settle before triggering
+            setTimeout(() => {
+              if (currentVideoIdRef.current === videoId) {
+                proceedWithFreeVerdict(videoId)
+              }
+            }, 1500)
           }
           // A new page is assumed to be unanalyzed for development. Reset
           // the pre-watch dismissed flag so the popover appears after
