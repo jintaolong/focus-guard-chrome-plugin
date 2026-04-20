@@ -1,7 +1,7 @@
 {
   "name": "comment-verdict-chrome-plugin",
   "displayName": "Comment Verdict: AI YouTube Analysis & Spam/Clickbait Filter",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "description": "Get instant AI verdicts on YouTube videos. Detect clickbait, filter spam, and see community sentiment. Save time, watch better.",
   "author": "Comment Verdict Team",
   "scripts": {
