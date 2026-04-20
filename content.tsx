@@ -340,6 +340,11 @@ const ContentScript = () => {
   const [analysisState, setAnalysisState] = useState<"idle" | "analyzing" | "complete">("idle")
   // Keep the ref in sync on every render so stale closures always see the current value
   analysisStateRef.current = analysisState
+  // Mirror settings as a ref so the mount-only useEffect's stale closures (checkPageType,
+  // URL-change listeners) always read the user's real preferences rather than the initial
+  // default state. This fixes the "auto quick verdict fires even when toggle is off" bug.
+  const settingsRef = useRef<FocusGuardSettings | null>(settings)
+  settingsRef.current = settings
   const [isSidePanelOpen, setIsSidePanelOpen] = useState(false)
   const [panelDock, setPanelDock] = useState<"left" | "right">(() => {
     try {
@@ -553,10 +558,10 @@ const ContentScript = () => {
           }
           
           // Check if auto-analyze is enabled (for starting actual analysis)
-          const shouldAutoAnalyze = settings?.videoAnalysis?.autoAnalyze ?? false
+          const shouldAutoAnalyze = settingsRef.current?.videoAnalysis?.autoAnalyze ?? false
           // Auto-run quick verdict when toggle default is Quick Verdict and auto-quick-verdict is enabled
-          const toggleMode = settings?.videoAnalysis?.proToggleMode ?? 'free_verdict'
-          const shouldAutoQuickVerdict = (settings?.videoAnalysis?.autoQuickVerdict ?? true) && toggleMode === 'free_verdict'
+          const toggleMode = settingsRef.current?.videoAnalysis?.proToggleMode ?? 'free_verdict'
+          const shouldAutoQuickVerdict = (settingsRef.current?.videoAnalysis?.autoQuickVerdict ?? true) && toggleMode === 'free_verdict'
           if (!shouldAutoAnalyze && !shouldAutoQuickVerdict) {
             // Don't auto-analyze; just reset state and wait for user to click the button
             // (cache check above will update toggle if cached report exists)
@@ -627,7 +632,8 @@ const ContentScript = () => {
       }
     }
 
-    checkPageType()
+    // NOTE: checkPageType() for the initial page load is called after loadSettings()
+    // resolves (see below), so it reads the user's real preferences via settingsRef.
 
     // Listen for URL changes (YouTube is a SPA). Wrap history methods and
     // emit a `locationchange` event so we can react to navigations performed
@@ -676,6 +682,7 @@ const ContentScript = () => {
       try {
         const result = await chrome.storage.sync.get(["settings"])
         if (result.settings) {
+          settingsRef.current = result.settings  // sync update so checkPageType sees real prefs
           setSettings(result.settings)
         } else {
           // Set default settings if none exist
@@ -690,6 +697,7 @@ const ContentScript = () => {
               maxCommentDepth: 100
             }
           }
+          settingsRef.current = defaultSettings  // sync update
           setSettings(defaultSettings)
           // Save defaults to storage
           await chrome.storage.sync.set({ settings: defaultSettings })
@@ -697,7 +705,7 @@ const ContentScript = () => {
       } catch (e) {
         console.error("Comment Verdict: Failed to load settings, using defaults", e)
         // Fallback to defaults even if storage fails
-        setSettings({
+        const fallbackSettings: FocusGuardSettings = {
           isEnabled: true,
           videoAnalysis: {
             showPreWatchPopover: true,
@@ -707,11 +715,16 @@ const ContentScript = () => {
             confirmCreditUsage: true,
             maxCommentDepth: 100
           }
-        })
+        }
+        settingsRef.current = fallbackSettings  // sync update
+        setSettings(fallbackSettings)
       }
     }
 
-    loadSettings()
+    // Await settings first, then run the initial page check. This ensures
+    // autoQuickVerdict (and other prefs) are read from storage, not the
+    // stale default-true initial React state.
+    loadSettings().then(() => checkPageType())
 
     const onStorageChange = (changes: { [key: string]: any }, areaName: string) => {
       if (areaName === "sync") {
