@@ -726,7 +726,7 @@ function IndexPopup() {
                 const isSelected = selectedMode === mode
 
                 // Fixed values for non-pro tiers
-                const fixedVal = mode === "free_verdict" ? 200 : 100
+                const fixedVal = mode === "free_verdict" ? 100 : 100
                 const sliderMax = mode === "free_verdict" ? 500 : 1000
                 const sliderSteps = mode === "free_verdict"
                   ? [100, 200, 300, 400, 500]
