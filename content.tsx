@@ -574,9 +574,16 @@ const ContentScript = () => {
             setCurrentJobId(null)
             setProgressPercent(null)
             setProgressMessage(null)
-            // Small delay to let the page settle before triggering
+            // Small delay to let the page settle before triggering.
+            // Also re-check cache state: checkCacheAndPrefetch runs concurrently
+            // and may have already loaded a cached verdict/sentiment by the time
+            // this fires — in that case skip the free verdict to avoid redundant work.
             setTimeout(() => {
               if (currentVideoIdRef.current === videoId) {
+                if (analysisStateRef.current === "complete") {
+                  console.log("Comment Verdict: Skipping auto free verdict — cache already loaded results")
+                  return
+                }
                 proceedWithFreeVerdict(videoId)
               }
             }, 1500)
