@@ -8,6 +8,10 @@
  */
 import { useState } from "react"
 
+// Mendi's X profile, configurable per build (Plasmo inlines PLASMO_PUBLIC_* at build time).
+const X_PROFILE_URL =
+  process.env.PLASMO_PUBLIC_X_PROFILE_URL || "https://x.com/CommentVerdict"
+
 interface SentimentSummary {
   positive_pct: number
   neutral_pct: number
@@ -337,6 +341,28 @@ export const VerdictTooltip = ({
             </button>
           )}
         </div>
+
+        {/* Mendi cross-promo — non-blocking footer link to the X profile. Purely
+            informational; does not gate or interrupt the verdict UI above. */}
+        <a
+          href={X_PROFILE_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: "block",
+            marginTop: "12px",
+            paddingTop: "10px",
+            borderTop: "1px solid rgba(255,255,255,0.08)",
+            fontSize: "11px",
+            fontWeight: 600,
+            color: "rgba(255,255,255,0.65)",
+            textDecoration: "none",
+            transition: "color 0.15s",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = "white" }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = "rgba(255,255,255,0.65)" }}>
+          Mendi now scouts replies on X →
+        </a>
       </div>
     </div>
   )
