@@ -2,8 +2,9 @@
   "name": "comment-verdict-chrome-plugin",
   "displayName": "Comment Verdict: AI YouTube Analysis & Spam/Clickbait Filter",
   "version": "1.8.1",
-  "description": "Get instant AI verdicts on YouTube videos. Detect clickbait, filter spam, and see community sentiment. Save time, watch better.",
+  "description": "AI verdict on any YouTube video before you watch: trust scores, comment mood and what viewers say is missing. By Comment Verdict.",
   "author": "Comment Verdict Team",
+  "homepage": "https://commentverdict.com/?utm_source=chrome_extension&utm_medium=manifest",
   "scripts": {
     "dev": "plasmo dev",
     "dev:debug": "cross-env COMMENT_VERDICT_DEBUG=1 plasmo dev",

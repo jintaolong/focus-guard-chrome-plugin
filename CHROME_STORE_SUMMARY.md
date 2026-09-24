@@ -29,17 +29,6 @@ Focus Guard helps you judge a YouTube video faster by summarizing what viewers a
 - **YouTube site access**: Needed to run the analysis UI on YouTube watch pages.
 - **Storage**: Used to save settings and keep the experience consistent.
 
-## Suggested Chrome Store “Detailed Description” (paste-ready)
-Focus Guard helps you understand a YouTube video faster by reading the room in the comments.
-
-Open the side panel to see:
-- Video Trust (trust score + verdict)
-- Channel Trust (factor breakdown)
-- Comment Mood (Liked / Mixed / Disliked)
-- Key takeaways from comments
-- What viewers noticed
-- Unaddressed viewer requests
-
-While analysis is running, Focus Guard shows clear progress (percent + a live status message), so you always know what it’s doing.
-
-Note: Focus Guard provides decision support. It summarizes audience reactions and available signals — it’s not a guarantee of accuracy.
+## Store listing text
+The paste-ready store description, dashboard URL fields and the manifest summary live in
+[STORE_LISTING.md](STORE_LISTING.md). Edit them there, not here.
