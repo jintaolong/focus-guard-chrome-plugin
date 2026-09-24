@@ -1,7 +1,7 @@
 {
   "name": "comment-verdict-chrome-plugin",
   "displayName": "Comment Verdict: AI YouTube Video Verdicts & Comment Analysis",
-  "version": "1.8.1",
+  "version": "1.8.2",
   "description": "AI verdict on any YouTube video before you watch: trust scores, comment mood and what viewers say is missing. By Comment Verdict.",
   "author": "Comment Verdict Team",
   "homepage": "https://commentverdict.com/?utm_source=chrome_extension&utm_medium=manifest",
