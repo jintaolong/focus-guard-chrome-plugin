@@ -4,8 +4,9 @@ The source of truth for the store listing text. The store does not read this fil
 paste each block into the Chrome Web Store developer dashboard (Store listing tab)
 whenever it changes here.
 
-The short summary is not pasted. It is `description` in `package.json`, which Plasmo
-writes into the manifest (132 characters max). The manifest's website link is
+The listing title and short summary are not pasted either. They are `displayName`
+(75 characters max) and `description` (132 characters max) in `package.json`, which
+Plasmo writes into the manifest as `name` and `description`. The manifest's website link is
 `homepage` in `package.json`.
 
 ## Rules for editing
