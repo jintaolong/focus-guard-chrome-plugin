@@ -16,6 +16,7 @@ import { FocusGuardAPI } from "~lib/api"
 import { AuthService } from "~lib/auth"
 import { SubscriptionService } from "~lib/subscription"
 import { getRandomMockAnalysis } from "~lib/mockData"
+import { recordVerdictRendered } from "~lib/mendi-promo"
 import type { VideoResult, UserStats } from "~types"
 import type {
   VideoAnalysis,
@@ -441,6 +442,14 @@ const ContentScript = () => {
   useEffect(() => {
     if (analysisState === "complete" && currentVideoId) {
       fetchSubAnalysisCosts(currentVideoId)
+    }
+  }, [analysisState, currentVideoId])
+
+  // Count rendered verdicts for the popup's Mendi promo card (lib/mendi-promo). The
+  // card itself is never injected here — nothing is added to the YouTube page.
+  useEffect(() => {
+    if (analysisState === "complete" && currentVideoId) {
+      void recordVerdictRendered(currentVideoId)
     }
   }, [analysisState, currentVideoId])
 

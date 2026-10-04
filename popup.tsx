@@ -3,6 +3,16 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { AccountInfo } from "~components/popup/AccountInfo"
 import { LoginForm } from "~components/popup/LoginForm"
 import { ToggleSwitch } from "~components/popup/ToggleSwitch"
+import { MendiPromoCard } from "~components/popup/MendiPromoCard"
+import { trackEvent } from "~lib/analytics"
+import {
+  MENDI_PROMO_URL,
+  markPromoDismissed,
+  markPromoShown,
+  readPromoState,
+  readVerdictsRendered,
+  shouldShowPromo
+} from "~lib/mendi-promo"
 import { initConsole } from "~lib/console-manager"
 import { AuthService } from "~lib/auth"
 import { SubscriptionService } from "~lib/subscription"
@@ -70,6 +80,10 @@ function IndexPopup() {
   const loadUserDataInFlight = useRef<Promise<void> | null>(null)
   const lastLoadTime = useRef(0)
   const settingsRef = useRef(settings)
+  // Mendi promo card (lib/mendi-promo): decided once per popup open, after the account
+  // has loaded, so the card never flashes on a blank or loading popup.
+  const [promoVisible, setPromoVisible] = useState(false)
+  const promoDecided = useRef(false)
 
   useEffect(() => {
     settingsRef.current = settings
@@ -408,6 +422,41 @@ function IndexPopup() {
     }
   }
 
+  useEffect(() => {
+    if (!account?.isLoggedIn || promoDecided.current) return
+    promoDecided.current = true
+    let cancelled = false
+    ;(async () => {
+      const [state, verdicts] = await Promise.all([readPromoState(), readVerdictsRendered()])
+      if (cancelled || !shouldShowPromo(state, verdicts)) return
+      const next = await markPromoShown()
+      if (cancelled) return
+      setPromoVisible(true)
+      trackEvent("promo_shown", { show_number: next.shown })
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [account?.isLoggedIn])
+
+  const handlePromoTry = async () => {
+    trackEvent("promo_clicked")
+    setPromoVisible(false)
+    // Either button means never again; a click is the better of the two outcomes.
+    await markPromoDismissed()
+    try {
+      await chrome.tabs.create({ url: MENDI_PROMO_URL })
+    } catch (err) {
+      console.error("Popup: failed to open Mendi landing", err)
+    }
+  }
+
+  const handlePromoDismiss = async () => {
+    trackEvent("promo_dismissed")
+    setPromoVisible(false)
+    await markPromoDismissed()
+  }
+
   const handleManagePlan = async () => {
     try {
       // Open the web portal Plans & Billing tab
@@ -596,6 +645,9 @@ function IndexPopup() {
           </p>
         )}
       </div>
+
+      {/* Mendi promo — popup only, after a verdict has rendered; see lib/mendi-promo */}
+      {promoVisible && <MendiPromoCard onTry={handlePromoTry} onDismiss={handlePromoDismiss} />}
 
       {/* Account Info — skip for visitors since they have no account data */}
       {!account.isGuest && (
