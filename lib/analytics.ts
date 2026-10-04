@@ -28,10 +28,22 @@ export interface AnalyticsEvent {
 
 export const TRACK_EVENT_MESSAGE = "TRACK_EVENT"
 const CLIENT_ID_KEY = "analyticsClientId"
+const SESSION_KEY = "analyticsSession"
 const MP_ENDPOINT = "https://www.google-analytics.com/mp/collect"
+const MP_DEBUG_ENDPOINT = "https://www.google-analytics.com/debug/mp/collect"
+/** GA's own session timeout: a gap longer than this starts a new session. */
+export const SESSION_TIMEOUT_MS = 30 * 60 * 1000
 
 const MEASUREMENT_ID = process.env.PLASMO_PUBLIC_GA_MEASUREMENT_ID || ""
 const API_SECRET = process.env.PLASMO_PUBLIC_GA_API_SECRET || ""
+/**
+ * Testing aid, never set in the release workflow. When "1": every event carries
+ * debug_mode (so it shows in GA4 → Admin → DebugView) and is also sent to the
+ * validation server, whose verdict is logged in the service worker console. The
+ * real endpoint answers 2xx to anything, malformed or not, so this is the only way
+ * to see a payload problem.
+ */
+const DEBUG = process.env.PLASMO_PUBLIC_GA_DEBUG === "1"
 
 export function isAnalyticsConfigured(): boolean {
   return Boolean(MEASUREMENT_ID && API_SECRET)
@@ -63,21 +75,77 @@ async function getClientId(): Promise<string> {
 }
 
 /**
+ * GA4 only shows Measurement Protocol activity in Realtime (and attributes it to a
+ * session at all) when each event carries `session_id` and `engagement_time_msec`.
+ * The session id is GA's usual shape, the start time in seconds, and rolls over after
+ * SESSION_TIMEOUT_MS without an event. Kept in chrome.storage.local next to the
+ * client id; neither is tied to the account.
+ */
+async function getSessionId(now: number = Date.now()): Promise<string> {
+  const stored = await chrome.storage.local.get([SESSION_KEY])
+  const s = stored?.[SESSION_KEY] as { id?: string; lastAt?: number } | undefined
+  const id =
+    s && typeof s.id === "string" && typeof s.lastAt === "number" && now - s.lastAt < SESSION_TIMEOUT_MS
+      ? s.id
+      : String(Math.floor(now / 1000))
+  await chrome.storage.local.set({ [SESSION_KEY]: { id, lastAt: now } })
+  return id
+}
+
+/** The request body for one event. Exported for tests. */
+export async function buildPayload(event: AnalyticsEvent, now: number = Date.now()) {
+  const [clientId, sessionId] = await Promise.all([getClientId(), getSessionId(now)])
+  return {
+    client_id: clientId,
+    events: [
+      {
+        name: event.name,
+        params: {
+          ...(event.params ?? {}),
+          surface: "extension_popup",
+          session_id: sessionId,
+          // The popup has no engagement timer; a nominal value is what Google's own
+          // examples use, and it is what makes the event count as user activity.
+          engagement_time_msec: 100,
+          ...(DEBUG ? { debug_mode: true } : {})
+        }
+      }
+    ]
+  }
+}
+
+/** Debug mode only: ask GA's validation server about this payload and log the answer. */
+async function logValidation(name: string, body: string): Promise<void> {
+  try {
+    const res = await fetch(endpoint(MP_DEBUG_ENDPOINT), { method: "POST", body })
+    const verdict = await res.json()
+    const messages = verdict?.validationMessages ?? []
+    if (messages.length) console.warn("Analytics: GA validation FAILED", name, messages)
+    else console.info("Analytics: GA validation passed", name, JSON.parse(body))
+  } catch {
+    // The validation response may be unreadable without a host permission. Print the
+    // payload so it can be checked by hand against /debug/mp/collect with curl.
+    console.info("Analytics: sent", name, "- validate by hand:", body)
+  }
+}
+
+function endpoint(base: string): string {
+  return `${base}?measurement_id=${encodeURIComponent(MEASUREMENT_ID)}&api_secret=${encodeURIComponent(API_SECRET)}`
+}
+
+/**
  * Background side: deliver one event. Returns true when a request was sent. A
  * missing configuration is a silent no-op, a network failure is logged and swallowed.
  */
 export async function deliverEvent(event: AnalyticsEvent): Promise<boolean> {
   if (!isAnalyticsConfigured()) return false
   try {
-    const clientId = await getClientId()
-    const url = `${MP_ENDPOINT}?measurement_id=${encodeURIComponent(MEASUREMENT_ID)}&api_secret=${encodeURIComponent(API_SECRET)}`
-    const body = JSON.stringify({
-      client_id: clientId,
-      events: [{ name: event.name, params: { ...(event.params ?? {}), surface: "extension_popup" } }]
-    })
-    // No content-type header on purpose: a text/plain POST needs no CORS preflight, so
-    // no new host permission is required (the brief forbids permission changes).
-    await fetch(url, { method: "POST", body, keepalive: true })
+    const body = JSON.stringify(await buildPayload(event))
+    // The extension has no host permission for google-analytics.com (the brief forbids
+    // permission changes), so CORS applies. A no-cors text/plain POST is still
+    // delivered; its response is opaque, which is fine for fire-and-forget.
+    await fetch(endpoint(MP_ENDPOINT), { method: "POST", body, keepalive: true, mode: "no-cors" })
+    if (DEBUG) await logValidation(event.name, body)
     return true
   } catch (err) {
     console.warn("Analytics: failed to deliver event", event.name, err)
