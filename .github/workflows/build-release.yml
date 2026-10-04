@@ -66,7 +66,21 @@ jobs:
           PLASMO_PUBLIC_WEB_PORTAL_URL=${{ secrets.PROD_WEB_PORTAL_URL }}
           COMMENT_VERDICT_DEBUG=0
           PLASMO_PUBLIC_MAX_COMMENTS=100
+          # GA4 Measurement Protocol for the Mendi promo card's events (lib/analytics.ts).
+          # Empty secrets = events silently dropped, so set both before a release.
+          PLASMO_PUBLIC_GA_MEASUREMENT_ID=${{ secrets.GA_MEASUREMENT_ID }}
+          PLASMO_PUBLIC_GA_API_SECRET=${{ secrets.GA_API_SECRET }}
           EOF
+
+      - name: Warn when promo analytics are not configured
+        # Secrets cannot be read in `if:`; check them through the step's env instead.
+        env:
+          GA_ID: ${{ secrets.GA_MEASUREMENT_ID }}
+          GA_SECRET: ${{ secrets.GA_API_SECRET }}
+        run: |
+          if [ -z "$GA_ID" ] || [ -z "$GA_SECRET" ]; then
+            echo "::warning::GA_MEASUREMENT_ID or GA_API_SECRET is not set; this build sends no promo_* analytics events."
+          fi
 
       - name: Build production extension
         run: pnpm run build:prod

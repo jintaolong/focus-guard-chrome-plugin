@@ -97,9 +97,11 @@ Copy (also in `lib/mendi-promo.ts`, which is the source of truth):
 in a new tab; the landing page reads `promo` and shows the code applied on /pricing.
 
 Analytics: `promo_shown`, `promo_clicked`, `promo_dismissed` go to the site's GA4
-property over the Measurement Protocol (`lib/analytics.ts`). Set
-`PLASMO_PUBLIC_GA_MEASUREMENT_ID` and `PLASMO_PUBLIC_GA_API_SECRET` in the production
-build environment or the events are silently dropped. Nothing identifying is sent.
+property over the Measurement Protocol (`lib/analytics.ts`). The release workflow
+(`build-release.yml`) fills `PLASMO_PUBLIC_GA_MEASUREMENT_ID` and
+`PLASMO_PUBLIC_GA_API_SECRET` from the repo secrets `GA_MEASUREMENT_ID` and
+`GA_API_SECRET`; set both before merging or the events are silently dropped (the
+build logs a warning). Nothing identifying is sent.
 
 Ship list for this release, in one store submission:
 1. Merge → the release workflow bumps the version (a `feat:` commit → minor), which is
