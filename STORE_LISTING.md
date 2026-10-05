@@ -121,8 +121,10 @@ each Actions workflow is started by hand, as for 1.8.x:
    pushed by the workflow token does not start the build on its own.
 3. Actions → **Build and Release** → tag `v1.9.0`. This is the step that reads the GA
    secrets; check its log for the "promo analytics are not configured" warning.
-4. In the Chrome Web Store dashboard, paste the updated Description above and upload
-   the Mendi screenshot as the 4th image. Save the draft; do not submit it.
-5. Actions → **Publish to Chrome Web Store** → `1.9.0`. This submits the package and
-   the saved listing together, one review. Do it before 2026-10-15: the publish action
-   still uses the Chrome Web Store API version Google retires that day.
+4. Actions → **Publish to Chrome Web Store** → `1.9.0`. Despite its name, this only
+   UPLOADS the package as a draft (`cws-publish` with `action: upload`); it does not
+   submit anything for review. Do it before 2026-10-15: the action still uses the
+   Chrome Web Store API version Google retires that day.
+5. In the Chrome Web Store dashboard: check the package draft shows the new version,
+   paste the updated Description above, upload the Mendi screenshot as the 4th image,
+   then **Submit for review**. Package and listing go into one review.
