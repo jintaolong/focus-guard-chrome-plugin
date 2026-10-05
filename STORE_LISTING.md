@@ -29,7 +29,7 @@ Plasmo writes into the manifest as `name` and `description`. The manifest's webs
 | Official URL | `commentverdict.com` (needs the domain verified in Search Console) |
 | Homepage URL | `https://commentverdict.com/?utm_source=chrome_web_store&utm_medium=listing&utm_campaign=homepage_field` |
 | Support URL | `https://commentverdict.com/?utm_source=chrome_web_store&utm_medium=listing&utm_campaign=support_field` |
-| Screenshots | Images 1–3: the existing verdict, side panel and report captures. Image 4: the Mendi screenshot (Reply Studio with a drafted reply and its cited comments, 1280×800). Added with the 2026-10 promo-card release; see "Mendi promo card" below. |
+| Screenshots | Images 1–3: the existing verdict, side panel and report captures. Image 4 (added with 1.9.0): the extension POPUP showing the Mendi card, on a 1280×800 canvas. Show this extension's own UI, not Reply Studio: store policy expects listing images to depict the item itself, and a screenshot of a different product invites a "misleading listing" rejection. |
 
 ## Description
 
@@ -126,5 +126,5 @@ each Actions workflow is started by hand, as for 1.8.x:
    submit anything for review. Do it before 2026-10-15: the action still uses the
    Chrome Web Store API version Google retires that day.
 5. In the Chrome Web Store dashboard: check the package draft shows the new version,
-   paste the updated Description above, upload the Mendi screenshot as the 4th image,
+   paste the updated Description above, upload the popup-with-Mendi-card screenshot as the 4th image,
    then **Submit for review**. Package and listing go into one review.
