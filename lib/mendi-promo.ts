@@ -27,9 +27,19 @@ export const MAX_SHOWS = 3
 export const MIN_GAP_MS = 48 * 60 * 60 * 1000
 export const MIN_VERDICTS = 2
 
-/** Landing URL. The page reads `promo` and shows the code applied on /pricing. */
+/**
+ * Landing URL. The page reads `promo` and shows the code applied on /pricing.
+ *
+ * UTM values, so every report can say where the click came from:
+ *   utm_source=legacy_ext   — the legacy Comment Verdict extension (matches the outreach
+ *                             sheet's channel value)
+ *   utm_medium=extension    — fills the admin "By medium" breakdown and GA's medium
+ *   utm_campaign=pilot1     — the campaign, shared with every other pilot1 link
+ *   utm_content=popup_card  — the placement (GA only), apart from the store listing's
+ *                             description link, which carries the same promo code
+ */
 export const MENDI_PROMO_URL =
-  "https://commentverdict.com/?utm_source=legacy_ext&utm_campaign=pilot1&promo=MENDI-PILOT"
+  "https://commentverdict.com/?utm_source=legacy_ext&utm_medium=extension&utm_campaign=pilot1&utm_content=popup_card&promo=MENDI-PILOT"
 
 export const PROMO_COPY = {
   headline: "The engine behind this verdict now drafts replies on X.",

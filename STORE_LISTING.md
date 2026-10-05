@@ -34,7 +34,7 @@ Plasmo writes into the manifest as `name` and `description`. The manifest's webs
 ## Description
 
 ```text
-Know whether a YouTube video is worth your time before you watch it. The same engine now drafts replies on X as Mendi: it reads real comments before it writes, shows you the sources, and never posts for you. Six months of the Voice tier free for early users: https://commentverdict.com/?utm_source=chrome_web_store&utm_medium=listing&utm_campaign=pilot1&promo=MENDI-PILOT
+Know whether a YouTube video is worth your time before you watch it. The same engine now drafts replies on X as Mendi: it reads real comments before it writes, shows you the sources, and never posts for you. Six months of the Voice tier free for early users: https://commentverdict.com/?utm_source=chrome_web_store&utm_medium=listing&utm_campaign=pilot1&utm_content=description_intro&promo=MENDI-PILOT
 
 Comment Verdict reads the comment section, viewer signals and the transcript, then gives you an AI verdict on whether the video delivers what its title promises.
 
@@ -93,8 +93,19 @@ Copy (also in `lib/mendi-promo.ts`, which is the source of truth):
 > [Try Mendi] [Not now]
 
 "Try Mendi" opens
-`https://commentverdict.com/?utm_source=legacy_ext&utm_campaign=pilot1&promo=MENDI-PILOT`
+`https://commentverdict.com/?utm_source=legacy_ext&utm_medium=extension&utm_campaign=pilot1&utm_content=popup_card&promo=MENDI-PILOT`
 in a new tab; the landing page reads `promo` and shows the code applied on /pricing.
+
+Link tagging for this campaign. Every pilot1 link carries `utm_campaign=pilot1`; the
+source says which surface, the content says which spot on it:
+
+| Link | utm_source | utm_medium | utm_content |
+|---|---|---|---|
+| Popup card "Try Mendi" | `legacy_ext` | `extension` | `popup_card` |
+| Store description, first paragraph | `chrome_web_store` | `listing` | `description_intro` |
+
+The other listing links keep their existing tags (`utm_campaign` = the field they sit
+in), since they are not part of the campaign.
 
 Analytics: `promo_shown`, `promo_clicked`, `promo_dismissed` go to the site's GA4
 property over the Measurement Protocol (`lib/analytics.ts`). The release workflow
