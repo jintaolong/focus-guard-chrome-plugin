@@ -16,6 +16,7 @@ import { FocusGuardAPI } from "~lib/api"
 import { AuthService } from "~lib/auth"
 import { SubscriptionService } from "~lib/subscription"
 import { getRandomMockAnalysis } from "~lib/mockData"
+import { isVerdictVisible, recordVerdictRendered } from "~lib/mendi-promo"
 import type { VideoResult, UserStats } from "~types"
 import type {
   VideoAnalysis,
@@ -443,6 +444,21 @@ const ContentScript = () => {
       fetchSubAnalysisCosts(currentVideoId)
     }
   }, [analysisState, currentVideoId])
+
+  // Count rendered verdicts for the popup's Mendi promo card (lib/mendi-promo). Only a
+  // verdict that is actually on screen counts (isVerdictVisible mirrors the toggle's
+  // display rule). The card itself is never injected here — nothing is added to the
+  // YouTube page.
+  useEffect(() => {
+    if (!currentVideoId) return
+    const visible = isVerdictVisible({
+      analysisState,
+      isCached,
+      showCachedVerdict: settings?.videoAnalysis?.showCachedVerdict,
+      tooltipShown: showVerdictTooltip
+    })
+    if (visible) void recordVerdictRendered(currentVideoId)
+  }, [analysisState, currentVideoId, isCached, settings?.videoAnalysis?.showCachedVerdict, showVerdictTooltip])
 
   // Auto-open side panel when full analysis (triggered from toggle) completes
   useEffect(() => {

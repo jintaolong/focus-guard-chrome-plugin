@@ -7,6 +7,7 @@ import { ConfigService } from "~lib/config"
 import { extractSSEEvents } from "~lib/sse-parser"
 import { CHAT_PORT_NAME, CHAT_ERROR_MESSAGES, CHAT_STREAM_TIMEOUT_MS } from "~lib/constants"
 import type { ChatPortMessage } from "~types/chat"
+import { TRACK_EVENT_MESSAGE, deliverEvent } from "~lib/analytics"
 
 initConsole()
 
@@ -290,6 +291,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true // Keep channel open for async response
   }
   
+  // Product analytics (lib/analytics): the popup hands events here because opening a
+  // tab closes the popup and would abort its own fetch. No-op when GA is unconfigured.
+  if (request.type === TRACK_EVENT_MESSAGE) {
+    deliverEvent(request.event)
+      .then(sent => sendResponse({ success: true, sent }))
+      .catch(error => sendResponse({ success: false, error: error?.message }))
+    return true
+  }
+
   // Handle opening new tab (for upgrade links)
   if (request.type === 'OPEN_TAB') {
     console.log("Background: Opening tab:", request.url)
