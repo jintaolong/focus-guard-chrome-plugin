@@ -92,14 +92,14 @@ describe('analytics', () => {
 
   it('debug mode tags events for DebugView and asks the validation server', async () => {
     const a = await load({ PLASMO_PUBLIC_GA_MEASUREMENT_ID: 'G-TEST', PLASMO_PUBLIC_GA_API_SECRET: 's3cret', PLASMO_PUBLIC_GA_DEBUG: '1' })
-    const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const info = vi.spyOn(console, 'warn').mockImplementation(() => {})
     await a.deliverEvent({ name: 'promo_clicked' })
     expect(global.fetch).toHaveBeenCalledTimes(2)
     const [, sent] = vi.mocked(global.fetch).mock.calls[0] as [string, RequestInit]
     expect(JSON.parse(sent.body as string).events[0].params.debug_mode).toBe(true)
     const [debugUrl] = vi.mocked(global.fetch).mock.calls[1] as [string]
     expect(debugUrl).toContain('/debug/mp/collect')
-    expect(info).toHaveBeenCalledWith('Analytics: GA validation passed', 'promo_clicked', expect.any(Object))
+    expect(info).toHaveBeenCalledWith('[GA debug] validation passed', 'promo_clicked', expect.any(Object))
     info.mockRestore()
   })
 

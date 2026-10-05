@@ -118,6 +118,24 @@ export async function markPromoDismissed(): Promise<MendiPromoState> {
   return next
 }
 
+/**
+ * Is a verdict actually ON SCREEN? Mirrors the toggle button's own display rule in
+ * content.tsx: a completed analysis of a CACHED video stays visually idle unless
+ * "show cached verdict" is on, so it is not a verdict the person has seen. The
+ * verdict tooltip, when it opens, always shows one.
+ */
+export function isVerdictVisible(input: {
+  analysisState: string
+  isCached: boolean | null
+  showCachedVerdict: boolean | undefined
+  tooltipShown: boolean
+}): boolean {
+  if (input.tooltipShown) return true
+  if (input.analysisState !== "complete") return false
+  const hiddenAsCached = input.isCached === true && !input.showCachedVerdict
+  return !hiddenAsCached
+}
+
 // Video ids already counted in this page session. A verdict for the same video can
 // reach "complete" more than once (cache hit, re-render, side panel open), and only
 // the first one is a verdict the person actually saw for the first time.

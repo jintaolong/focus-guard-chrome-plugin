@@ -114,18 +114,22 @@ export async function buildPayload(event: AnalyticsEvent, now: number = Date.now
   }
 }
 
-/** Debug mode only: ask GA's validation server about this payload and log the answer. */
+/**
+ * Debug mode only: ask GA's validation server about this payload and log the answer.
+ * Uses console.warn on purpose: initConsole() mutes log/info/debug in every
+ * `plasmo build` (NODE_ENV is always production there), and warn is the level it keeps.
+ */
 async function logValidation(name: string, body: string): Promise<void> {
   try {
     const res = await fetch(endpoint(MP_DEBUG_ENDPOINT), { method: "POST", body })
     const verdict = await res.json()
     const messages = verdict?.validationMessages ?? []
-    if (messages.length) console.warn("Analytics: GA validation FAILED", name, messages)
-    else console.info("Analytics: GA validation passed", name, JSON.parse(body))
+    if (messages.length) console.warn("[GA debug] validation FAILED", name, messages)
+    else console.warn("[GA debug] validation passed", name, JSON.parse(body))
   } catch {
     // The validation response may be unreadable without a host permission. Print the
     // payload so it can be checked by hand against /debug/mp/collect with curl.
-    console.info("Analytics: sent", name, "- validate by hand:", body)
+    console.warn("[GA debug] sent", name, "- validate by hand:", body)
   }
 }
 
@@ -138,7 +142,11 @@ function endpoint(base: string): string {
  * missing configuration is a silent no-op, a network failure is logged and swallowed.
  */
 export async function deliverEvent(event: AnalyticsEvent): Promise<boolean> {
-  if (!isAnalyticsConfigured()) return false
+  if (!isAnalyticsConfigured()) {
+    // Silent in release builds by design; in debug mode say why nothing was sent.
+    if (DEBUG) console.warn("[GA debug] not sent", event.name, "- set PLASMO_PUBLIC_GA_MEASUREMENT_ID and PLASMO_PUBLIC_GA_API_SECRET")
+    return false
+  }
   try {
     const body = JSON.stringify(await buildPayload(event))
     // The extension has no host permission for google-analytics.com (the brief forbids

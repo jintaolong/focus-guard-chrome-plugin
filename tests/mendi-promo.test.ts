@@ -8,6 +8,7 @@ import {
   VERDICTS_STORAGE_KEY,
   MENDI_PROMO_URL,
   _resetCountedVideosForTests,
+  isVerdictVisible,
   markPromoDismissed,
   markPromoShown,
   normalizePromoState,
@@ -129,3 +130,26 @@ describe('landing link', () => {
     expect(url.searchParams.get('promo')).toBe('MENDI-PILOT')
   })
 })
+
+describe('isVerdictVisible — only a verdict on screen counts toward the card', () => {
+  const base = { analysisState: 'complete', isCached: false, showCachedVerdict: false, tooltipShown: false }
+
+  it('a fresh completed verdict is visible', () => {
+    expect(isVerdictVisible(base)).toBe(true)
+  })
+
+  it('a cached analysis stays hidden (toggle idle) unless "show cached verdict" is on', () => {
+    expect(isVerdictVisible({ ...base, isCached: true })).toBe(false)
+    expect(isVerdictVisible({ ...base, isCached: true, showCachedVerdict: true })).toBe(true)
+  })
+
+  it('nothing is visible before the analysis completes', () => {
+    expect(isVerdictVisible({ ...base, analysisState: 'analyzing' })).toBe(false)
+    expect(isVerdictVisible({ ...base, analysisState: 'idle' })).toBe(false)
+  })
+
+  it('the verdict tooltip always shows a verdict', () => {
+    expect(isVerdictVisible({ ...base, analysisState: 'idle', isCached: true, tooltipShown: true })).toBe(true)
+  })
+})
+
