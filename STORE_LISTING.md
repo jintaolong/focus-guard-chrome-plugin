@@ -111,8 +111,8 @@ Analytics: `promo_shown`, `promo_clicked`, `promo_dismissed` go to the site's GA
 property over the Measurement Protocol (`lib/analytics.ts`). The release workflow
 (`build-release.yml`) fills `PLASMO_PUBLIC_GA_MEASUREMENT_ID` and
 `PLASMO_PUBLIC_GA_API_SECRET` from the repo secrets `GA_MEASUREMENT_ID` and
-`GA_API_SECRET`; set both before merging or the events are silently dropped (the
-build logs a warning). Nothing identifying is sent.
+`GA_API_SECRET`; set both before running the build or the events are silently dropped
+(the build logs a warning). Nothing identifying is sent.
 
 Ship list for this release, in one store submission. Nothing here happens on merge;
 each Actions workflow is started by hand, as for 1.8.x:
