@@ -114,8 +114,15 @@ property over the Measurement Protocol (`lib/analytics.ts`). The release workflo
 `GA_API_SECRET`; set both before merging or the events are silently dropped (the
 build logs a warning). Nothing identifying is sent.
 
-Ship list for this release, in one store submission:
-1. Merge → the release workflow bumps the version (a `feat:` commit → minor), which is
-   what triggers the review. Ship once; a review takes days.
-2. Paste the updated Description above into the dashboard.
-3. Upload the Mendi screenshot as the 4th image.
+Ship list for this release, in one store submission. Nothing here happens on merge;
+each Actions workflow is started by hand, as for 1.8.x:
+1. Set the repo secrets `GA_MEASUREMENT_ID` and `GA_API_SECRET`, then merge the PR.
+2. Actions → **Version bump** → `minor` (1.8.2 → 1.9.0). It tags `v1.9.0`, but a tag
+   pushed by the workflow token does not start the build on its own.
+3. Actions → **Build and Release** → tag `v1.9.0`. This is the step that reads the GA
+   secrets; check its log for the "promo analytics are not configured" warning.
+4. In the Chrome Web Store dashboard, paste the updated Description above and upload
+   the Mendi screenshot as the 4th image. Save the draft; do not submit it.
+5. Actions → **Publish to Chrome Web Store** → `1.9.0`. This submits the package and
+   the saved listing together, one review. Do it before 2026-10-15: the publish action
+   still uses the Chrome Web Store API version Google retires that day.
