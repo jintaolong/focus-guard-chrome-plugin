@@ -29,7 +29,7 @@ Plasmo writes into the manifest as `name` and `description`. The manifest's webs
 | Official URL | `commentverdict.com` (needs the domain verified in Search Console) |
 | Homepage URL | `https://commentverdict.com/?utm_source=chrome_web_store&utm_medium=listing&utm_campaign=homepage_field` |
 | Support URL | `https://commentverdict.com/?utm_source=chrome_web_store&utm_medium=listing&utm_campaign=support_field` |
-| Screenshots | Images 1–3: the existing verdict, side panel and report captures. Image 4: the Mendi screenshot (Reply Studio with a drafted reply and its cited comments, 1280×800). Added with the 2026-10 promo-card release; see "Mendi promo card" below. |
+| Screenshots | Images 1–3: the existing verdict, side panel and report captures. Image 4 (added with 1.9.0): the extension POPUP showing the Mendi card, on a 1280×800 canvas. Show this extension's own UI, not Reply Studio: store policy expects listing images to depict the item itself, and a screenshot of a different product invites a "misleading listing" rejection. |
 
 ## Description
 
@@ -121,8 +121,10 @@ each Actions workflow is started by hand, as for 1.8.x:
    pushed by the workflow token does not start the build on its own.
 3. Actions → **Build and Release** → tag `v1.9.0`. This is the step that reads the GA
    secrets; check its log for the "promo analytics are not configured" warning.
-4. In the Chrome Web Store dashboard, paste the updated Description above and upload
-   the Mendi screenshot as the 4th image. Save the draft; do not submit it.
-5. Actions → **Publish to Chrome Web Store** → `1.9.0`. This submits the package and
-   the saved listing together, one review. Do it before 2026-10-15: the publish action
-   still uses the Chrome Web Store API version Google retires that day.
+4. Actions → **Publish to Chrome Web Store** → `1.9.0`. Despite its name, this only
+   UPLOADS the package as a draft (`cws-publish` with `action: upload`); it does not
+   submit anything for review. Do it before 2026-10-15: the action still uses the
+   Chrome Web Store API version Google retires that day.
+5. In the Chrome Web Store dashboard: check the package draft shows the new version,
+   paste the updated Description above, upload the popup-with-Mendi-card screenshot as the 4th image,
+   then **Submit for review**. Package and listing go into one review.
